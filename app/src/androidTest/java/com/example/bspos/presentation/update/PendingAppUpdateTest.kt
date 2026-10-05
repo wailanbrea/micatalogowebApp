@@ -15,7 +15,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 class PendingAppUpdateTest {
     @Test
     fun pendingUpdateSurvivesRepositoryRecreationAndClearsOnlyAfterInstallation() {
-        val context = InstrumentationRegistry.getInstrumentation().context
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
         val api = Retrofit.Builder().baseUrl("https://example.test/").build().create(MiCatalogoApi::class.java)
         fun repository() = AppUpdateRepository(context, api, OkHttpClient())
         val update = AvailableAppUpdate(99, "test", "https://example.test/app.apk", "a".repeat(64), "", true)
