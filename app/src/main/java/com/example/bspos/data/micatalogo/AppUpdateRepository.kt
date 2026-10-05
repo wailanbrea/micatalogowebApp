@@ -32,7 +32,7 @@ class AppUpdateRepository @Inject constructor(
         val manifest = runCatching { Json.decodeFromString<AndroidUpdateDto>(encoded) }.getOrNull()
             ?: return null
         if (manifest.versionCode <= installedVersionCode) {
-            pendingPreferences.edit().remove("manifest").commit()
+            pendingPreferences.edit().remove("manifest").remove("started_version").commit()
             return null
         }
         return AppUpdatePolicy.available(manifest, installedVersionCode)
@@ -42,13 +42,23 @@ class AppUpdateRepository @Inject constructor(
         val manifest = AndroidUpdateDto(
             versionCode = update.versionCode,
             versionName = update.versionName,
-            minimumSupportedVersionCode = update.versionCode,
+            minimumSupportedVersionCode = update.minimumSupportedVersionCode,
             apkUrl = update.apkUrl,
             apkSha256 = update.apkSha256,
             releaseNotes = update.releaseNotes
         )
         check(pendingPreferences.edit().putString("manifest", Json.encodeToString(manifest)).commit()) {
             "No se pudo guardar la actualización pendiente."
+        }
+    }
+
+    fun hasStartedUpdate(update: AvailableAppUpdate): Boolean =
+        pendingPreferences.getInt("started_version", 0) == update.versionCode
+
+    fun markUpdateStarted(update: AvailableAppUpdate) {
+        rememberUpdate(update)
+        check(pendingPreferences.edit().putInt("started_version", update.versionCode).commit()) {
+            "No se pudo guardar el inicio de la actualización."
         }
     }
 

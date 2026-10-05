@@ -56,6 +56,7 @@ fun CollectionScreen(viewModel: CollectionViewModel = hiltViewModel()) {
     val customers by viewModel.customers.collectAsState()
     val sales by viewModel.sales.collectAsState()
     val customer by viewModel.customer.collectAsState()
+    val receipts by viewModel.receipts.collectAsState()
     var choosing by remember { mutableStateOf(false) }
     var method by remember { mutableStateOf(PaymentMethod.CASH) }
     val pending = sales.filter { it.customerId == customer?.id && it.pendingAmount > 0 }
@@ -93,6 +94,20 @@ fun CollectionScreen(viewModel: CollectionViewModel = hiltViewModel()) {
             }
         }
         if (customer != null) {
+            receipts.firstOrNull()?.let { receipt ->
+                item {
+                    Card(Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text("Cobro confirmado: ${receipt.amount}", fontWeight = FontWeight.Bold)
+                            receipt.allocations.forEach { allocation ->
+                                Text("${allocation.invoiceNumber}: ${allocation.allocatedAmount} · Pendiente ${allocation.remainingInvoiceBalance}")
+                            }
+                            Text("Saldo restante: ${receipt.customerBalance}")
+                            Text("Caja actualizada: ${if (receipt.cashRegisterAffected) "Sí" else "No"}")
+                        }
+                    }
+                }
+            }
             item {
                 Text("Método de cobro", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelLarge)
                 Spacer(Modifier.size(3.dp))

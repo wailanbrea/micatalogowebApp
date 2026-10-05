@@ -208,7 +208,7 @@ class CatalogSyncIntegrationTest {
         assertTrue(repository.syncCatalog(shopId) is MiCatalogoResult.Success)
         val calls = mutableListOf<String>()
         api.saleCalls = calls
-        val operationApi = object : com.example.bspos.data.micatalogo.api.MiCatalogoOperationApi {
+        val operationApi = object : CatalogTestOperationApi() {
             override suspend fun submit(shopId: String, payload: kotlinx.serialization.json.JsonObject): Response<kotlinx.serialization.json.JsonObject> {
                 calls.add("operation")
                 return Response.success(payload)
@@ -238,7 +238,7 @@ class CatalogSyncIntegrationTest {
             "operation-1", shopId, "product-a", "{\"client_operation_uuid\":\"operation-1\"}", at.plusSeconds(1)
         ))
         queueSale(at.plusSeconds(2), "second")
-        val operationApi = object : com.example.bspos.data.micatalogo.api.MiCatalogoOperationApi {
+        val operationApi = object : CatalogTestOperationApi() {
             override suspend fun submit(shopId: String, payload: kotlinx.serialization.json.JsonObject): Response<kotlinx.serialization.json.JsonObject> {
                 calls.add("operation")
                 return Response.success(payload)
@@ -266,7 +266,7 @@ class CatalogSyncIntegrationTest {
         assertEquals(1L, active[first]!!.queueSequence)
         assertEquals(2L, db.operationOutboxDao().oldestActive(shopId)!!.queueSequence)
         assertEquals(3L, active[second]!!.queueSequence)
-        val operationApi = object : com.example.bspos.data.micatalogo.api.MiCatalogoOperationApi {
+        val operationApi = object : CatalogTestOperationApi() {
             override suspend fun submit(shopId: String, payload: kotlinx.serialization.json.JsonObject): Response<kotlinx.serialization.json.JsonObject> {
                 calls.add("operation")
                 return Response.success(payload)
@@ -286,7 +286,7 @@ class CatalogSyncIntegrationTest {
         api.saleCalls = calls
         val first = queueSale(at, "future")
         db.posSaleOutboxDao().markRetry(first, "Sin conexión", at, Instant.now().plusSeconds(3600))
-        val operationApi = object : com.example.bspos.data.micatalogo.api.MiCatalogoOperationApi {
+        val operationApi = object : CatalogTestOperationApi() {
             override suspend fun submit(shopId: String, payload: kotlinx.serialization.json.JsonObject): Response<kotlinx.serialization.json.JsonObject> = error("No operation expected")
         }
         val sync = MiCatalogoPosSaleRepositoryImpl(api, EmptyCustomerApi(), db.posSaleOutboxDao(),

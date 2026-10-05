@@ -67,7 +67,8 @@ class InventoryMigrationTest {
             oldHelper.close()
             val upgraded = Room.databaseBuilder(context, AppDatabase::class.java, name)
                 .addMigrations(DatabaseMigrations.MIGRATION_15_16, DatabaseMigrations.MIGRATION_16_17,
-                    DatabaseMigrations.MIGRATION_17_18, DatabaseMigrations.MIGRATION_18_19).addCallback(InventoryIntegrity).build()
+                    DatabaseMigrations.MIGRATION_17_18, DatabaseMigrations.MIGRATION_18_19,
+                    DatabaseMigrations.MIGRATION_19_20, DatabaseMigrations.MIGRATION_20_21).addCallback(InventoryIntegrity).build()
             try {
                 val rows = upgraded.posSaleOutboxDao().findDue(Instant.now(), 100)
                 assertEquals(ids, rows.map { it.saleId })
@@ -114,6 +115,8 @@ class InventoryMigrationTest {
             .addMigrations(DatabaseMigrations.MIGRATION_16_17)
             .addMigrations(DatabaseMigrations.MIGRATION_17_18)
             .addMigrations(DatabaseMigrations.MIGRATION_18_19)
+            .addMigrations(DatabaseMigrations.MIGRATION_19_20)
+            .addMigrations(DatabaseMigrations.MIGRATION_20_21)
             .addCallback(InventoryIntegrity)
             .build()
         try {

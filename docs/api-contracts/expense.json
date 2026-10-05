@@ -1,0 +1,1 @@
+{"id":"expense-1","description":"Electricidad","amount":10000,"amount_paid":4000,"unpaid_amount":6000,"payment_status":"partial","payment_method":"cash","category_name":"Servicios","occurred_at":"2026-10-05T09:00:00-04:00"}

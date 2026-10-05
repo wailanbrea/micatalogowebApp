@@ -22,6 +22,8 @@ import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -139,7 +141,8 @@ fun BSPOSMainScreen(
         ))
         add("FINANZAS" to listOfNotNull(
             if (canSeeMenu("cash")) Screen.Cash else null,
-            if (canSeeMenu("finance") || canManageShop) Screen.Finance else null
+            if (canSeeMenu("finance") || canManageShop) Screen.Finance else null,
+            if (canSeeMenu("expenses")) Screen.Expenses else null
         ))
         add("HERRAMIENTAS" to listOfNotNull(
             if (canSeeMenu("printers")) Screen.Printers else null,
@@ -373,6 +376,7 @@ fun BSPOSMainScreen(
                 sellerMode = sellerMode,
                 showSettings = canSeeMenu("settings"),
                 showAdminShops = connection.isAdmin,
+                remoteShopAvailable = connectedShop != null,
                 canSeeMenu = canSeeMenu,
                 modifier = Modifier.padding(paddingValues)
             )
@@ -389,6 +393,7 @@ fun BSPOSNavHost(
     sellerMode: Boolean = false,
     showSettings: Boolean = false,
     showAdminShops: Boolean = false,
+    remoteShopAvailable: Boolean = false,
     canSeeMenu: (String) -> Boolean = { true },
     modifier: Modifier = Modifier
 ) {
@@ -484,7 +489,21 @@ fun BSPOSNavHost(
                 } else {
                     null
                 }
-                CashScreen(onCashOpened = onCashOpened)
+                var remoteCash by remember { mutableStateOf(onCashOpened == null && remoteShopAvailable) }
+                Column {
+                    Row {
+                        FilterChip(selected = remoteCash, onClick = { remoteCash = true },
+                            label = { Text("Caja del servidor") }, enabled = remoteShopAvailable)
+                        FilterChip(selected = !remoteCash, onClick = { remoteCash = false },
+                            label = { Text("Caja local POS") })
+                    }
+                    Text("Son sesiones distintas. La caja del servidor requiere conexión para abrir y cerrar.",
+                        style = MaterialTheme.typography.bodySmall)
+                    Box(Modifier.weight(1f)) {
+                        if (remoteCash) FinanceScreen(cashOnly = true)
+                        else CashScreen(onCashOpened = onCashOpened)
+                    }
+                }
             }
         }
         composable(Screen.Returns.route) {
@@ -519,8 +538,9 @@ fun BSPOSNavHost(
             }
         }
         composable(Screen.Expenses.route) {
-            RestrictedMenuDestination(canSeeMenu("finance") || !sellerMode, navController) {
+            RestrictedMenuDestination(canSeeMenu("expenses"), navController) {
                 FinanceScreen(
+                    expensesOnly = true,
                     onNavigateBack = { navController.popBackStack() },
                     onNavigateToCash = { navController.navigate(Screen.Cash.route) }
                 )

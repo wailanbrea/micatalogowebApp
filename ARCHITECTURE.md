@@ -129,3 +129,15 @@ Aunque BSPOS funciona 100% desconectado, se diseñó bajo las siguientes normas 
 2. **Marcas de Tiempo UTC:** Todas las marcas temporales se almacenan en milisegundos desde la época Unix (UTC) (`Instant.toEpochMilli()`).
 3. **Soft-Delete (`deletedAt`):** Los registros dados de baja no se eliminan físicamente con `DELETE` de SQL durante la operativa normal; se marca su fecha de borrado, permitiendo propagar eliminaciones a otros nodos al sincronizar.
 4. **Separación de DataSource:** Los repositorios se programan recibiendo un `LocalDataSource`. Cuando se integre la nube, se agregará un `RemoteDataSource` y un `SyncWorker` sin modificar la capa de dominio ni la interfaz de usuario.
+## Alineación financiera Web/API/Android — 2026-10-05
+
+- Contrato oficial y fixtures: docs/API_CONTRACT.md y docs/api-contracts, replicados y probados por serialización en Android.
+- Caja conserva aliases web y Android <=1.0.22; nombres canónicos plurales, deuda, egresos, conteo y cierre esperado reales. Campos monetarios críticos no inventan ceros.
+- Impuestos informativos fuera de utilidad; descuentos, devoluciones y cobertura por ingresos. Costos y utilidades masked permanecen nullable.
+- Gastos permiten pago inicial parcial y abonos; ACK refresca saldo. Cobros conservan allocations, saldo autoritativo y efecto en caja.
+- Permisos finance/cash/expenses independientes en API y Android. Finance requiere delegación explícita para vendedores; null heredado no concede acceso nuevo.
+- Android Room 21: recibos nullable en payment_sync_outbox y operation_outbox; migración no destructiva. Payload/UUID estable, estados PENDING/SENT/BLOCKED y orden existente respecto a ventas.
+- Apertura/cierre remoto requieren conexión; cierre espera colas de la tienda vacías. Caja local POS permanece separada y explícita, no representa una sesión del servidor.
+- Updater conserva el mínimo real: opcional antes de iniciar; obligatorio por mínimo o proceso ya iniciado persistente. Mínimo publicado se conserva en 23.
+- Pruebas backend: 319 casos / 1589 assertions en SQLite :memory:. Matriz nueva: caja 5000+10000+2000-1500-500=15000; gasto 10000/pagado4000 y abono3000; deuda3000/cobro1500/FIFO/saldo1500; permisos e idempotencia. Wholesale continúa validando snapshot y price_conflict.
+- No hay migraciones backend ni cambios de datos de producción en esta entrega.

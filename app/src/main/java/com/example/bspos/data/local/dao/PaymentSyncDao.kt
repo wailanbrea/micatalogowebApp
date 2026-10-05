@@ -5,6 +5,10 @@ import androidx.room.Query
 import com.example.bspos.data.local.entity.PaymentSyncEntity
 
 @Dao interface PaymentSyncDao {
+    @Query("UPDATE payment_sync_outbox SET state='SENT', error=NULL, server_response=:response WHERE id=:id")
+    suspend fun confirm(id: String, response: String)
+    @Query("SELECT * FROM payment_sync_outbox WHERE customerId=:customerId AND state='SENT' AND server_response IS NOT NULL ORDER BY rowid DESC LIMIT 10")
+    fun observeReceipts(customerId: String): kotlinx.coroutines.flow.Flow<List<PaymentSyncEntity>>
     @Query("SELECT * FROM payment_sync_outbox WHERE state IN ('PENDING','BLOCKED') ORDER BY rowid")
     fun observeOutstanding(): kotlinx.coroutines.flow.Flow<List<PaymentSyncEntity>>
     @Query("UPDATE payment_sync_outbox SET state='PENDING', error=NULL WHERE id=:id AND state='BLOCKED'")

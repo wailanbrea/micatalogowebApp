@@ -30,5 +30,23 @@ interface MiCatalogoCustomerApi {
     val reference: String? = null,
     val notes: String? = null
 )
-@Serializable data class CustomerPaymentResponseDto(val customer: RemoteCustomerDto)
+@Serializable data class CustomerPaymentResponseDto(
+    val customer: RemoteCustomerDto,
+    @SerialName("payment_id") val paymentId: Long,
+    @SerialName("client_transaction_uuid") val clientTransactionUuid: String,
+    val amount: String,
+    @SerialName("payment_method") val paymentMethod: String,
+    @SerialName("customer_balance") val customerBalance: String,
+    val allocations: List<CustomerPaymentAllocationDto>,
+    @SerialName("cash_register_affected") val cashRegisterAffected: Boolean,
+    @SerialName("server_timestamp") val serverTimestamp: String
+)
+@Serializable data class CustomerPaymentAllocationDto(
+    @SerialName("invoice_id") val invoiceId: Long,
+    @SerialName("invoice_number") val invoiceNumber: String,
+    @SerialName("allocated_amount") val allocatedAmount: String,
+    @SerialName("allocated_cents") val allocatedCents: Long,
+    @SerialName("remaining_invoice_balance") val remainingInvoiceBalance: String,
+    @SerialName("invoice_status") val invoiceStatus: String
+)
 @Serializable data class CustomerListDto(val customers: List<RemoteCustomerDto>)

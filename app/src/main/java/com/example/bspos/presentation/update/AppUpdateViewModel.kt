@@ -38,7 +38,8 @@ class AppUpdateViewModel @Inject constructor(
 
     init {
         val pending = repository.pendingUpdate(BuildConfig.VERSION_CODE)
-        if (pending != null) _state.value = AppUpdateState.Available(pending)
+        if (pending != null) _state.value = if (repository.hasStartedUpdate(pending))
+            AppUpdateState.InstallationPending(pending) else AppUpdateState.Available(pending)
         else checkForUpdate()
     }
 
@@ -51,7 +52,7 @@ class AppUpdateViewModel @Inject constructor(
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (error: Exception) {
-            _state.value = pending?.let { AppUpdateState.Failed(it, "Sin conexión. Reintenta la actualización pendiente.") } ?: AppUpdateState.CheckFailed(
+            _state.value = pending?.takeIf { it.isRequired || repository.hasStartedUpdate(it) }?.let { AppUpdateState.Failed(it, "Sin conexión. Reintenta la actualización pendiente.") } ?: AppUpdateState.CheckFailed(
                 error.message?.takeIf(String::isNotBlank)
                     ?: "No se pudo conectar con el servidor de actualizaciones."
             )
@@ -59,27 +60,28 @@ class AppUpdateViewModel @Inject constructor(
         }
 
         if (!response.isSuccessful) {
-            _state.value = pending?.let { AppUpdateState.Failed(it, "El servidor respondió HTTP ${response.code()}.") }
+            _state.value = pending?.takeIf { it.isRequired || repository.hasStartedUpdate(it) }?.let { AppUpdateState.Failed(it, "El servidor respondió HTTP ${response.code()}.") }
                 ?: AppUpdateState.CheckFailed("El servidor respondió HTTP ${response.code()}.")
             return@launch
         }
 
         val manifest = response.body()
         if (manifest == null) {
-            _state.value = pending?.let { AppUpdateState.Available(it) }
+            _state.value = pending?.let { pendingState(it) }
                 ?: AppUpdateState.CheckFailed("El servidor devolvió una respuesta vacía.")
             return@launch
         }
         if (manifest.versionCode <= BuildConfig.VERSION_CODE) {
-            _state.value = pending?.let { AppUpdateState.Available(it) } ?: AppUpdateState.Current
+            _state.value = pending?.let { pendingState(it) } ?: AppUpdateState.Current
             return@launch
         }
 
         val update = AppUpdatePolicy.available(manifest, BuildConfig.VERSION_CODE)
         val target = update?.takeIf { pending == null || it.versionCode >= pending.versionCode } ?: pending
         if (target != null) {
+            if (pending != null && repository.hasStartedUpdate(pending)) repository.markUpdateStarted(target)
             repository.rememberUpdate(target)
-            _state.value = AppUpdateState.Available(target)
+            _state.value = pendingState(target)
         } else {
             _state.value = AppUpdateState.CheckFailed("El servidor anunció una versión, pero sus datos no pasaron la validación.")
         }
@@ -89,7 +91,7 @@ class AppUpdateViewModel @Inject constructor(
         if (_state.value is AppUpdateState.Downloading) return@launch
         _state.value = AppUpdateState.Downloading(update, 0)
         runCatching {
-            repository.rememberUpdate(update)
+            repository.markUpdateStarted(update)
             repository.download(update) { progress ->
                 _state.value = AppUpdateState.Downloading(update, progress)
             }
@@ -122,7 +124,17 @@ class AppUpdateViewModel @Inject constructor(
         _state.value = AppUpdateState.Failed(pending.update, message)
     }
 
-    fun dismissCheckFailure() {
-        _state.value = AppUpdateState.Current
+    fun skip(update: AvailableAppUpdate) {
+        if (!update.isRequired && !repository.hasStartedUpdate(update) && _state.value is AppUpdateState.Available) {
+            _state.value = AppUpdateState.Current
+        }
     }
+
+    fun dismissCheckFailure() {
+        if (_state.value is AppUpdateState.CheckFailed) _state.value = AppUpdateState.Current
+    }
+
+    private fun pendingState(update: AvailableAppUpdate): AppUpdateState =
+        if (repository.hasStartedUpdate(update)) AppUpdateState.InstallationPending(update)
+        else AppUpdateState.Available(update)
 }

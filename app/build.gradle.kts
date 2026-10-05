@@ -34,6 +34,8 @@ val hasReleaseSigning = listOf(
 ).all { !it.isNullOrBlank() }
 
 android {
+    sourceSets.getByName("test").resources.srcDir("$rootDir/docs/api-contracts")
+    sourceSets.getByName("androidTest").assets.srcDir("$rootDir/docs/api-contracts")
     namespace = "com.example.bspos"
     compileSdk = 37
 
@@ -41,8 +43,8 @@ android {
         applicationId = "com.bsolutions.micatalogo"
         minSdk = 26
         targetSdk = 37
-        versionCode = 23
-        versionName = "1.0.22"
+        versionCode = 24
+        versionName = "1.0.23"
         buildConfigField("String", "MICATALOGO_API_BASE_URL", "\"${miCatalogoApiBaseUrl.get()}\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"

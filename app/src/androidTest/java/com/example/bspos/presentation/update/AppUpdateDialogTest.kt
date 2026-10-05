@@ -38,7 +38,7 @@ class AppUpdateDialogTest {
     }
 
     @Test
-    fun supportedVersionUpdateCannotBeDismissedBySwipeOrBack() {
+    fun supportedVersionOffersSkipBeforeDownload() {
         composeRule.setContent {
             BSPOSTheme {
                 AppUpdateDialog(
@@ -50,10 +50,9 @@ class AppUpdateDialogTest {
             }
         }
 
-        composeRule.onNodeWithText("Actualización requerida").performTouchInput { swipeDown() }
-        Espresso.pressBackUnconditionally()
+        composeRule.onNodeWithText("Nueva versión disponible").assertIsDisplayed()
         composeRule.onNodeWithText("Actualizar").assertIsDisplayed()
-        assertTrue(composeRule.onAllNodesWithText("Mas tarde").fetchSemanticsNodes().isEmpty())
+        composeRule.onNodeWithText("Ahora no").assertIsDisplayed()
     }
 
     @Test

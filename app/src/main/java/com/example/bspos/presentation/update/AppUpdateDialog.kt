@@ -17,7 +17,8 @@ fun AppUpdateDialog(
     state: AppUpdateState,
     onDownload: (AvailableAppUpdate) -> Unit,
     onRetryCheck: () -> Unit,
-    onDismissCheckFailure: () -> Unit
+    onDismissCheckFailure: () -> Unit,
+    onSkip: (AvailableAppUpdate) -> Unit = {}
 ) {
     if (state is AppUpdateState.CheckFailed) {
         AlertDialog(
@@ -45,11 +46,12 @@ fun AppUpdateDialog(
     }
     val isDownloading = state is AppUpdateState.Downloading
     val error = (state as? AppUpdateState.Failed)?.message
+    val canSkip = !update.isRequired && state is AppUpdateState.Available
 
     AlertDialog(
-        onDismissRequest = {},
-        properties = DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false),
-        title = { Text("Actualización requerida") },
+        onDismissRequest = { if (canSkip) onSkip(update) },
+        properties = DialogProperties(dismissOnBackPress = canSkip, dismissOnClickOutside = canSkip),
+        title = { Text(if (update.isRequired) "Actualización requerida" else "Nueva versión disponible") },
         text = {
             Column {
                 Text("MiCatalogo ${update.versionName} está disponible.")
@@ -65,6 +67,7 @@ fun AppUpdateDialog(
                 if (error != null) Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
             }
         },
+        dismissButton = if (canSkip) { { TextButton(onClick = { onSkip(update) }) { Text("Ahora no") } } } else null,
         confirmButton = {
             Button(onClick = { onDownload(update) }, enabled = !isDownloading) {
                 Text(when {

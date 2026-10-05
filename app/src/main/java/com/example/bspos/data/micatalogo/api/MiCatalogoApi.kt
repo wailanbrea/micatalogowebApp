@@ -168,4 +168,11 @@ interface MiCatalogoApi {
         @Path("shopId") shopId: String,
         @Body request: ExpenseCreateRequestDto
     ): Response<ExpenseActionResponseDto>
+
+    @POST("api/v1/shops/{shopId}/expenses/{expenseId}/payments")
+    suspend fun payExpense(
+        @Path("shopId") shopId: String,
+        @Path("expenseId") expenseId: String,
+        @Body request: com.example.bspos.data.micatalogo.dto.ExpensePaymentRequestDto
+    ): Response<com.example.bspos.data.micatalogo.dto.ExpensePaymentResponseDto>
 }

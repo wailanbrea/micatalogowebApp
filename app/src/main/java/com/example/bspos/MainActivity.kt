@@ -93,7 +93,8 @@ class MainActivity : FragmentActivity() {
                             appUpdateState,
                             appUpdateViewModel::download,
                             onRetryCheck = { appUpdateViewModel.checkForUpdate() },
-                            onDismissCheckFailure = appUpdateViewModel::dismissCheckFailure
+                            onDismissCheckFailure = appUpdateViewModel::dismissCheckFailure,
+                            onSkip = appUpdateViewModel::skip
                         )
                         else -> Unit
                     }

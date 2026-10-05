@@ -320,24 +320,28 @@ data class FinanceSummaryDto(
 
 @Serializable
 data class FinancePeriodDto(
-    @SerialName("gross_sales") val grossSales: Double = 0.0,
-    val discounts: Double = 0.0,
-    val returns: Double = 0.0,
-    @SerialName("net_sales") val netSales: Double = 0.0,
+    @SerialName("gross_sales") val grossSales: Double,
+    val discounts: Double,
+    @SerialName("line_discounts") val lineDiscounts: Double,
+    @SerialName("general_discounts") val generalDiscounts: Double,
+    @SerialName("tax_collected") val taxCollected: Double,
+    val returns: Double,
+    @SerialName("net_sales") val netSales: Double,
     @SerialName("fifo_cogs") val fifoCogs: Double? = null,
     @SerialName("units_sold") val unitsSold: Int = 0,
-    @SerialName("cost_coverage_percent") val costCoveragePercent: Double = 100.0,
+    @SerialName("cost_coverage_percent") val costCoveragePercent: Double,
+    @SerialName("revenue_cost_coverage") val revenueCostCoverage: Double,
     @SerialName("is_cost_coverage_partial") val isCostCoveragePartial: Boolean = false,
     @SerialName("gross_profit") val grossProfit: Double? = null,
     @SerialName("gross_margin_percent") val grossMarginPercent: Double? = null,
-    @SerialName("operating_expenses") val operatingExpenses: Double = 0.0,
-    @SerialName("commissions_generated") val commissionsGenerated: Double = 0.0,
+    @SerialName("operating_expenses") val operatingExpenses: Double,
+    @SerialName("commissions_generated") val commissionsGenerated: Double,
     @SerialName("operating_profit") val operatingProfit: Double? = null,
     @SerialName("operating_margin_percent") val operatingMarginPercent: Double? = null,
     @SerialName("sales_count") val salesCount: Int = 0,
-    @SerialName("average_ticket") val averageTicket: Double = 0.0,
-    @SerialName("collected_in_period") val collectedInPeriod: Double = 0.0,
-    @SerialName("credit_generated") val creditGenerated: Double = 0.0
+    @SerialName("average_ticket") val averageTicket: Double,
+    @SerialName("collected_in_period") val collectedInPeriod: Double,
+    @SerialName("credit_generated") val creditGenerated: Double
 )
 
 @Serializable
@@ -351,9 +355,9 @@ data class FinanceComparisonDto(
 
 @Serializable
 data class FinanceCurrentStateDto(
-    @SerialName("receivable_total") val receivableTotal: Double = 0.0,
+    @SerialName("receivable_total") val receivableTotal: Double,
     val aging: FinanceAgingDto,
-    @SerialName("inventory_cost_value") val inventoryCostValue: Double = 0.0,
+    @SerialName("inventory_cost_value") val inventoryCostValue: Double,
     @SerialName("active_products_count") val activeProductsCount: Int = 0,
     @SerialName("low_stock_count") val lowStockCount: Int = 0,
     @SerialName("out_of_stock_count") val outOfStockCount: Int = 0,
@@ -365,15 +369,15 @@ data class FinanceCurrentStateDto(
 
 @Serializable
 data class FinanceAgingDto(
-    @SerialName("days_0_30") val days0To30: Double = 0.0,
-    @SerialName("days_31_60") val days31To60: Double = 0.0,
-    @SerialName("days_61_90") val days61To90: Double = 0.0,
-    @SerialName("days_over_90") val daysOver90: Double = 0.0,
+    @SerialName("days_0_30") val days0To30: Double,
+    @SerialName("days_31_60") val days31To60: Double,
+    @SerialName("days_61_90") val days61To90: Double,
+    @SerialName("days_over_90") val daysOver90: Double,
     @SerialName("overdue_count") val overdueCount: Int = 0,
-    @SerialName("invoices_total") val invoicesTotal: Double = 0.0,
-    @SerialName("unallocated_receivables") val unallocatedReceivables: Double = 0.0,
-    @SerialName("total_receivable") val totalReceivable: Double = 0.0,
-    @SerialName("reconciliation_difference") val reconciliationDifference: Double = 0.0,
+    @SerialName("invoices_total") val invoicesTotal: Double,
+    @SerialName("unallocated_receivables") val unallocatedReceivables: Double,
+    @SerialName("total_receivable") val totalReceivable: Double,
+    @SerialName("reconciliation_difference") val reconciliationDifference: Double,
     @SerialName("invoice_details") val invoiceDetails: List<FinanceInvoiceAgingDto> = emptyList()
 )
 
@@ -383,18 +387,22 @@ data class FinanceInvoiceAgingDto(
     @SerialName("customer_name") val customerName: String,
     @SerialName("reference_date") val referenceDate: String,
     @SerialName("overdue_days") val overdueDays: Int = 0,
-    @SerialName("outstanding_amount") val outstandingAmount: Double = 0.0,
+    @SerialName("outstanding_amount") val outstandingAmount: Double,
     @SerialName("aging_bucket") val agingBucket: String
 )
 
 @Serializable
 data class FinanceIncomeStatementDto(
-    @SerialName("net_sales") val netSales: Double = 0.0,
+    @SerialName("gross_sales") val grossSales: Double,
+    val discounts: Double,
+    val returns: Double,
+    @SerialName("tax_collected") val taxCollected: Double,
+    @SerialName("net_sales") val netSales: Double,
     @SerialName("fifo_cogs") val fifoCogs: Double? = null,
     @SerialName("gross_profit") val grossProfit: Double? = null,
     @SerialName("gross_margin_percent") val grossMarginPercent: Double? = null,
-    @SerialName("operating_expenses_total") val operatingExpensesTotal: Double = 0.0,
-    val commissions: Double = 0.0,
+    @SerialName("operating_expenses_total") val operatingExpensesTotal: Double,
+    val commissions: Double,
     @SerialName("operating_profit") val operatingProfit: Double? = null,
     @SerialName("operating_margin_percent") val operatingMarginPercent: Double? = null
 )
@@ -403,25 +411,25 @@ data class FinanceIncomeStatementDto(
 data class FinanceCashFlowDto(
     val inflows: FinanceCashFlowInflowsDto,
     val outflows: FinanceCashFlowOutflowsDto,
-    @SerialName("net_cash_flow") val netCashFlow: Double = 0.0
+    @SerialName("net_cash_flow") val netCashFlow: Double
 )
 
 @Serializable
 data class FinanceCashFlowInflowsDto(
-    @SerialName("sales_cash") val salesCash: Double = 0.0,
-    @SerialName("sales_card") val salesCard: Double = 0.0,
-    @SerialName("sales_transfer") val salesTransfer: Double = 0.0,
-    @SerialName("sales_other") val salesOther: Double = 0.0,
-    @SerialName("debt_collections") val debtCollections: Double = 0.0,
-    @SerialName("other_inflows") val otherInflows: Double = 0.0,
-    val total: Double = 0.0
+    @SerialName("sales_cash") val salesCash: Double,
+    @SerialName("sales_card") val salesCard: Double,
+    @SerialName("sales_transfer") val salesTransfer: Double,
+    @SerialName("sales_other") val salesOther: Double,
+    @SerialName("debt_collections") val debtCollections: Double,
+    @SerialName("other_inflows") val otherInflows: Double,
+    val total: Double
 )
 
 @Serializable
 data class FinanceCashFlowOutflowsDto(
-    @SerialName("expenses_paid") val expensesPaid: Double = 0.0,
-    @SerialName("cash_out") val cashOut: Double = 0.0,
-    val total: Double = 0.0
+    @SerialName("expenses_paid") val expensesPaid: Double,
+    @SerialName("cash_out") val cashOut: Double,
+    val total: Double
 )
 
 @Serializable
@@ -449,7 +457,7 @@ data class FinanceAlertDto(
 @Serializable
 data class CashCurrentSessionResponseDto(
     val session: CashSessionDetailDto? = null,
-    @SerialName("has_open_session") val hasOpenSession: Boolean = false
+    @SerialName("has_open_session") val hasOpenSession: Boolean
 )
 
 @Serializable
@@ -464,15 +472,23 @@ data class CashSessionDetailDto(
 
 @Serializable
 data class CashSessionSummaryDto(
-    @SerialName("opening_amount") val openingAmount: Double = 0.0,
-    @SerialName("sales_cash") val salesCash: Double = 0.0,
-    @SerialName("cash_in") val cashIn: Double = 0.0,
-    @SerialName("cash_out") val cashOut: Double = 0.0,
-    @SerialName("owner_contribution") val ownerContribution: Double = 0.0,
-    @SerialName("owner_withdrawal") val ownerWithdrawal: Double = 0.0,
-    @SerialName("debt_collections_cash") val debtCollectionsCash: Double = 0.0,
-    @SerialName("expected_closing_amount") val expectedClosingAmount: Double = 0.0,
-    @SerialName("movements_count") val movementsCount: Int = 0
+    @SerialName("opening_amount") val openingAmount: Double,
+    @SerialName("sales_cash") val salesCash: Double,
+    @SerialName("cash_in") val cashIn: Double,
+    @SerialName("cash_out") val cashOut: Double,
+    @SerialName("owner_contributions") val ownerContribution: Double,
+    @SerialName("owner_withdrawals") val ownerWithdrawal: Double,
+    @SerialName("debt_collections_cash") val debtCollectionsCash: Double,
+    @SerialName("expenses_cash") val expensesCash: Double,
+    @SerialName("supplier_payments") val supplierPayments: Double,
+    val adjustments: Double,
+    @SerialName("total_in") val totalIn: Double,
+    @SerialName("total_out") val totalOut: Double,
+    @SerialName("expected_closing_amount") val expectedClosingAmount: Double,
+    @SerialName("counted_amount") val countedAmount: Double? = null,
+    val difference: Double? = null,
+    val status: String,
+    @SerialName("movements_count") val movementsCount: Int
 )
 
 @Serializable
@@ -535,7 +551,9 @@ data class CashMovementRequestDto(
 data class ExpenseDto(
     val id: String,
     val description: String,
-    val amount: Double = 0.0,
+    val amount: Double,
+    @SerialName("amount_paid") val amountPaid: Double,
+    @SerialName("unpaid_amount") val unpaidAmount: Double,
     @SerialName("payment_status") val paymentStatus: String? = null,
     @SerialName("payment_method") val paymentMethod: String? = null,
     @SerialName("occurred_at") val occurredAt: String? = null,
@@ -564,6 +582,7 @@ data class ExpenseCreateRequestDto(
     @SerialName("category_name") val categoryName: String? = null,
     val description: String,
     val amount: String,
+    @SerialName("paid_amount") val paidAmount: String? = null,
     @SerialName("payment_method") val paymentMethod: String = "cash",
     @SerialName("occurred_at") val occurredAt: String? = null,
     val reference: String? = null,
@@ -577,4 +596,26 @@ data class ExpenseCategoryDto(
     val name: String,
     @SerialName("is_active") val isActive: Boolean = true,
     val description: String? = null
+)
+
+@Serializable
+data class ExpensePaymentRequestDto(
+    val amount: String,
+    @SerialName("payment_method") val paymentMethod: String,
+    val reference: String? = null,
+    val notes: String? = null,
+    @SerialName("paid_at") val paidAt: String? = null,
+    @SerialName("client_operation_uuid") val clientOperationUuid: String
+)
+
+@Serializable data class ExpenseBalanceDto(
+    val id: String,
+    val amount: Double,
+    @SerialName("amount_paid") val amountPaid: Double,
+    @SerialName("unpaid_amount") val unpaidAmount: Double,
+    @SerialName("payment_status") val paymentStatus: String
+)
+@Serializable data class ExpensePaymentResponseDto(
+    val expense: ExpenseBalanceDto,
+    @SerialName("client_operation_uuid") val clientOperationUuid: String
 )

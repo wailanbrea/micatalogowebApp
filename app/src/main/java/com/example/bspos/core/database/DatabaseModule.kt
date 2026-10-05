@@ -36,6 +36,7 @@ object DatabaseModule {
             .addMigrations(DatabaseMigrations.MIGRATION_17_18)
             .addMigrations(DatabaseMigrations.MIGRATION_18_19)
             .addMigrations(DatabaseMigrations.MIGRATION_19_20)
+            .addMigrations(DatabaseMigrations.MIGRATION_20_21)
             .addCallback(InventoryIntegrity)
             .build()
 

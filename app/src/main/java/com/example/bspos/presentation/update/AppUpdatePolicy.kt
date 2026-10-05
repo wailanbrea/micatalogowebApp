@@ -9,7 +9,8 @@ data class AvailableAppUpdate(
     val apkUrl: String,
     val apkSha256: String,
     val releaseNotes: String,
-    val isRequired: Boolean
+    val isRequired: Boolean,
+    val minimumSupportedVersionCode: Int = 0
 )
 
 object AppUpdatePolicy {
@@ -26,7 +27,8 @@ object AppUpdatePolicy {
             apkUrl = apkUrl.toString(),
             apkSha256 = update.apkSha256.lowercase(),
             releaseNotes = update.releaseNotes,
-            isRequired = installedVersionCode < update.minimumSupportedVersionCode
+            isRequired = installedVersionCode < update.minimumSupportedVersionCode,
+            minimumSupportedVersionCode = update.minimumSupportedVersionCode
         )
     }
 }

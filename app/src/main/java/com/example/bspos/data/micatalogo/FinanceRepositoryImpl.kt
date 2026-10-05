@@ -5,12 +5,16 @@ import com.example.bspos.data.micatalogo.dto.*
 import com.example.bspos.domain.model.MiCatalogoResult
 import com.example.bspos.domain.repository.FinanceRepository
 import kotlinx.coroutines.CancellationException
+import kotlinx.serialization.json.encodeToJsonElement
 import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
 class FinanceRepositoryImpl @Inject constructor(
-    private val api: MiCatalogoApi
+    private val api: MiCatalogoApi,
+    private val queue: com.example.bspos.data.local.dao.OperationOutboxDao,
+    private val scheduler: PosSaleSyncScheduler,
+    private val json: kotlinx.serialization.json.Json
 ) : FinanceRepository {
 
     override suspend fun getFinanceSummary(
@@ -82,9 +86,9 @@ class FinanceRepositoryImpl @Inject constructor(
         notes: String,
         clientOperationUuid: String
     ): MiCatalogoResult<CashMovementActionResponseDto> = runCatching {
-        val response = api.recordCashMovement(shopId, sessionId, CashMovementRequestDto(type, amount, notes, clientOperationUuid))
-        if (!response.isSuccessful) error(response.apiErrorMessage("No se pudo registrar el movimiento de caja."))
-        response.body() ?: error("MiCatalogo devolvió una respuesta vacía.")
+        queueFinancial(shopId, "cash_movement", sessionId, clientOperationUuid,
+            json.encodeToJsonElement(CashMovementRequestDto(type, amount, notes, clientOperationUuid)))
+        CashMovementActionResponseDto(message = "Movimiento guardado, pendiente de sincronización.")
     }.toMiCatalogoResult("No se pudo registrar el movimiento de caja.")
 
     override suspend fun getExpenses(
@@ -106,10 +110,27 @@ class FinanceRepositoryImpl @Inject constructor(
         shopId: String,
         request: ExpenseCreateRequestDto
     ): MiCatalogoResult<ExpenseActionResponseDto> = runCatching {
-        val response = api.createExpense(shopId, request)
-        if (!response.isSuccessful) error(response.apiErrorMessage("No se pudo registrar el gasto."))
-        response.body() ?: error("MiCatalogo devolvió una respuesta vacía.")
+        queueFinancial(shopId, "expense_create", null, request.clientOperationUuid, json.encodeToJsonElement(request))
+        ExpenseActionResponseDto(message = "Gasto guardado, pendiente de sincronización.")
     }.toMiCatalogoResult("No se pudo registrar el gasto.")
+
+    override suspend fun payExpense(shopId: String, expenseId: String, request: ExpensePaymentRequestDto): MiCatalogoResult<Unit> = runCatching {
+        queueFinancial(shopId, "expense_payment", expenseId, request.clientOperationUuid, json.encodeToJsonElement(request))
+    }.toMiCatalogoResult("No se pudo guardar el abono.")
+
+    private suspend fun queueFinancial(shopId: String, type: String, resourceId: String?, id: String,
+        request: kotlinx.serialization.json.JsonElement) {
+        val body = kotlinx.serialization.json.buildJsonObject {
+            put("type", kotlinx.serialization.json.JsonPrimitive(type))
+            put("client_operation_uuid", kotlinx.serialization.json.JsonPrimitive(id))
+            if (resourceId != null) put("resource_id", kotlinx.serialization.json.JsonPrimitive(resourceId))
+            put("request", request)
+        }.toString()
+        val existing = queue.find(id)
+        if (existing != null) check(existing.shopId == shopId && existing.payload == body) { "Conflicto en la instantánea financiera local." }
+        else queue.insert(com.example.bspos.data.local.entity.OperationOutboxEntity(id, shopId, "", body, java.time.Instant.now()))
+        scheduler.enqueue()
+    }
 
     private fun <T> Result<T>.toMiCatalogoResult(defaultError: String): MiCatalogoResult<T> = fold(
         onSuccess = { MiCatalogoResult.Success(it) },

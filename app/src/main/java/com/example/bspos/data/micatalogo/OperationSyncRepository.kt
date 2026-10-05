@@ -23,14 +23,27 @@ class OperationSyncRepository @Inject constructor(private val api: MiCatalogoOpe
             return OperationSubmission.BLOCKED
         }
         return try {
-            val response = api.submit(row.shopId, body)
+            val type = body["type"]?.jsonPrimitive?.contentOrNull
+            val response = if (type in listOf("expense_create", "expense_payment", "cash_movement")) {
+                val resourceId = body["resource_id"]?.jsonPrimitive?.contentOrNull
+                check(row.shopId.matches(Regex("^[A-Za-z0-9_-]+$")))
+                if (type != "expense_create") check(resourceId?.matches(Regex("^[A-Za-z0-9_-]+$")) == true)
+                val suffix = when (type) {
+                    "expense_create" -> "expenses"
+                    "expense_payment" -> "expenses/$resourceId/payments"
+                    else -> "cash-sessions/$resourceId/movements"
+                }
+                val request = checkNotNull(body["request"]).jsonObject
+                check(request["client_operation_uuid"]?.jsonPrimitive?.contentOrNull == row.id)
+                api.submitFinancial("api/v1/shops/${row.shopId}/$suffix", request)
+            } else api.submit(row.shopId, body)
             when {
                 response.isSuccessful -> {
                     if (response.body()?.get("client_operation_uuid")?.jsonPrimitive?.contentOrNull != row.id) {
                         queue.mark(row.id,"PENDING","La respuesta no confirma esta operación; se reintentará con el mismo identificador.")
                         return OperationSubmission.RETRY
                     }
-                    queue.confirmSent(row.id, row.shopId)
+                    queue.confirmSent(row.id, row.shopId, response.body()!!.toString())
                     OperationSubmission.SENT
                 }
                 response.code() in listOf(401, 426, 429) || response.code() >= 500 -> {
@@ -42,6 +55,12 @@ class OperationSyncRepository @Inject constructor(private val api: MiCatalogoOpe
                     OperationSubmission.BLOCKED
                 }
             }
+        } catch (error: IllegalStateException) {
+            queue.mark(row.id, "BLOCKED", "La instantánea financiera no es válida; requiere revisión.")
+            OperationSubmission.BLOCKED
+        } catch (error: IllegalArgumentException) {
+            queue.mark(row.id, "BLOCKED", "La instantánea financiera no es válida; requiere revisión.")
+            OperationSubmission.BLOCKED
         } catch (error: Exception) {
             if (error is CancellationException) throw error
             queue.mark(row.id,"PENDING","No se pudo confirmar el envío. Se conserva la operación para reintentar.")

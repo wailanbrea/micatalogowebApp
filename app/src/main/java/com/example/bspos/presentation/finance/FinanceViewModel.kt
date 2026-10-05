@@ -40,13 +40,20 @@ data class FinanceUiState(
     val shopName: String = "",
     val isRegisteringExpense: Boolean = false,
     val cashSession: CashCurrentSessionResponseDto? = null,
-    val isCashOperationBusy: Boolean = false
+    val isCashOperationBusy: Boolean = false,
+    val canFinance: Boolean = false,
+    val canCash: Boolean = false,
+    val canExpenses: Boolean = false,
+    val pendingFinancialOperations: List<String> = emptyList()
 )
 
 @HiltViewModel
 class FinanceViewModel @Inject constructor(
     private val financeRepository: FinanceRepository,
-    private val connectionRepository: MiCatalogoConnectionRepository
+    private val connectionRepository: MiCatalogoConnectionRepository,
+    private val queue: com.example.bspos.data.local.dao.OperationOutboxDao,
+    private val saleQueue: com.example.bspos.data.local.dao.PosSaleOutboxDao,
+    private val paymentQueue: com.example.bspos.data.local.dao.PaymentSyncDao
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(FinanceUiState())
@@ -55,11 +62,23 @@ class FinanceViewModel @Inject constructor(
     private var currentShopId: String? = null
     private val pendingCashOperationIds = mutableMapOf<String, String>()
     private var pendingExpenseOperation: Pair<String, String>? = null
+    private var pendingExpensePayment: Pair<String, String>? = null
 
     init {
         val (from, to) = computeDates(FinancePeriodFilter.THIS_MONTH)
         _uiState.value = _uiState.value.copy(fromDate = from, toDate = to)
         loadInitialData()
+        viewModelScope.launch {
+            var previous = 0
+            queue.observeOutstanding().collect { rows ->
+                val financial = rows.filter { it.shopId == currentShopId && it.payload.contains("\"request\"") }
+                _uiState.value = _uiState.value.copy(pendingFinancialOperations = financial.map {
+                    "${it.id.take(8)} · ${it.state}: ${it.error ?: "Pendiente de sincronización"}"
+                })
+                if (financial.size < previous) refresh()
+                previous = financial.size
+            }
+        }
     }
 
     fun selectPeriod(filter: FinancePeriodFilter) {
@@ -82,9 +101,9 @@ class FinanceViewModel @Inject constructor(
 
     fun refresh() {
         val shopId = currentShopId ?: return
-        fetchSummary(shopId)
-        fetchExpenses(shopId)
-        fetchCashSession(shopId)
+        if (_uiState.value.canFinance) fetchSummary(shopId)
+        if (_uiState.value.canExpenses) fetchExpenses(shopId)
+        if (_uiState.value.canCash) fetchCashSession(shopId)
     }
 
     fun loadInitialData() {
@@ -95,11 +114,11 @@ class FinanceViewModel @Inject constructor(
                     val firstShop = shopsResult.value.firstOrNull()
                     if (firstShop != null) {
                         currentShopId = firstShop.id
-                        _uiState.value = _uiState.value.copy(shopName = firstShop.name)
-                        fetchSummary(firstShop.id)
-                        fetchExpenses(firstShop.id)
-                        fetchCategories(firstShop.id)
-                        fetchCashSession(firstShop.id)
+                        fun allowed(key: String) = firstShop.canManageSellers || key in firstShop.menuPermissions
+                        _uiState.value = _uiState.value.copy(shopName = firstShop.name, isLoading = false,
+                            canFinance = allowed("finance"), canExpenses = allowed("expenses"), canCash = allowed("cash"))
+                        refresh()
+                        if (allowed("expenses")) fetchCategories(firstShop.id)
                     } else {
                         _uiState.value = _uiState.value.copy(
                             isLoading = false,
@@ -121,7 +140,7 @@ class FinanceViewModel @Inject constructor(
         viewModelScope.launch {
             when (val result = financeRepository.getCurrentCashSession(shopId)) {
                 is MiCatalogoResult.Success -> _uiState.value = _uiState.value.copy(cashSession = result.value)
-                is MiCatalogoResult.Failure -> _uiState.value = _uiState.value.copy(errorMessage = result.message)
+                is MiCatalogoResult.Failure -> _uiState.value = _uiState.value.copy(cashSession = null, errorMessage = result.message)
             }
         }
     }
@@ -137,7 +156,11 @@ class FinanceViewModel @Inject constructor(
         val sessionId = checkNotNull(_uiState.value.cashSession?.session?.id)
         val normalizedNotes = notes?.trim()?.ifBlank { null }
         runCashOperation("close|$sessionId|${amount.trim()}|$normalizedNotes") { operationId ->
-            financeRepository.closeCashSession(checkNotNull(currentShopId), sessionId, amount.trim(), normalizedNotes, operationId)
+            val shopId = checkNotNull(currentShopId)
+            if (queue.activeForShop(shopId).isNotEmpty() || saleQueue.findActiveForShop(shopId).isNotEmpty()
+                || paymentQueue.unsentCount(shopId) > 0) {
+                MiCatalogoResult.Failure("Sincroniza o resuelve las operaciones pendientes de esta tienda antes de cerrar la caja del servidor.")
+            } else financeRepository.closeCashSession(shopId, sessionId, amount.trim(), normalizedNotes, operationId)
         }
     }
 
@@ -158,7 +181,8 @@ class FinanceViewModel @Inject constructor(
             }) {
                 is MiCatalogoResult.Success<*> -> {
                     pendingCashOperationIds.remove(key)
-                    _uiState.value = _uiState.value.copy(isCashOperationBusy = false, successMessage = "Operación de caja registrada.")
+                    _uiState.value = _uiState.value.copy(isCashOperationBusy = false,
+                        successMessage = if (key.startsWith("movement|")) "Movimiento guardado, pendiente de sincronización." else "Operación de caja registrada.")
                     refresh()
                 }
                 is MiCatalogoResult.Failure -> _uiState.value = _uiState.value.copy(isCashOperationBusy = false, errorMessage = result.message)
@@ -197,7 +221,7 @@ class FinanceViewModel @Inject constructor(
                     _uiState.value = _uiState.value.copy(expenses = result.value.data)
                 }
                 is MiCatalogoResult.Failure -> {
-                    // Non-blocking
+                    _uiState.value = _uiState.value.copy(errorMessage = result.message)
                 }
             }
         }
@@ -210,7 +234,7 @@ class FinanceViewModel @Inject constructor(
                     _uiState.value = _uiState.value.copy(expenseCategories = result.value)
                 }
                 is MiCatalogoResult.Failure -> {
-                    // Non-blocking
+                    _uiState.value = _uiState.value.copy(errorMessage = result.message)
                 }
             }
         }
@@ -221,14 +245,15 @@ class FinanceViewModel @Inject constructor(
         amount: String,
         categoryId: Int?,
         paymentMethod: String,
-        notes: String? = null
+        notes: String? = null,
+        paidAmount: String? = null
     ) {
         val shopId = currentShopId ?: return
         if (_uiState.value.isRegisteringExpense) return
         val normalizedDescription = description.trim()
         val normalizedAmount = amount.trim()
         val normalizedNotes = notes?.trim()?.ifBlank { null }
-        val operationKey = listOf(categoryId, normalizedDescription, normalizedAmount, paymentMethod, normalizedNotes).joinToString("|")
+        val operationKey = listOf(categoryId, normalizedDescription, normalizedAmount, paymentMethod, normalizedNotes, paidAmount).joinToString("|")
         val operationId = pendingExpenseOperation
             ?.takeIf { it.first == operationKey }
             ?.second
@@ -239,6 +264,7 @@ class FinanceViewModel @Inject constructor(
                 expenseCategoryId = categoryId,
                 description = normalizedDescription,
                 amount = normalizedAmount,
+                paidAmount = paidAmount,
                 paymentMethod = paymentMethod,
                 notes = normalizedNotes,
                 clientOperationUuid = operationId
@@ -248,7 +274,7 @@ class FinanceViewModel @Inject constructor(
                     if (pendingExpenseOperation?.second == operationId) pendingExpenseOperation = null
                     _uiState.value = _uiState.value.copy(
                         isRegisteringExpense = false,
-                        successMessage = "Gasto registrado correctamente."
+                        successMessage = result.value.message
                     )
                     refresh()
                 }
@@ -264,6 +290,28 @@ class FinanceViewModel @Inject constructor(
 
     fun dismissMessages() {
         _uiState.value = _uiState.value.copy(errorMessage = null, successMessage = null)
+    }
+
+    fun payExpense(expense: ExpenseDto, amount: String, method: String, notes: String?) {
+        val shopId = currentShopId ?: return
+        if (_uiState.value.isRegisteringExpense) return
+        val key = listOf(expense.id, amount, method, notes).joinToString("|")
+        val id = pendingExpensePayment?.takeIf { it.first == key }?.second
+            ?: UUID.randomUUID().toString().also { pendingExpensePayment = key to it }
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isRegisteringExpense = true)
+            val request = com.example.bspos.data.micatalogo.dto.ExpensePaymentRequestDto(
+                amount = amount, paymentMethod = method, notes = notes,
+                clientOperationUuid = id)
+            when (val result = financeRepository.payExpense(shopId, expense.id, request)) {
+                is MiCatalogoResult.Success -> {
+                    pendingExpensePayment = null
+                    _uiState.value = _uiState.value.copy(isRegisteringExpense = false,
+                        successMessage = "Abono guardado, pendiente de sincronización.")
+                }
+                is MiCatalogoResult.Failure -> _uiState.value = _uiState.value.copy(isRegisteringExpense = false, errorMessage = result.message)
+            }
+        }
     }
 
     private fun computeDates(filter: FinancePeriodFilter): Pair<String, String> {
