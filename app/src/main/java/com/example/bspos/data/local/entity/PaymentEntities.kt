@@ -1,0 +1,9 @@
+package com.example.bspos.data.local.entity
+import androidx.room.*
+import com.example.bspos.domain.model.PaymentMethod
+import java.time.Instant
+import java.util.UUID
+@Entity(tableName="payments",foreignKeys=[ForeignKey(entity=CustomerEntity::class,parentColumns=["id"],childColumns=["customer_id"],onUpdate=ForeignKey.CASCADE,onDelete=ForeignKey.RESTRICT),ForeignKey(entity=RouteEntity::class,parentColumns=["id"],childColumns=["route_id"],onUpdate=ForeignKey.CASCADE,onDelete=ForeignKey.RESTRICT)],indices=[Index(value=["receipt_number"],name="idx_payments_receipt_number",unique=true),Index(value=["customer_id"],name="idx_payments_customer_id"),Index(value=["route_id"],name="idx_payments_route_id"),Index(value=["date"],name="idx_payments_date")])
+data class PaymentEntity(@PrimaryKey val id:UUID,@ColumnInfo(name="receipt_number") val receiptNumber:String,@ColumnInfo(name="customer_id") val customerId:UUID,@ColumnInfo(name="route_id") val routeId:UUID?=null,val date:Instant,val amount:Long,@ColumnInfo(name="payment_method") val method:PaymentMethod,val reference:String?=null,val notes:String?=null,@ColumnInfo(name="created_at") val createdAt:Instant)
+@Entity(tableName="payment_allocations",foreignKeys=[ForeignKey(entity=PaymentEntity::class,parentColumns=["id"],childColumns=["payment_id"],onUpdate=ForeignKey.CASCADE,onDelete=ForeignKey.CASCADE),ForeignKey(entity=SaleEntity::class,parentColumns=["id"],childColumns=["sale_id"],onUpdate=ForeignKey.CASCADE,onDelete=ForeignKey.RESTRICT)],indices=[Index(value=["payment_id"],name="idx_allocations_payment_id"),Index(value=["sale_id"],name="idx_allocations_sale_id"),Index(value=["payment_id","sale_id"],name="idx_allocations_unique",unique=true)])
+data class PaymentAllocationEntity(@PrimaryKey val id:UUID,@ColumnInfo(name="payment_id") val paymentId:UUID,@ColumnInfo(name="sale_id") val saleId:UUID,@ColumnInfo(name="allocated_amount") val allocatedAmount:Long)

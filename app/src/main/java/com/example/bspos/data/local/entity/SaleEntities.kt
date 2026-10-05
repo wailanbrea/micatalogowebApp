@@ -1,0 +1,14 @@
+package com.example.bspos.data.local.entity
+
+import androidx.room.*
+import com.example.bspos.domain.model.*
+import java.time.Instant
+import java.util.UUID
+
+@Entity(tableName="sales", foreignKeys=[ForeignKey(entity=CustomerEntity::class,parentColumns=["id"],childColumns=["customer_id"],onUpdate=ForeignKey.CASCADE,onDelete=ForeignKey.RESTRICT),ForeignKey(entity=RouteEntity::class,parentColumns=["id"],childColumns=["route_id"],onUpdate=ForeignKey.CASCADE,onDelete=ForeignKey.RESTRICT)], indices=[Index(value=["invoice_number"],name="idx_sales_invoice_number",unique=true),Index(value=["customer_id"],name="idx_sales_customer_id"),Index(value=["route_id"],name="idx_sales_route_id"),Index(value=["date"],name="idx_sales_date"),Index(value=["status"],name="idx_sales_status")])
+data class SaleEntity(@PrimaryKey val id:UUID,@ColumnInfo(name="invoice_number") val invoiceNumber:String,@ColumnInfo(name="customer_id") val customerId:UUID?=null,@ColumnInfo(name="route_id") val routeId:UUID?=null,val date:Instant,val subtotal:Long,@ColumnInfo(defaultValue="0") val discount:Long=0,@ColumnInfo(defaultValue="0") val tax:Long=0,val total:Long,@ColumnInfo(name="payment_type") val paymentType:SalePaymentType,@ColumnInfo(name="paid_amount",defaultValue="0") val paidAmount:Long=0,@ColumnInfo(name="pending_amount",defaultValue="0") val pendingAmount:Long=0,@ColumnInfo(defaultValue="'COMPLETED'") val status:SaleStatus=SaleStatus.COMPLETED,val notes:String?=null,@ColumnInfo(name="created_at") val createdAt:Instant,@ColumnInfo(name="updated_at") val updatedAt:Instant,@ColumnInfo(name="sale_mode", defaultValue="'retail'") val saleMode:String="retail")
+@Entity(tableName="sale_items",foreignKeys=[ForeignKey(entity=SaleEntity::class,parentColumns=["id"],childColumns=["sale_id"],onUpdate=ForeignKey.CASCADE,onDelete=ForeignKey.CASCADE),ForeignKey(entity=ProductEntity::class,parentColumns=["id"],childColumns=["product_id"],onUpdate=ForeignKey.CASCADE,onDelete=ForeignKey.RESTRICT)],indices=[Index(value=["sale_id"],name="idx_sale_items_sale_id"),Index(value=["product_id"],name="idx_sale_items_product_id"),Index(value=["sale_id","product_id"],name="idx_sale_items_unique",unique=true)])
+data class SaleItemEntity(@PrimaryKey val id:UUID,@ColumnInfo(name="sale_id") val saleId:UUID,@ColumnInfo(name="product_id") val productId:UUID,val quantity:Long,@ColumnInfo(name="unit_price") val unitPrice:Long,@ColumnInfo(name="unit_cost_snapshot") val unitCostSnapshot:Long,@ColumnInfo(defaultValue="0") val discount:Long=0,@ColumnInfo(defaultValue="0") val tax:Long=0,val subtotal:Long,
+    @ColumnInfo(name="sale_unit_snapshot", defaultValue="NULL") val saleUnitSnapshot:String?=null,
+    @ColumnInfo(name="volume_ml_snapshot", defaultValue="NULL") val volumeMlSnapshot:Int?=null,
+    @ColumnInfo(name="remote_source_snapshot", defaultValue="NULL") val remoteSourceSnapshot:String?=null)

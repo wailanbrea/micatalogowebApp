@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- The development default targets the emulator. Use a LAN URL Gradle property for a device. -->
+    <application android:usesCleartextTraffic="true" />
+</manifest>

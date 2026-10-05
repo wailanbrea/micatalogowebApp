@@ -1,0 +1,131 @@
+# BSPOS — ARQUITECTURA DEL SISTEMA
+
+## 1. PRINCIPIOS DE DISEÑO ARQUITECTÓNICO
+
+BSPOS está diseñado como un sistema comercial de misión crítica, offline-first, de alto rendimiento y preparado para evolucionar sin fricciones hacia la nube.
+
+Se rige por los siguientes principios no negociables:
+
+1. **Clean Architecture & Separación de Intereses (SoC):** Estricta división entre las capas de Presentación (UI), Dominio (Reglas de negocio puras) y Datos (Persistencia y hardware).
+2. **Unidirectional Data Flow (UDF):** El estado fluye hacia abajo desde los ViewModels hacia los Composables; los eventos de usuario fluyen hacia arriba desde los Composables hacia los ViewModels.
+3. **Flujo de Dependencias Inmutable:**
+   ```text
+   Jetpack Compose (UI)
+          ↓ (Events / State)
+       ViewModel
+          ↓ (Invokes)
+        UseCase
+          ↓ (Calls)
+       Repository (Domain Interface)
+          ↓ (Implements)
+   RepositoryImpl (Data Layer)
+          ↓ (Uses)
+      Room DAO / DataStore / Hardware Services
+   ```
+   **Prohibición absoluta:** Los Composables y ViewModels nunca acceden directamente a las entidades ni a los DAOs de Room.
+4. **Integridad Transaccional de Negocio:** Toda operación que modifique más de un registro o afecte el inventario/balance financiero se ejecuta de forma atómica dentro de una transacción Room (`@Transaction`), garantizando rollback automático ante cualquier fallo.
+5. **Alineación Offline-First con Preparación a la Nube:** La base de datos Room local es la única fuente de verdad operativa. Todas las entidades utilizan identificadores primarios basados en UUID (v4) universales, timestamps UTC (`Instant`), números de versión o flags de auditoría y soporte para soft-delete (`deletedAt`), lo que permitirá a futuro implementar un motor de sincronización bidireccional contra `BSPOS Cloud` sin requerir migraciones destructivas del esquema.
+
+---
+
+## 2. ESTRUCTURA MODULAR DE PAQUETES
+
+```text
+com.example.bspos/
+│
+├── core/
+│   ├── database/          # Configuración de Room, TypeConverters, Migrations, Transactor
+│   ├── datastore/         # Preferences DataStore para configuración y banderas
+│   ├── backup/            # Empaquetado ZIP, hashing SHA-256, validación y restauración
+│   ├── printing/          # Conectividad Bluetooth SPP, motor ESC/POS 58mm/80mm
+│   ├── image/             # Almacenamiento privado de fotos, compresión, thumbnailing y limpieza
+│   ├── money/             # Modelos monetarios de alta precisión (centavos en Long, redondeo)
+│   ├── ui/                # Design System: Theme, Colors, Typography, Spacing, Shapes, Components
+│   ├── utils/             # Extensiones de Kotlin, formateadores de fecha, UUID helpers
+│   └── common/            # Clases base Result<T>, ErrorHandler, DispatcherProvider
+│
+├── domain/                # Capa pura de Kotlin sin dependencias del framework de Android
+│   ├── model/             # Modelos de dominio inmutables (Product, Sale, Movement, Stock...)
+│   ├── repository/        # Contratos / Interfaces de repositorios
+│   └── usecase/           # Casos de uso atómicos organizados por módulo:
+│       ├── auth/
+│       ├── catalog/       # Productos, Categorías, Unidades
+│       ├── inventory/     # Movimientos, Kardex, Existencias, Ajustes, Conteos
+│       ├── purchases/     # Compras, Proveedores, Costo Promedio Ponderado
+│       ├── sales/         # Venta atómica, Validación de Stock, Precios
+│       ├── credit/        # Cuentas por cobrar, Pagos, Balance del cliente
+│       ├── routes/        # Cargas de ruta, Ventas en ruta, Liquidación
+│       ├── reports/       # Agregaciones analíticas, Utilidad bruta, Exportaciones
+│       └── backup/        # Generación y restauración de copias de seguridad
+│
+├── data/                  # Implementación de datos y hardware
+│   ├── local/
+│   │   ├── entity/        # Entidades Room con claves foráneas e índices
+│   │   ├── dao/           # Data Access Objects con consultas optimizadas y Flow
+│   │   └── AppDatabase.kt # Base de datos Room abstracta
+│   ├── repository/        # Implementaciones de las interfaces de dominio
+│   └── mapper/            # Mappers Entity ↔ Domain Model
+│
+└── presentation/          # Interfaz de usuario con Jetpack Compose y Material 3
+    ├── navigation/        # NavHost, Rutas seguras, Screen destinations, Adaptive Layouts
+    ├── dashboard/         # Pantalla principal con KPIs y accesos rápidos
+    ├── pos/               # Punto de venta (Mobile Grid 2-col + Tablet 4-col con carrito fijo)
+    ├── catalog/           # Gestión de productos, categorías y unidades
+    ├── inventory/         # Existencias, Alertas, Kardex, Ajustes, Conteo Físico
+    ├── purchases/         # Recepción de compras y proveedores
+    ├── customers/         # Directorio de clientes y estado de cuenta
+    ├── routes/            # Gestión de rutas comerciales, cargas y liquidaciones
+    ├── receivables/       # Cobros rápidos y cartera de crédito
+    ├── returns/           # Devoluciones con decisión de reingreso a stock
+    ├── reports/           # Reportes de ventas, costos, inventario y exportaciones
+    ├── backup/            # Gestión manual y automática de backups
+    └── settings/          # Configuración de negocio, parámetros de stock, licencia y "Acerca de"
+```
+
+---
+
+## 3. MANEJO DE ESTADO Y FLUJO REACTIVO
+
+- **Coroutines & Kotlin Flow:** Toda la persistencia reactiva expone flujos fríos (`Flow<List<T>>`) desde los DAOs de Room, los cuales son mapeados en la capa de datos y consumidos por los UseCases.
+- **StateFlow en ViewModels:** Los ViewModels transforman los flujos de dominio en un único `StateFlow<ScreenUiState>` inmutable mediante `stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), InitialState)`.
+- **Eventos de UI en un solo sentido (One-off Events):** Eventos como navegación, despliegue de snackbars o confirmaciones de cobro se comunican mediante un canal (`Channel<UiEvent>`) expuesto como `Flow<UiEvent>`, evitando la repetición de eventos al recomponer.
+
+---
+
+## 4. GESTIÓN DE LA INTEGRIDAD TRANSACCIONAL
+
+Las operaciones que afectan inventario, dinero o contabilidad no admiten estados intermedios. Se implementa un mecanismo seguro basado en Room `@Transaction` ejecutado dentro de la capa `data/repository/`:
+
+```kotlin
+interface AppDatabaseTransactor {
+    suspend fun <R> runInTransaction(block: suspend () -> R): R
+}
+```
+
+Esto garantiza que si la validación de stock, la inserción de líneas de venta, la deducción de inventario o el registro de cuentas por cobrar falla en cualquier punto:
+1. Ninguna fila permanece modificada.
+2. La memoria caché de Room no queda corrupta.
+3. El ViewModel recibe una excepción controlada para informar al usuario de manera precisa.
+
+---
+
+## 5. DISEÑO RESPONSIVO Y ADAPTATIVO
+
+Se implementa una arquitectura de UI de un solo código fuente que se adapta fluidamente según la `WindowSizeClass`:
+
+| Categoría de Pantalla | Ancho Típico | Dispositivo | Disposición de Navegación | Disposición de POS |
+| :--- | :--- | :--- | :--- | :--- |
+| **Compact** | < 600dp | Teléfonos Portrait | Bottom Navigation Bar (5 tabs principales: Inicio, Ventas, Productos, Clientes, Más) | Grid 2 columnas + Barra de búsqueda superior + Drawer/BottomSheet para carrito |
+| **Medium** | 600dp - 839dp | Foldables / Tablets pequeñas | Navigation Rail vertical a la izquierda | Grid 2-3 columnas con carrito desplegable lateral |
+| **Expanded** | >= 840dp | Tablets grandes / Modo apaisado | Navigation Rail vertical fijo con branding y usuario | Vista dividida de 3 columnas: Rail + Grid de 4 columnas de productos + Panel de Carrito fijo a la derecha |
+
+---
+
+## 6. PREPARACIÓN ESTRATÉGICA PARA EL FUTURO (BSPOS CLOUD)
+
+Aunque BSPOS funciona 100% desconectado, se diseñó bajo las siguientes normas para garantizar una sincronización sin fricción:
+
+1. **IDs Universales (UUID):** Ninguna tabla usa autoincrementales como identificador de dominio; todos los registros se crean con `UUID.randomUUID().toString()`, eliminando colisiones al sincronizar dispositivos independientes.
+2. **Marcas de Tiempo UTC:** Todas las marcas temporales se almacenan en milisegundos desde la época Unix (UTC) (`Instant.toEpochMilli()`).
+3. **Soft-Delete (`deletedAt`):** Los registros dados de baja no se eliminan físicamente con `DELETE` de SQL durante la operativa normal; se marca su fecha de borrado, permitiendo propagar eliminaciones a otros nodos al sincronizar.
+4. **Separación de DataSource:** Los repositorios se programan recibiendo un `LocalDataSource`. Cuando se integre la nube, se agregará un `RemoteDataSource` y un `SyncWorker` sin modificar la capa de dominio ni la interfaz de usuario.

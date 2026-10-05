@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <style name="Theme.MiCatalogo" parent="android:Theme.Material.Light.NoActionBar" />
+    <style name="Theme.MiCatalogo.Splash" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">#F8F7F7</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_micatalogo_mark</item>
+        <item name="postSplashScreenTheme">@style/Theme.MiCatalogo</item>
+    </style>
+</resources>

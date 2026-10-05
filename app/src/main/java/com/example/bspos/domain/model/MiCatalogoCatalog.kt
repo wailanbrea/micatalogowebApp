@@ -1,0 +1,136 @@
+package com.example.bspos.domain.model
+
+data class MiCatalogoShop(
+    val id: String,
+    val name: String,
+    val slug: String?,
+    val quota: MiCatalogoShopQuota? = null,
+    val menuPermissions: List<String> = emptyList(),
+    val canManageSellers: Boolean = false,
+    val sellers: List<MiCatalogoSeller> = emptyList()
+)
+
+data class MiCatalogoManagedShop(
+    val id: String,
+    val name: String,
+    val slug: String,
+    val ownerName: String,
+    val ownerEmail: String,
+    val whatsappCountryCode: String,
+    val whatsappNumber: String,
+    val status: String,
+    val productCount: Int
+)
+
+data class MiCatalogoSeller(
+    val id: String,
+    val userId: String,
+    val name: String,
+    val email: String,
+    val isActive: Boolean,
+    val menuPermissions: List<String>
+)
+
+data class SellerMenuOption(val key: String, val label: String)
+
+val SellerMenuOptions = listOf(
+    SellerMenuOption("sales", "Ventas"),
+    SellerMenuOption("products", "Productos"),
+    SellerMenuOption("printers", "Impresoras"),
+    SellerMenuOption("customers", "Clientes"),
+    SellerMenuOption("inventory", "Inventario"),
+    SellerMenuOption("collections", "Cobros"),
+    SellerMenuOption("cash", "Caja"),
+    SellerMenuOption("returns", "Devoluciones"),
+    SellerMenuOption("routes", "Rutas"),
+    SellerMenuOption("finance", "Finanzas y Ganancias"),
+    SellerMenuOption("more", "Más herramientas")
+)
+
+private val requiredSellerMenuKeys = setOf("sales", "products", "printers")
+private val ownerOnlyMenuKeys = setOf("settings", "shop_settings", "sellers")
+
+fun canAccessMiCatalogoMenu(
+    isPlatformOwner: Boolean,
+    canManageShop: Boolean,
+    menuPermissions: Collection<String>,
+    menu: String
+): Boolean = isPlatformOwner || canManageShop || (
+    menu !in ownerOnlyMenuKeys && menu in (menuPermissions + requiredSellerMenuKeys)
+)
+
+data class MiCatalogoShopQuota(
+    val plan: String,
+    val planLabel: String,
+    val productCount: Int,
+    val productLimit: Int,
+    val productsRemaining: Int,
+    val imageLimit: Int,
+    val canAddProducts: Boolean,
+    val userCount: Int = 0,
+    val userLimit: Int = 0,
+    val usersRemaining: Int = 0,
+    val sellerCount: Int = 0,
+    val sellerLimit: Int = 0,
+    val sellersRemaining: Int = 0,
+    val canAddUsers: Boolean = false,
+    val canAddSellers: Boolean = false,
+    val additionalSeatPriceUsd: Double = 5.0,
+    val features: List<String> = emptyList()
+)
+
+data class MiCatalogoInventoryImportPreview(
+    val quota: MiCatalogoShopQuota,
+    val headers: List<String> = emptyList(),
+    val mapping: Map<String, String> = emptyMap(),
+    val fields: Map<String, String> = emptyMap(),
+    val rows: List<MiCatalogoInventoryImportRow>,
+    val validRows: Int,
+    val invalidRows: Int
+)
+
+data class MiCatalogoInventoryImportRow(
+    val line: Int,
+    val name: String,
+    val productCode: String?,
+    val barcode: String?,
+    val brand: String?,
+    val category: String?,
+    val description: String?,
+    val notes: String?,
+    val price: Double?,
+    val costPrice: Double?,
+    val stock: Int?,
+    val attributes: List<MiCatalogoInventoryImportAttribute>,
+    val errors: List<String>,
+    val valid: Boolean
+)
+
+data class MiCatalogoInventoryImportAttribute(val name: String, val value: String)
+
+data class MiCatalogoInventoryImportResult(
+    val message: String,
+    val imported: Int,
+    val quota: MiCatalogoShopQuota?
+)
+
+data class MiCatalogoCatalogSyncResult(
+    val shopName: String,
+    val categoriesApplied: Int,
+    val unitsApplied: Int,
+    val productsApplied: Int,
+    val inventoryMovementsRecorded: Int,
+    val imagesDownloaded: Int = 0,
+    val imagesFailed: Int = 0
+)
+
+data class MiCatalogoPosSaleSyncResult(
+    val sent: Int,
+    val retried: Int,
+    val blocked: Int
+)
+
+sealed interface MiCatalogoResult<out T> {
+    data class Success<T>(val value: T) : MiCatalogoResult<T>
+    data class Failure(val message: String) : MiCatalogoResult<Nothing>
+}
