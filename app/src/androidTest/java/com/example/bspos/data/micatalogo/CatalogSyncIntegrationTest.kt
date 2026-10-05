@@ -94,7 +94,7 @@ class CatalogSyncIntegrationTest {
             saleId, "TEST-PENDING", date = saleAt, subtotal = 560000, total = 560000,
             paymentType = SalePaymentType.CASH, paidAmount = 560000, createdAt = saleAt, updatedAt = saleAt
         ), listOf(SaleItemEntity(UUID.randomUUID(), saleId, id, 2, 280000, 100000, subtotal = 560000)))
-        val request = PosSaleUploadRequestDto(saleId.toString(), "paid", listOf(PosSaleUploadItemDto("product-a", 2, "2800.00")))
+        val request = PosSaleUploadRequestDto(saleId.toString(), "paid", items = listOf(PosSaleUploadItemDto("product-a", 2, "2800.00")))
         db.posSaleOutboxDao().insert(PosSaleOutboxEntity(
             saleId, shopId, json.encodeToString(request), nextAttemptAt = saleAt, createdAt = saleAt, updatedAt = saleAt
         ))
@@ -360,7 +360,7 @@ class CatalogSyncIntegrationTest {
             total = 100, paymentType = SalePaymentType.CASH, paidAmount = 100,
             createdAt = timestamp, updatedAt = timestamp), listOf(SaleItemEntity(UUID.randomUUID(), id,
                 MiCatalogoImportMapper.productId(shopId, "product-a"), 1, 100, 50, subtotal = 100)))
-        val body = PosSaleUploadRequestDto(id.toString(), "paid", listOf(PosSaleUploadItemDto(label, 1, "1.00")))
+        val body = PosSaleUploadRequestDto(id.toString(), "paid", items = listOf(PosSaleUploadItemDto(label, 1, "1.00")))
         db.posSaleOutboxDao().insert(PosSaleOutboxEntity(id, shopId, json.encodeToString(body),
             nextAttemptAt = timestamp, createdAt = timestamp, updatedAt = timestamp))
         return id
@@ -378,7 +378,8 @@ class CatalogSyncIntegrationTest {
         override suspend fun createCustomer(shopId: String, request: CustomerUploadRequestDto): Response<RemoteCustomerDto> = error("Unused")
         override suspend fun payment(shopId: String, customerId: String, body: com.example.bspos.data.micatalogo.api.CustomerPaymentDto): Response<com.example.bspos.data.micatalogo.api.CustomerPaymentResponseDto> = error("Unused")
     }
-    private class SnapshotApi(var snapshot: CatalogSnapshotDto) : MiCatalogoApi {
+    private class SnapshotApi(var snapshot: CatalogSnapshotDto) : MiCatalogoApi by
+        retrofit2.Retrofit.Builder().baseUrl("https://example.test/").build().create(MiCatalogoApi::class.java) {
         var saleCalls: MutableList<String>? = null
         var catalogStatus = 200
         var beforeCatalog: (suspend () -> Unit)? = null

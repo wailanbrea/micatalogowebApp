@@ -4,6 +4,9 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeDown
+import androidx.test.espresso.Espresso
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.example.bspos.core.ui.theme.BSPOSTheme
 import org.junit.Rule
@@ -23,30 +26,50 @@ class AppUpdateDialogTest {
                 AppUpdateDialog(
                     state = AppUpdateState.Available(update(isRequired = true)),
                     onDownload = {},
-                    onSkip = {}
+                    onRetryCheck = {},
+                    onDismissCheckFailure = {}
                 )
             }
         }
 
-        composeRule.onNodeWithText("Actualizacion requerida").assertIsDisplayed()
+        composeRule.onNodeWithText("Actualización requerida").assertIsDisplayed()
         composeRule.onNodeWithText("Actualizar").assertIsDisplayed()
         assertTrue(composeRule.onAllNodesWithText("Mas tarde").fetchSemanticsNodes().isEmpty())
     }
 
     @Test
-    fun optionalUpdateOffersSkip() {
+    fun supportedVersionUpdateCannotBeDismissedBySwipeOrBack() {
         composeRule.setContent {
             BSPOSTheme {
                 AppUpdateDialog(
                     state = AppUpdateState.Available(update(isRequired = false)),
                     onDownload = {},
-                    onSkip = {}
+                    onRetryCheck = {},
+                    onDismissCheckFailure = {}
                 )
             }
         }
 
-        composeRule.onNodeWithText("Actualizacion disponible").assertIsDisplayed()
-        composeRule.onNodeWithText("Mas tarde").assertIsDisplayed()
+        composeRule.onNodeWithText("Actualización requerida").performTouchInput { swipeDown() }
+        Espresso.pressBackUnconditionally()
+        composeRule.onNodeWithText("Actualizar").assertIsDisplayed()
+        assertTrue(composeRule.onAllNodesWithText("Mas tarde").fetchSemanticsNodes().isEmpty())
+    }
+
+    @Test
+    fun cancelledInstallerKeepsBlockingDialog() {
+        composeRule.setContent {
+            BSPOSTheme {
+                AppUpdateDialog(
+                    state = AppUpdateState.InstallationPending(update(isRequired = false)),
+                    onDownload = {},
+                    onRetryCheck = {},
+                    onDismissCheckFailure = {}
+                )
+            }
+        }
+        Espresso.pressBackUnconditionally()
+        composeRule.onNodeWithText("Instalar de nuevo").assertIsDisplayed()
     }
 
     private fun update(isRequired: Boolean) = AvailableAppUpdate(

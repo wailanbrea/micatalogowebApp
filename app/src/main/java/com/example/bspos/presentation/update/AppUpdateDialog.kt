@@ -10,12 +10,12 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.window.DialogProperties
 
 @Composable
 fun AppUpdateDialog(
     state: AppUpdateState,
     onDownload: (AvailableAppUpdate) -> Unit,
-    onSkip: (AvailableAppUpdate) -> Unit,
     onRetryCheck: () -> Unit,
     onDismissCheckFailure: () -> Unit
 ) {
@@ -39,18 +39,24 @@ fun AppUpdateDialog(
         is AppUpdateState.Available -> state.update
         is AppUpdateState.Downloading -> state.update
         is AppUpdateState.Failed -> state.update
+        is AppUpdateState.ReadyToInstall -> state.update
+        is AppUpdateState.InstallationPending -> state.update
         else -> return
     }
     val isDownloading = state is AppUpdateState.Downloading
     val error = (state as? AppUpdateState.Failed)?.message
 
     AlertDialog(
-        onDismissRequest = { if (!update.isRequired && !isDownloading) onSkip(update) },
-        title = { Text(if (update.isRequired) "Actualizacion requerida" else "Actualizacion disponible") },
+        onDismissRequest = {},
+        properties = DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false),
+        title = { Text("Actualización requerida") },
         text = {
             Column {
                 Text("MiCatalogo ${update.versionName} está disponible.")
                 if (update.releaseNotes.isNotBlank()) Text(update.releaseNotes, style = MaterialTheme.typography.bodySmall)
+                if (state is AppUpdateState.InstallationPending || state is AppUpdateState.ReadyToInstall) {
+                    Text("Completa la instalación para continuar. Si se interrumpió, pulsa Instalar de nuevo.")
+                }
                 if (isDownloading) {
                     val progress = (state as AppUpdateState.Downloading).progress
                     LinearProgressIndicator(progress = { progress / 100f }, modifier = Modifier.fillMaxWidth())
@@ -61,11 +67,13 @@ fun AppUpdateDialog(
         },
         confirmButton = {
             Button(onClick = { onDownload(update) }, enabled = !isDownloading) {
-                Text(if (isDownloading) "Descargando" else "Actualizar")
+                Text(when {
+                    isDownloading -> "Descargando"
+                    state is AppUpdateState.InstallationPending || state is AppUpdateState.ReadyToInstall -> "Instalar de nuevo"
+                    error != null -> "Reintentar"
+                    else -> "Actualizar"
+                })
             }
-        },
-        dismissButton = if (update.isRequired || isDownloading) null else {
-            { TextButton(onClick = { onSkip(update) }) { Text("Mas tarde") } }
         }
     )
 }

@@ -20,6 +20,7 @@ sealed interface AppUpdateState {
     data class Available(val update: AvailableAppUpdate) : AppUpdateState
     data class Downloading(val update: AvailableAppUpdate, val progress: Int) : AppUpdateState
     data class ReadyToInstall(val update: AvailableAppUpdate, val apk: File) : AppUpdateState
+    data class InstallationPending(val update: AvailableAppUpdate) : AppUpdateState
     data class Failed(val update: AvailableAppUpdate, val message: String) : AppUpdateState
 }
 
@@ -36,18 +37,21 @@ class AppUpdateViewModel @Inject constructor(
     }
 
     init {
-        checkForUpdate()
+        val pending = repository.pendingUpdate(BuildConfig.VERSION_CODE)
+        if (pending != null) _state.value = AppUpdateState.Available(pending)
+        else checkForUpdate()
     }
 
     fun checkForUpdate() = viewModelScope.launch {
         lastCheckStartedAt = SystemClock.elapsedRealtime()
-        _state.value = AppUpdateState.Checking
+        val pending = repository.pendingUpdate(BuildConfig.VERSION_CODE)
+        if (pending == null) _state.value = AppUpdateState.Checking
         val response = try {
             repository.check()
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (error: Exception) {
-            _state.value = AppUpdateState.CheckFailed(
+            _state.value = pending?.let { AppUpdateState.Failed(it, "Sin conexión. Reintenta la actualización pendiente.") } ?: AppUpdateState.CheckFailed(
                 error.message?.takeIf(String::isNotBlank)
                     ?: "No se pudo conectar con el servidor de actualizaciones."
             )
@@ -55,42 +59,51 @@ class AppUpdateViewModel @Inject constructor(
         }
 
         if (!response.isSuccessful) {
-            _state.value = AppUpdateState.CheckFailed("El servidor respondió HTTP ${response.code()}.")
+            _state.value = pending?.let { AppUpdateState.Failed(it, "El servidor respondió HTTP ${response.code()}.") }
+                ?: AppUpdateState.CheckFailed("El servidor respondió HTTP ${response.code()}.")
             return@launch
         }
 
         val manifest = response.body()
         if (manifest == null) {
-            _state.value = AppUpdateState.CheckFailed("El servidor devolvió una respuesta vacía.")
+            _state.value = pending?.let { AppUpdateState.Available(it) }
+                ?: AppUpdateState.CheckFailed("El servidor devolvió una respuesta vacía.")
             return@launch
         }
         if (manifest.versionCode <= BuildConfig.VERSION_CODE) {
-            _state.value = AppUpdateState.Current
+            _state.value = pending?.let { AppUpdateState.Available(it) } ?: AppUpdateState.Current
             return@launch
         }
 
         val update = AppUpdatePolicy.available(manifest, BuildConfig.VERSION_CODE)
-        _state.value = update?.let(AppUpdateState::Available)
-            ?: AppUpdateState.CheckFailed("El servidor anunció una versión, pero sus datos no pasaron la validación.")
+        val target = update?.takeIf { pending == null || it.versionCode >= pending.versionCode } ?: pending
+        if (target != null) {
+            repository.rememberUpdate(target)
+            _state.value = AppUpdateState.Available(target)
+        } else {
+            _state.value = AppUpdateState.CheckFailed("El servidor anunció una versión, pero sus datos no pasaron la validación.")
+        }
     }
 
     fun download(update: AvailableAppUpdate) = viewModelScope.launch {
+        if (_state.value is AppUpdateState.Downloading) return@launch
         _state.value = AppUpdateState.Downloading(update, 0)
         runCatching {
+            repository.rememberUpdate(update)
             repository.download(update) { progress ->
                 _state.value = AppUpdateState.Downloading(update, progress)
             }
         }.fold(
             onSuccess = { _state.value = AppUpdateState.ReadyToInstall(update, it) },
-            onFailure = { _state.value = AppUpdateState.Failed(update, it.message ?: "No se pudo descargar la actualizacion.") }
+            onFailure = {
+                if (it is CancellationException) throw it
+                _state.value = AppUpdateState.Failed(update, it.message ?: "No se pudo descargar la actualizacion.")
+            }
         )
     }
 
     fun onActivityResumed() {
-        when (val currentState = _state.value) {
-            is AppUpdateState.ReadyToInstall -> {
-                _state.value = AppUpdateState.Available(currentState.update)
-            }
+        when (_state.value) {
             AppUpdateState.Current, is AppUpdateState.CheckFailed -> {
                 val elapsedSinceCheck = SystemClock.elapsedRealtime() - lastCheckStartedAt
                 if (elapsedSinceCheck >= RESUME_CHECK_INTERVAL_MS) checkForUpdate()
@@ -99,8 +112,14 @@ class AppUpdateViewModel @Inject constructor(
         }
     }
 
-    fun skip(update: AvailableAppUpdate) {
-        if (!update.isRequired) _state.value = AppUpdateState.Current
+    fun installationStarted() {
+        val ready = _state.value as? AppUpdateState.ReadyToInstall ?: return
+        _state.value = AppUpdateState.InstallationPending(ready.update)
+    }
+
+    fun installationFailed(message: String) {
+        val pending = _state.value as? AppUpdateState.InstallationPending ?: return
+        _state.value = AppUpdateState.Failed(pending.update, message)
     }
 
     fun dismissCheckFailure() {
