@@ -180,5 +180,7 @@ La fase 2 permanece abierta; este corte valida únicamente el bloque detallado a
 - Android Room 21: recibos nullable en payment_sync_outbox y operation_outbox; migración no destructiva. Payload/UUID estable, estados PENDING/SENT/BLOCKED y orden existente respecto a ventas.
 - Apertura/cierre remoto requieren conexión; cierre espera colas de la tienda vacías. Caja local POS permanece separada y explícita, no representa una sesión del servidor.
 - Updater conserva el mínimo real: opcional antes de iniciar; obligatorio por mínimo o proceso ya iniciado persistente. Mínimo publicado se conserva en 23.
-- Pruebas backend: 319 casos / 1589 assertions en SQLite :memory:. Matriz nueva: caja 5000+10000+2000-1500-500=15000; gasto 10000/pagado4000 y abono3000; deuda3000/cobro1500/FIFO/saldo1500; permisos e idempotencia. Wholesale continúa validando snapshot y price_conflict.
+- Pruebas backend: 320 casos / 1602 assertions en SQLite :memory:. Matriz nueva: caja 5000+10000+2000-1500-500=15000; gasto 10000/pagado4000 y abono3000; deuda3000/cobro1500/FIFO/saldo1500; permisos e idempotencia. Wholesale continúa validando snapshot y price_conflict.
+
+Release verificada: 1.0.23 (24), mínimo admitido 23. Android: 67 pruebas unitarias y 81 instrumentadas en emulador. Publicación, integridad y límites de evidencia: docs/FINANCIAL_ALIGNMENT_RELEASE_1.0.23.md.
 - No hay migraciones backend ni cambios de datos de producción en esta entrega.
