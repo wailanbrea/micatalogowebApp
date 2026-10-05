@@ -183,16 +183,6 @@ private data class Kpi(val title: String, val value: String, val helper: String,
 private fun DashboardHeading(compact: Boolean, sellerMode: Boolean) {
     Column {
         Text(
-            when {
-                sellerMode -> "Mis ventas"
-                compact -> "Ventas y cobros"
-                else -> "Resumen de ventas"
-            },
-            color = BSPOSTheme.colors.secondaryNavy,
-            style = MaterialTheme.typography.headlineLarge,
-            fontWeight = FontWeight.ExtraBold
-        )
-        Text(
             if (sellerMode) "Resumen de tus ventas, cobros y clientes pendientes."
             else "Controla tus ventas, cobros y clientes pendientes desde un solo lugar.",
             color = BSPOSTheme.colors.textSecondary,

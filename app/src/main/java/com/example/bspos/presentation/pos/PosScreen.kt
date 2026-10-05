@@ -109,7 +109,6 @@ fun PosScreen(
         val tablet = maxWidth >= 700.dp
         if (tablet) {
             Column(Modifier.fillMaxSize().padding(28.dp)) {
-                Text(if (creditOnly) "Venta a credito" else "Nueva venta", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.ExtraBold)
                 Text(if (creditOnly) "Asigna un cliente y los productos para registrar el saldo" else "Selecciona los productos para agregarlos al carrito", color = BSPOSTheme.colors.textSecondary)
                 FilterChip(selected = wholesaleMode, onClick = { viewModel.setWholesaleMode(!wholesaleMode) }, label = { Text(if (wholesaleMode) "Venta por mayor activa" else "Cambiar a precio por mayor") }, enabled = !isProcessing)
                 Spacer(Modifier.height(14.dp))
@@ -133,7 +132,6 @@ fun PosScreen(
                     }
                 ) { contentPadding ->
                     Column(Modifier.fillMaxSize().padding(contentPadding).padding(horizontal = 18.dp)) {
-                        Text(if (creditOnly) "Venta a credito" else "Nueva venta", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.ExtraBold)
                         Text(if (creditOnly) "Asigna un cliente y los productos para registrar el saldo" else "Selecciona los productos para agregarlos al carrito", color = BSPOSTheme.colors.textSecondary)
                         FilterChip(selected = wholesaleMode, onClick = { viewModel.setWholesaleMode(!wholesaleMode) }, label = { Text(if (wholesaleMode) "Venta por mayor activa" else "Cambiar a precio por mayor") }, enabled = !isProcessing)
                         Spacer(Modifier.height(14.dp))

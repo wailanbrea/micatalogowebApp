@@ -46,7 +46,6 @@ fun ProfileScreen(viewModel: SettingsViewModel = hiltViewModel()) {
         Modifier.fillMaxSize().background(BSPOSTheme.colors.background).verticalScroll(rememberScrollState()).padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        Text("Mi perfil", style = MaterialTheme.typography.headlineLarge, fontWeight = androidx.compose.ui.text.font.FontWeight.ExtraBold)
         Text("Edita los datos de la cuenta conectada.", color = BSPOSTheme.colors.textSecondary)
         Card(colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface)) {
             Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {

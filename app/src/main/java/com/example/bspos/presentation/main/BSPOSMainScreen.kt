@@ -154,7 +154,9 @@ fun BSPOSMainScreen(
     val drawerScreens = drawerSections.flatMap { (_, screens) -> screens }
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
-    val currentScreen = drawerScreens.firstOrNull { it.route == currentRoute }
+    val currentScreen = (drawerScreens + listOf(
+        Screen.Profile, Screen.Suppliers, Screen.Credit, Screen.RouteLoads, Screen.Expenses
+    )).firstOrNull { it.route == currentRoute }
     val connectedShop = accountState.shops.firstOrNull()
     val businessName = connectedShop?.name ?: settings?.invoice?.businessName?.ifBlank { null } ?: "MiCatalogo"
     val screenWidth = LocalConfiguration.current.screenWidthDp.dp
@@ -335,7 +337,7 @@ fun BSPOSMainScreen(
                 TopAppBar(
                     title = {
                         Text(
-                            text = currentScreen?.title ?: if (currentRoute == Screen.Profile.route) Screen.Profile.title else "MiCatalogo",
+                            text = currentScreen?.title ?: "MiCatalogo",
                             fontWeight = FontWeight.Bold
                         )
                     },
