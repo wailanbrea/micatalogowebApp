@@ -2,6 +2,7 @@ package com.example.bspos.presentation.navigation
 
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Dashboard
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.LocalShipping
@@ -103,6 +104,7 @@ sealed class Screen(
     data object Encargos : Screen("encargos", "Encargos", Icons.Filled.ReceiptLong, Icons.Outlined.ReceiptLong)
     data object Shipments : Screen("shipments", "Envíos", Icons.Filled.LocalShipping, Icons.Outlined.LocalShipping)
     data object DayClose : Screen("day_close", "Cierre de día", Icons.Filled.AccountBalanceWallet, Icons.Outlined.AccountBalanceWallet)
+    data object DownloadApp : Screen("download_app", "Descargar la app", Icons.Filled.Download, Icons.Filled.Download)
     data object Containers : Screen("containers", "Contenedores", Icons.Filled.Inventory2, Icons.Outlined.Inventory2)
     data object PurchaseInvoices : Screen("purchase_invoices", "Facturas", Icons.Filled.ReceiptLong, Icons.Outlined.ReceiptLong)
     data object Photos : Screen("photos", "Fotos", Icons.Filled.Inventory2, Icons.Outlined.Inventory2)

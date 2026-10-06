@@ -1,5 +1,7 @@
 package com.example.bspos.presentation.main
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
@@ -26,6 +28,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Logout
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Search
@@ -172,6 +176,10 @@ fun BSPOSMainScreen(
                     Screen.Encargos.takeIf { canSeeMenu("encargos") },
                     Screen.Shipments.takeIf { canSeeMenu("shipments") },
                     Screen.DayClose.takeIf { canSeeMenu("day_close") },
+                    // Puntto exposes the app download/update entry inside Operación;
+                    // reuse MiCatalogo's existing update module instead of inventing
+                    // a hard-coded APK URL.
+                    Screen.DownloadApp.takeIf { canSeeMenu("updates") },
                     Screen.Cash.takeIf { canSeeMenu("cash") },
                     Screen.Returns.takeIf { canSeeMenu("returns") },
                     Screen.Routes.takeIf { routesEnabled && canSeeMenu("routes") }
@@ -267,6 +275,7 @@ fun BSPOSMainScreen(
     val drawerScreens = drawerGroups.flatMap { it.screens }
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
+    val context = androidx.compose.ui.platform.LocalContext.current
     var shopMenuOpen by remember { mutableStateOf(false) }
     var menuQuery by remember { mutableStateOf("") }
     var collapsedGroups by remember { mutableStateOf(emptySet<String>()) }
@@ -510,6 +519,46 @@ fun BSPOSMainScreen(
                             )
                         }
                     }
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(BSPOSTheme.shapes.medium)
+                            .clickable {
+                                val slug = connectedShop?.slug?.trim().orEmpty()
+                                if (slug.isBlank()) {
+                                    UiErrorBus.show("Esta tienda todavía no tiene enlace público.")
+                                } else {
+                                    val publicUrl = "${BuildConfig.MICATALOGO_API_BASE_URL.trimEnd('/')}/tienda/$slug"
+                                    runCatching {
+                                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(publicUrl)))
+                                    }.onFailure {
+                                        UiErrorBus.show("No se pudo abrir la tienda pública.")
+                                    }
+                                }
+                                scope.launch { drawerState.close() }
+                            }
+                            .padding(horizontal = 8.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, tint = BSPOSTheme.colors.primary)
+                        Spacer(Modifier.width(10.dp))
+                        Text("Ver tienda", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = BSPOSTheme.colors.primary)
+                    }
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(BSPOSTheme.shapes.medium)
+                            .clickable {
+                                settingsViewModel.logout()
+                                scope.launch { drawerState.close() }
+                            }
+                            .padding(horizontal = 8.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = null, tint = BSPOSTheme.colors.textSecondary)
+                        Spacer(Modifier.width(10.dp))
+                        Text("Cerrar sesión", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = BSPOSTheme.colors.textPrimary)
+                    }
                     Text(
                         text = "Versión ${BuildConfig.VERSION_NAME}",
                         modifier = Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, bottom = 4.dp),
@@ -714,6 +763,9 @@ fun BSPOSNavHost(
         }
         composable(Screen.DayClose.route) {
             RestrictedMenuDestination(canSeeMenu("day_close"), navController) { DayCloseScreen() }
+        }
+        composable(Screen.DownloadApp.route) {
+            FeatureDestination("updates", canSeeMenu("updates"), navController)
         }
         composable(Screen.Containers.route) { FeatureDestination("containers", canSeeMenu("containers"), navController) }
         composable(Screen.PurchaseInvoices.route) { FeatureDestination("purchase_invoices", canSeeMenu("purchase_invoices"), navController) }

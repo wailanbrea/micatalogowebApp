@@ -37,7 +37,7 @@ solo de estilo para el dashboard móvil de MiCatalogo.
 
 ## Menú observado
 
-El menú lateral se organiza en `OPERACIÓN`, `COMPRAS`, `CATÁLOGO`, `COBROS`, `FINANZAS`, `ANÁLISIS` y `EQUIPO`, seguido por `AJUSTES`, `Ver tienda` y la cuenta. La navegación conserva un encabezado con menú, breadcrumb, plan y ayuda, y una barra inferior con `Terminal`, `Pedidos`, `Inventario` y `Menú`.
+El menú lateral se organiza en `OPERACIÓN`, `COMPRAS`, `CATÁLOGO`, `COBROS`, `FINANZAS`, `ANÁLISIS` y `EQUIPO`, seguido por `AJUSTES`, `Ver tienda` y la cuenta. La navegación conserva un encabezado con menú, breadcrumb, plan y ayuda, y una barra inferior con `Terminal`, `Pedidos`, `Inventario` y `Menú`. El pie del menú también expone `Descargar la app` y `Cerrar sesión`.
 
 En `Operación / Ventas`, Puntto separa el historial del terminal: permite escoger `Hoy`, `Este mes` o `Últimos 7`, muestra total vendido, promedio por venta y porcentaje a crédito, y lista cada comprobante con cliente, fecha, método de pago, estado y total. Al seleccionar una venta abre el detalle financiero y sus acciones.
 
@@ -164,6 +164,10 @@ MiCatalogo Android ahora presenta esos indicadores con datos locales: capital ca
   mantiene el mismo editor de producto y no duplica la lógica de inventario.
 - El menú móvil ahora separa visualmente `Compras`, `Finanzas` y `Análisis` como Puntto y
   añade `Mi cuenta` para todos los roles, sin convertirlo en un permiso administrativo.
+- El menú móvil ahora incluye `Descargar la app` dentro de `Operación`, reutilizando el
+  módulo de actualizaciones ya existente para no depender de una URL de APK fija.
+  También incluye `Ver tienda`, que abre el enlace público de la tienda activa, y
+  `Cerrar sesión`, que limpia la conexión local mediante el mismo flujo de cuenta.
 
 ## Pendientes de paridad funcional
 
