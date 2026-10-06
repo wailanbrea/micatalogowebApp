@@ -66,6 +66,12 @@ MiCatalogo Android ahora presenta esos indicadores con datos locales: capital ca
 - `Cobros / Crédito` ahora puede alternar entre `Por cobrar` y `Pagados`, consultar la
   cartera global o filtrarla por cliente, mostrar un estado vacío orientativo y mantener
   el registro de abonos con método de pago y validación de monto.
+- La ruta de menú `Crédito` quedó separada de la acción de Terminal a crédito: el menú
+  abre la cartera de cuentas por cobrar como en Puntto, mientras que el POS a crédito
+  sigue disponible desde la operación de venta.
+- Los módulos móviles que llegan desde el mismo read model del backend ahora muestran
+  grupo, título y descripción antes del contenido, evitando pantallas sin encabezado y
+  manteniendo una jerarquía equivalente a Puntto.
 
 ## Pendientes de paridad funcional
 

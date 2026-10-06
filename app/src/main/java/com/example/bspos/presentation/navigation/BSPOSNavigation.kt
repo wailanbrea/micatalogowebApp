@@ -90,6 +90,7 @@ sealed class Screen(
     data object Inventory : Screen("inventory", "Inventario", Icons.Filled.Inventory2, Icons.Outlined.Inventory2)
     data object Collections : Screen("collections", "Cobros", Icons.Filled.ReceiptLong, Icons.Outlined.ReceiptLong)
     data object Credit : Screen("credit", "Credito", Icons.Filled.AccountBalanceWallet, Icons.Outlined.AccountBalanceWallet)
+    data object CreditLedger : Screen("credit_ledger", "Crédito", Icons.Filled.AccountBalanceWallet, Icons.Outlined.AccountBalanceWallet)
     data object Cash : Screen("cash", "Caja", Icons.Filled.AccountBalanceWallet, Icons.Outlined.AccountBalanceWallet)
     data object Returns : Screen("returns", "Devoluciones", Icons.Filled.Replay, Icons.Outlined.Replay)
     data object RouteLoads : Screen("route_loads", "Cargas", Icons.Filled.LocalShipping, Icons.Outlined.LocalShipping)

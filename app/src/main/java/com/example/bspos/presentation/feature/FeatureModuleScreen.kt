@@ -76,6 +76,12 @@ private fun FeatureContent(definition: FeatureDefinitionDto, module: FeatureModu
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         item {
+            if (definition.group.isNotBlank()) {
+                Text(definition.group.uppercase(), color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+            }
+            if (definition.title.isNotBlank()) {
+                Text(definition.title, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold, color = BSPOSTheme.colors.textPrimary)
+            }
             Text(definition.description, color = BSPOSTheme.colors.textSecondary)
             Spacer(Modifier.height(4.dp))
             StatusPill(operational = module.kind != "prepared")

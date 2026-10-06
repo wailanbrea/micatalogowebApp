@@ -210,8 +210,7 @@ fun BSPOSMainScreen(
             DrawerGroup(
                 title = "Cobros",
                 screens = listOfNotNull(
-                    Screen.Credit.takeIf { canSeeMenu("sales") },
-                    Screen.Collections.takeIf { canSeeMenu("collections") },
+                    Screen.CreditLedger.takeIf { canSeeMenu("collections") },
                     Screen.Customers.takeIf { canSeeMenu("customers") }
                 )
             )
@@ -660,7 +659,7 @@ fun BSPOSNavHost(
         composable(Screen.Dashboard.route) {
             DashboardScreen(
                 onNewSale = { navController.navigate(Screen.POS.route) },
-                onCollections = { navController.navigate(Screen.Collections.route) },
+                onCollections = { navController.navigate(Screen.CreditLedger.route) },
                 onInventory = { navController.navigate(Screen.Inventory.route) },
                 onProducts = { navController.navigate(Screen.Catalog.route) },
                 onCustomers = { navController.navigate(Screen.Customers.route) },
@@ -755,7 +754,7 @@ fun BSPOSNavHost(
                 MoreScreen(
                     onSuppliers = { navController.navigate(Screen.Suppliers.route) },
                     onInventory = { navController.navigate(Screen.Inventory.route) },
-                    onCollections = { navController.navigate(Screen.Collections.route) },
+                    onCollections = { navController.navigate(Screen.CreditLedger.route) },
                     onCredit = { navController.navigate(Screen.Credit.route) },
                     onCash = { navController.navigate(Screen.Cash.route) },
                     onReturns = { navController.navigate(Screen.Returns.route) },
@@ -783,6 +782,9 @@ fun BSPOSNavHost(
             RestrictedMenuDestination(canSeeMenu("inventory"), navController) { InventoryScreen() }
         }
         composable(Screen.Collections.route) {
+            RestrictedMenuDestination(canSeeMenu("collections"), navController) { CollectionScreen() }
+        }
+        composable(Screen.CreditLedger.route) {
             RestrictedMenuDestination(canSeeMenu("collections"), navController) { CollectionScreen() }
         }
         composable(Screen.Credit.route) {
