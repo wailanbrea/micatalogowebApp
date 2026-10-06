@@ -706,8 +706,12 @@ fun BSPOSNavHost(
         composable(Screen.Orders.route) {
             RestrictedMenuDestination(canSeeMenu("orders"), navController) { OrdersScreen() }
         }
-        composable(Screen.Encargos.route) { FeatureDestination("encargos", canSeeMenu("encargos"), navController) }
-        composable(Screen.Shipments.route) { FeatureDestination("shipments", canSeeMenu("shipments"), navController) }
+        composable(Screen.Encargos.route) {
+            RestrictedMenuDestination(canSeeMenu("encargos"), navController) { OrdersScreen(feature = "encargos") }
+        }
+        composable(Screen.Shipments.route) {
+            RestrictedMenuDestination(canSeeMenu("shipments"), navController) { OrdersScreen(feature = "shipments") }
+        }
         composable(Screen.DayClose.route) {
             RestrictedMenuDestination(canSeeMenu("day_close"), navController) { DayCloseScreen() }
         }

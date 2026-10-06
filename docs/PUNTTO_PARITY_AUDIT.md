@@ -93,6 +93,10 @@ MiCatalogo Android ahora presenta esos indicadores con datos locales: capital ca
   Permite contado, crédito o mixto, forma de pago, cliente sincronizado y referencia.
   La API móvil usa `OrderConfirmationService`, el mismo dominio que la web, por lo que
   la confirmación es idempotente y actualiza inventario, factura, caja y crédito juntos.
+- `Encargos` y `Envíos` ya no caen en una pantalla genérica sin contexto: reutilizan el
+  mismo flujo de órdenes con el módulo remoto correspondiente, título, descripción y
+  estados vacíos propios. Así se conserva una sola implementación de confirmación y se
+  evita duplicar lógica entre pedidos, encargos y entregas.
 - La navegación Compose ahora usa transiciones cortas de entrada/salida y las tarjetas
   de los módulos aparecen escalonadas; se conserva el fondo claro y los acentos de
   MiCatalogo, sin copiar el color oscuro del menú de Puntto.

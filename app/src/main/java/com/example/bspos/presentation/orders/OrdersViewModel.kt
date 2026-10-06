@@ -36,9 +36,11 @@ class OrdersViewModel @Inject constructor(
 ) : ViewModel() {
     private val _state = MutableStateFlow(OrdersUiState())
     val state = _state.asStateFlow()
+    private var activeFeature: String = "orders"
 
-    fun load(refresh: Boolean = false) {
+    fun load(feature: String = activeFeature, refresh: Boolean = false) {
         viewModelScope.launch {
+            activeFeature = feature
             val shopId = connection.activeShopId()
             if (shopId.isNullOrBlank()) {
                 _state.value = OrdersUiState(loading = false, error = "Selecciona una tienda activa para consultar los pedidos.")
@@ -51,7 +53,7 @@ class OrdersViewModel @Inject constructor(
                 error = null
             )
             runCatching {
-                val moduleResponse = api.get().feature(shopId, "orders")
+                val moduleResponse = api.get().feature(shopId, feature)
                 if (!moduleResponse.isSuccessful) error("No se pudieron cargar los pedidos.")
                 val module = moduleResponse.body()?.module ?: error("MiCatalogo devolvió una respuesta vacía.")
                 val customers = runCatching {
@@ -110,7 +112,7 @@ class OrdersViewModel @Inject constructor(
                     confirmingId = null,
                     message = body?.invoiceNumber?.let { "Venta confirmada: $it" } ?: "Pedido confirmado como venta."
                 )
-                load(refresh = true)
+                load(activeFeature, refresh = true)
             }.onFailure {
                 _state.value = _state.value.copy(
                     confirmingId = null,

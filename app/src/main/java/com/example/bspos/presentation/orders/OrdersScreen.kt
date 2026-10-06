@@ -56,12 +56,23 @@ import com.example.bspos.data.micatalogo.dto.RemoteCustomerDto
 
 @Composable
 fun OrdersScreen(
+    feature: String = "orders",
     modifier: Modifier = Modifier,
     viewModel: OrdersViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsState()
     var selectedRow by remember { mutableStateOf<FeatureRowDto?>(null) }
-    LaunchedEffect(Unit) { viewModel.load() }
+    val screenTitle = when (feature) {
+        "encargos" -> "Encargos"
+        "shipments" -> "Envíos"
+        else -> "Pedidos"
+    }
+    val screenDescription = when (feature) {
+        "encargos" -> "Organiza encargos pendientes y revisa lo que debes entregar a cada cliente."
+        "shipments" -> "Consulta los pedidos con entrega configurada y conviértelos en ventas cuando estén listos."
+        else -> "Revisa pedidos recibidos y conviértelos en ventas sin salir de la aplicación."
+    }
+    LaunchedEffect(feature) { viewModel.load(feature) }
     LaunchedEffect(state.message) {
         if (state.message != null) selectedRow = null
     }
@@ -70,7 +81,7 @@ fun OrdersScreen(
         when {
             state.loading -> CircularProgressIndicator(Modifier.align(Alignment.Center), color = BSPOSTheme.colors.primary)
             state.error != null && state.rows.isEmpty() -> OrdersError(state.error!!, onRetry = { viewModel.load() })
-            else -> OrdersContent(state, onRefresh = { viewModel.load(refresh = true) }, onConfirm = { selectedRow = it })
+            else -> OrdersContent(state, screenTitle, screenDescription, onRefresh = { viewModel.load(feature, refresh = true) }, onConfirm = { selectedRow = it })
         }
     }
 
@@ -107,9 +118,21 @@ fun OrdersScreen(
 @Composable
 private fun OrdersContent(
     state: OrdersUiState,
+    title: String,
+    description: String,
     onRefresh: () -> Unit,
     onConfirm: (FeatureRowDto) -> Unit
 ) {
+    val emptyTitle = when (title) {
+        "Encargos" -> "No tienes encargos pendientes"
+        "Envíos" -> "No hay envíos pendientes"
+        else -> "Aún no tienes pedidos"
+    }
+    val emptyDescription = when (title) {
+        "Encargos" -> "Los encargos que registres para tus clientes aparecerán aquí."
+        "Envíos" -> "Los pedidos con entrega configurada aparecerán aquí para darles seguimiento."
+        else -> "Comparte tu tienda para empezar a recibir órdenes."
+    }
     LazyColumn(
         modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
@@ -118,8 +141,8 @@ private fun OrdersContent(
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.weight(1f)) {
                     Text("OPERACIÓN", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
-                    Text("Pedidos", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold, color = BSPOSTheme.colors.textPrimary)
-                    Text("Revisa pedidos recibidos y conviértelos en ventas sin salir de la aplicación.", color = BSPOSTheme.colors.textSecondary)
+                    Text(title, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold, color = BSPOSTheme.colors.textPrimary)
+                    Text(description, color = BSPOSTheme.colors.textSecondary)
                 }
                 IconButton(onClick = onRefresh, enabled = !state.refreshing) {
                     if (state.refreshing) CircularProgressIndicator(Modifier.width(20.dp).height(20.dp), strokeWidth = 2.dp, color = BSPOSTheme.colors.primary)
@@ -143,8 +166,8 @@ private fun OrdersContent(
                     Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         Icon(Icons.Outlined.ReceiptLong, null, tint = BSPOSTheme.colors.primary, modifier = Modifier.width(42.dp).height(42.dp))
                         Spacer(Modifier.height(10.dp))
-                        Text("Aún no tienes pedidos", fontWeight = FontWeight.Bold, color = BSPOSTheme.colors.textPrimary)
-                        Text("Comparte tu tienda para empezar a recibir órdenes.", color = BSPOSTheme.colors.textSecondary)
+                        Text(emptyTitle, fontWeight = FontWeight.Bold, color = BSPOSTheme.colors.textPrimary)
+                        Text(emptyDescription, color = BSPOSTheme.colors.textSecondary)
                     }
                 }
             }
