@@ -1,7 +1,7 @@
 # Contrato vigente Web/API/Android
 
-Corte: 2026-10-05. API /api/v1. Público Android 1.0.23 (24), mínimo 23.
-Nueva implementación local 1.0.24 (25). Cambios aditivos compatibles con 1.0.23.
+Corte: 2026-10-05. API /api/v1. Público Android 1.0.24 (25), mínimo 23.
+Web/API y APK publicadas. Cambios aditivos compatibles con 1.0.23.
 
 ## Importación: vista previa
 
@@ -93,7 +93,7 @@ X-MiCatalogo-Version-Code obligatorio en rutas móviles protegidas cuando mínim
 installed < minimum → 426/required; minimum <= installed < latest → optional;
 installed >= latest → sin actualización. Tras iniciar descarga, proceso persistente
 bloqueado hasta instalar; cancelación del instalador se recupera al volver a la app.
-Esta entrega no cambia el mínimo 23 ni publica el manifiesto.
+Manifiesto público 1.0.24 (25), mínimo 23 conservado; APK pública verificada por hash y firma.
 
 ## Evidencia
 

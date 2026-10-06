@@ -3,7 +3,7 @@
 Corte vigente: 2026-10-05. Historial previo en Git, no en snapshots contradictorios.
 
 - Repo Android: micatalogowebApp, paquete com.bsolutions.micatalogo, Room 21.
-- Pública: 1.0.23 (24); mínimo admitido 23. Local nueva: 1.0.24 (25).
+- Pública: 1.0.24 (25); mínimo admitido 23. Web/API y APK publicadas y verificadas.
 - POS, catálogo, inventario, rutas, clientes, crédito/cobros, devoluciones y caja local
   conservan almacenamiento Room, centavos Long y colas idempotentes.
 - Web/API Laravel es autoridad del catálogo compartido y contabilidad remota.
@@ -30,8 +30,11 @@ Tras confirmar se sincroniza catálogo Room. No cambia versión ni esquema Room.
   segunda hoja, mapping visible en Compose, confirmación y replay sin duplicar.
 - 96 pruebas instrumentadas pasando: persistencia, ventas, cobros, caja, catálogo, importador y updater.
 - Backend asociado: 343 pruebas / 1745 aserciones; build web Vite correcto.
-- APK preparada con certificado existente y versionCode mayor que el publicado.
-- Esta entrega no fue instalada en teléfono físico (no detectado) ni publicada en VPS.
+- APK descargada desde la URL pública: hash, firma, paquete y versión verificados;
+  mismo certificado que la release anterior. Manifiesto público: 1.0.24 (25), mínimo 23.
+- No instalada en teléfono físico; no se afirma prueba de actualización en él.
+- VPS: Composer/Vite/cachés correctos; XLSX fila 8 y códigos con ceros verificados.
+- Conteos e identificadores comerciales sin cambios antes/después del despliegue.
 - Referencia de release financiera vigente: docs/FINANCIAL_ALIGNMENT_RELEASE_1.0.23.md.
 
 ## Límites
@@ -39,4 +42,4 @@ Tras confirmar se sincroniza catálogo Room. No cambia versión ni esquema Room.
 Importación requiere conexión y sesión server-side, no una simulación offline.
 ODS/PDF/imágenes/Word no admitidos. Pérdida previa de ceros/precisión Excel genera aviso,
 no reconstrucción inventada. Límites/arquitectura y QA detallados en el repo backend:
-docs/INVENTORY_IMPORT_ARCHITECTURE.md. Publicación es un paso separado del código local.
+docs/INVENTORY_IMPORT_ARCHITECTURE.md. Publicación documentada en docs/INVENTORY_IMPORT_RELEASE_1.0.24.md.

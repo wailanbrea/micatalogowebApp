@@ -155,5 +155,5 @@ Las funciones locales de MiCatalogo permiten trabajar desconectado; importacione
 - Updater conserva el mínimo real: opcional antes de iniciar; obligatorio por mínimo o proceso ya iniciado persistente. Mínimo publicado se conserva en 23.
 - Pruebas backend: 320 casos / 1602 assertions en SQLite :memory:. Matriz nueva: caja 5000+10000+2000-1500-500=15000; gasto 10000/pagado4000 y abono3000; deuda3000/cobro1500/FIFO/saldo1500; permisos e idempotencia. Wholesale continúa validando snapshot y price_conflict.
 
-Release verificada: 1.0.23 (24), mínimo admitido 23. Android: 67 pruebas unitarias y 81 instrumentadas en emulador. Publicación, integridad y límites de evidencia: docs/FINANCIAL_ALIGNMENT_RELEASE_1.0.23.md.
+Release pública vigente: 1.0.24 (25), mínimo admitido 23. Android: 70 pruebas unitarias y 96 instrumentadas en emulador. Publicación, integridad y límites de evidencia: docs/INVENTORY_IMPORT_RELEASE_1.0.24.md. La matriz financiera previa se conserva en docs/FINANCIAL_ALIGNMENT_RELEASE_1.0.23.md.
 - No hay migraciones backend ni cambios de datos de producción en esta entrega.

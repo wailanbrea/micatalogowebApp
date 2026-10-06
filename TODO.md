@@ -1,7 +1,7 @@
 # MiCatalogo — TODO maestro vigente
 
 Corte: 2026-10-05. Alcance actual: importador adaptativo, preservando funciones comerciales.
-Estado de código: implementado; publicación separada, sin cambios de datos de producción.
+Estado: implementado y publicado, sin cambios de datos comerciales de producción.
 Historial de fases anteriores en Git y especificaciones de referencia en PROJECT_PLAN.md.
 
 ## Fases de esta implementación
@@ -24,8 +24,10 @@ Historial de fases anteriores en Git y especificaciones de referencia en PROJECT
 - No se suben keystore, archivo privado ni contraseñas al repositorio.
 - No se declara publicación o instalación física por el solo éxito de Gradle.
 
-## Paso operativo fuera de esta entrega
+## Publicación verificada
 
-Publicar Web/API y la APK firmada 1.0.24 (25) cuando se solicite; mínimo público 23.
-Verificar Composer en destino y persistencia del caché temporal entre requests.
+- [x] Web/API y APK firmada 1.0.24 (25) publicadas; mínimo público conservado en 23.
+- [x] Composer/Vite/cachés en destino, lectura XLSX y caché database persistente.
+- [x] Manifiesto/descarga HTTP, hash/certificado/versión y conteos/IDs comerciales antes/después.
+Prueba de instalación en teléfono físico no realizada; no se confunde con publicación verificada.
 Estado técnico y resultados: DEVELOPMENT_STATUS.md; contrato vigente: repo backend docs/API_CONTRACT.md.

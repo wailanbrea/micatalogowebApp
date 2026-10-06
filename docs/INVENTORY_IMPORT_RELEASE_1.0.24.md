@@ -1,7 +1,7 @@
 # Informe final — importador adaptativo / Android 1.0.24
 
-Corte: 2026-10-05. Implementación local terminada y probada en ambos repositorios.
-No publicada en VPS; el manifiesto público continúa 1.0.23 (24), mínimo 23.
+Corte: 2026-10-05. Implementación terminada, probada y publicada en ambos repositorios.
+Web/API y APK publicadas en VPS; manifiesto público 1.0.24 (25), mínimo 23 conservado.
 No se alteraron datos de producción ni se ejecutaron seeders/migraciones backend.
 
 ## Diagnóstico y decisiones
@@ -105,12 +105,20 @@ No se hicieron afirmaciones de rendimiento de producción sin medir allí.
 - Firma verificada, no debuggable; misma identidad/certificado que 1.0.23 pública.
 - Las 70 pruebas unitarias pasaron sobre el código final antes del ensamblado firmado;
   en el último ensamblado se omitió únicamente repetir esas mismas pruebas.
-- No publicado ni instalado en teléfono físico. El teléfono no apareció en adb.
+- URL pública: https://micatalogo.bsolutions.dev/downloads/bspos-1.0.24-adaptive-import.apk
+- Descarga pública verificada: tamaño/hash/firma/paquete/versión correctos; mismo certificado
+  que la APK 1.0.23 anterior, que permanece disponible. No instalada en teléfono físico.
 
 ## TODO y alcance cerrado
 
 Las ocho fases de implementación/QA están completas en docs/09_TODO.md y TODO Android.
-No quedan fixes conocidos pendientes del importador en esta entrega local.
-Publicación, despliegue Composer y prueba de actualización en teléfono son un paso operativo
-separado que no se ejecutó en esta tarea. No se cambió el manifiesto público ni el mínimo 23.
+No quedan fixes conocidos pendientes del importador en esta entrega publicada.
+VPS: Git fast-forward, Composer --no-dev, Vite y config/route/view/event caches correctos;
+sin migraciones. Caché database persistente; lectura real del XLSX anónimo de dos hojas
+detectó fila 8, EAN 0850050062035 y SKU 000045, ignorando totales como valores unitarios.
+Conteos e identificadores SHA-256 antes/después idénticos: 11 usuarios, 8 tiendas,
+298 productos, 0 pedidos y 6 facturas. No se ejecutaron pruebas con escrituras en producción.
+Git conserva el código anterior; manifiesto anterior preservado fuera de public/ y APK anterior
+disponible. Sin backups de carpetas, seeders, purgas ni rotación de clave.
+La instalación y prueba de actualización en teléfono físico no se realizaron en esta publicación.
 Reglas completas: INVENTORY_IMPORT_ARCHITECTURE.md y API_CONTRACT.md.
