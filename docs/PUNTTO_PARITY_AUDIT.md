@@ -82,9 +82,10 @@ MiCatalogo Android ahora presenta esos indicadores con datos locales: capital ca
 
 - Editar y anular una venta requieren un flujo de dominio y contabilidad completo; no se debe simular con un botón que no revierta inventario/caja.
 - Térmico requiere enlazar la pantalla de detalle con la impresora configurada.
-- El cierre de día móvil todavía muestra el read model y la caja local, pero falta unir en
-  una sola pantalla la conciliación por fecha, abonos, gastos, devoluciones y cierre remoto
-  equivalente al formulario de Puntto.
+- `Cierre de día` móvil ahora une el período de hoy con ventas cobradas, abonos, gastos,
+  devoluciones y la sesión remota de caja. Permite abrir caja, mostrar entradas/salidas,
+  calcular el efectivo esperado y cerrar registrando el efectivo contado, con el mismo
+  mecanismo idempotente de operaciones financieras.
 - Completar el recorrido de cada grupo del menú y contrastar formularios, permisos, estados vacíos y mensajes de validación con las pantallas equivalentes de MiCatalogo.
 - Ejecutar una prueba equivalente de cada operación en la APK oficial firmada y en la web antes de publicar.
 
@@ -94,6 +95,7 @@ MiCatalogo Android ahora presenta esos indicadores con datos locales: capital ca
 ./gradlew test assembleDebug       PASS
 ./gradlew assembleDebug -PmiCatalogoOfflineCheck=true  PASS
 adb install -r app/build/outputs/apk/debug/app-debug.apk  PASS (variante aislada)
+UI smoke launch de com.bsolutions.micatalogo.offlinecheck  PASS
 git diff --check                   PASS
 ```
 

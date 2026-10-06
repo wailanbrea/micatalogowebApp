@@ -111,6 +111,7 @@ import com.example.bspos.presentation.adminshops.AdminShopsScreen
 import com.example.bspos.presentation.finance.FinanceScreen
 import com.example.bspos.presentation.feature.FeatureModuleScreen
 import com.example.bspos.presentation.quote.QuoteScreen
+import com.example.bspos.presentation.dayclose.DayCloseScreen
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import kotlinx.coroutines.launch
 
@@ -698,7 +699,9 @@ fun BSPOSNavHost(
         composable(Screen.Orders.route) { FeatureDestination("orders", canSeeMenu("orders"), navController) }
         composable(Screen.Encargos.route) { FeatureDestination("encargos", canSeeMenu("encargos"), navController) }
         composable(Screen.Shipments.route) { FeatureDestination("shipments", canSeeMenu("shipments"), navController) }
-        composable(Screen.DayClose.route) { FeatureDestination("day_close", canSeeMenu("day_close"), navController) }
+        composable(Screen.DayClose.route) {
+            RestrictedMenuDestination(canSeeMenu("day_close"), navController) { DayCloseScreen() }
+        }
         composable(Screen.Containers.route) { FeatureDestination("containers", canSeeMenu("containers"), navController) }
         composable(Screen.PurchaseInvoices.route) { FeatureDestination("purchase_invoices", canSeeMenu("purchase_invoices"), navController) }
         composable(Screen.Photos.route) { FeatureDestination("photos", canSeeMenu("photos"), navController) }
