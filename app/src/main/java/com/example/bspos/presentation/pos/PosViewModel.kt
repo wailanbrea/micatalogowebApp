@@ -212,6 +212,10 @@ class PosViewModel @Inject constructor(
 
     fun printToConfiguredPrinter(result: CheckoutResult) {
         val sale = result.sale ?: return
+        printSaleToConfiguredPrinter(sale, result.lines)
+    }
+
+    fun printSaleToConfiguredPrinter(sale: Sale, lines: List<PosCartLine>) {
         val printer = printers.value.firstOrNull { it.isDefault } ?: printers.value.firstOrNull()
         if (printer == null) {
             _printerMessage.value = "No hay una impresora Bluetooth configurada"
@@ -223,7 +227,7 @@ class PosViewModel @Inject constructor(
                     printer,
                     formatInvoice(
                         sale,
-                        result.lines,
+                        lines,
                         settings.value.currency,
                         settings.value.invoice,
                         printer.paperWidth.columns

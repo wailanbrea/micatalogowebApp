@@ -59,6 +59,7 @@ import com.example.bspos.domain.model.MiCatalogoBusinessPresentation
 import com.example.bspos.presentation.common.DialogScrollableColumn
 import com.example.bspos.presentation.pos.InvoicePdfGenerator
 import com.example.bspos.presentation.pos.PosCartLine
+import com.example.bspos.presentation.pos.PosViewModel
 import com.example.bspos.presentation.pos.shareInvoicePdf
 import java.time.Instant
 import java.time.LocalDate
@@ -86,7 +87,8 @@ fun DashboardScreen(
     showProducts: Boolean = true,
     presentation: MiCatalogoBusinessPresentation = MiCatalogoBusinessPresentation(),
     isExpanded: Boolean = false,
-    viewModel: DashboardViewModel = hiltViewModel()
+    viewModel: DashboardViewModel = hiltViewModel(),
+    printerViewModel: PosViewModel = hiltViewModel()
 ) {
     val sales by viewModel.sales.collectAsState()
     val costTotals by viewModel.costTotals.collectAsState()
@@ -96,11 +98,19 @@ fun DashboardScreen(
     val routes by viewModel.routes.collectAsState()
     val selectedSale by viewModel.selectedSale.collectAsState()
     val selectedItems by viewModel.selectedItems.collectAsState()
+    val printers by printerViewModel.printers.collectAsState()
+    val printerMessage by printerViewModel.printerMessage.collectAsState()
     val context = LocalContext.current
     var showAllSales by remember { mutableStateOf(false) }
     var selectedPeriod by remember { mutableStateOf("Hoy") }
     val zone = ZoneId.systemDefault()
     val today = Instant.now().atZone(zone).toLocalDate()
+    LaunchedEffect(printerMessage) {
+        printerMessage?.let {
+            com.example.bspos.presentation.common.UiErrorBus.show(it)
+            printerViewModel.consumePrinterMessage()
+        }
+    }
     val completed = sales.filter { it.status == SaleStatus.COMPLETED }.sortedByDescending { it.date }
     val periodStart = when (selectedPeriod) {
         "Este mes" -> today.withDayOfMonth(1)
@@ -238,6 +248,20 @@ fun DashboardScreen(
                 if (lines.isNotEmpty()) {
                     val pdfUri = InvoicePdfGenerator.create(context, sale, lines)
                     shareInvoicePdf(context, pdfUri, sale.invoiceNumber)
+                }
+            },
+            onPrint = {
+                val lines = selectedItems.mapNotNull { item ->
+                    products.find { it.id == item.productId }?.let { product ->
+                        PosCartLine(product = product, quantity = item.quantity, unitPrice = item.unitPrice)
+                    }
+                }
+                if (lines.isEmpty()) {
+                    com.example.bspos.presentation.common.UiErrorBus.show("No hay productos asociados para imprimir esta venta.")
+                } else if (printers.isEmpty()) {
+                    com.example.bspos.presentation.common.UiErrorBus.show("Configura una impresora Bluetooth desde Impresoras para usar Térmico.")
+                } else {
+                    printerViewModel.printSaleToConfiguredPrinter(sale, lines)
                 }
             },
             onReturn = { viewModel.selectSale(null); onReturns() },
@@ -566,6 +590,7 @@ internal fun SaleDetailDialog(
     products: List<Product>,
     productNames: Map<java.util.UUID, String>,
     onShare: () -> Unit,
+    onPrint: (() -> Unit)? = null,
     onReturn: () -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -594,7 +619,12 @@ internal fun SaleDetailDialog(
                     }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedButton(onClick = onShare, modifier = Modifier.weight(1f), shape = RoundedCornerShape(14.dp)) { Text("Recibo") }
-                        Button(onClick = onShare, modifier = Modifier.weight(1.2f), shape = RoundedCornerShape(14.dp)) { Text("Compartir") }
+                        Button(onClick = onShare, modifier = Modifier.weight(1f), shape = RoundedCornerShape(14.dp)) { Text("Compartir") }
+                    }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        onPrint?.let { print ->
+                            OutlinedButton(onClick = print, modifier = Modifier.weight(1f), shape = RoundedCornerShape(14.dp)) { Text("Térmico") }
+                        }
                         OutlinedButton(onClick = onReturn, modifier = Modifier.weight(1f), shape = RoundedCornerShape(14.dp)) { Text("Devolver") }
                     }
                     FinanceSummaryCard(sale, cost, gain, margin)

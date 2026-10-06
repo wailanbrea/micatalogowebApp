@@ -50,7 +50,9 @@ import com.example.bspos.presentation.dashboard.DashboardViewModel
 import com.example.bspos.presentation.dashboard.SaleDetailDialog
 import com.example.bspos.presentation.pos.InvoicePdfGenerator
 import com.example.bspos.presentation.pos.PosCartLine
+import com.example.bspos.presentation.pos.PosViewModel
 import com.example.bspos.presentation.pos.shareInvoicePdf
+import com.example.bspos.presentation.common.UiErrorBus
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -60,16 +62,26 @@ import java.util.Locale
 @Composable
 fun SalesHistoryScreen(
     onReturns: () -> Unit,
-    viewModel: DashboardViewModel = hiltViewModel()
+    viewModel: DashboardViewModel = hiltViewModel(),
+    printerViewModel: PosViewModel = hiltViewModel()
 ) {
     val sales by viewModel.sales.collectAsState()
     val customers by viewModel.customers.collectAsState()
     val products by viewModel.products.collectAsState()
+    val printers by printerViewModel.printers.collectAsState()
+    val printerMessage by printerViewModel.printerMessage.collectAsState()
     val selectedSale by viewModel.selectedSale.collectAsState()
     val selectedItems by viewModel.selectedItems.collectAsState()
     val context = LocalContext.current
     var period by remember { mutableStateOf("Hoy") }
     var paymentFilter by remember { mutableStateOf("Todas") }
+
+    androidx.compose.runtime.LaunchedEffect(printerMessage) {
+        printerMessage?.let {
+            UiErrorBus.show(it)
+            printerViewModel.consumePrinterMessage()
+        }
+    }
 
     val today = remember { Instant.now().atZone(ZoneId.systemDefault()).toLocalDate() }
     val start = when (period) {
@@ -178,6 +190,20 @@ fun SalesHistoryScreen(
                 if (lines.isNotEmpty()) {
                     val pdfUri = InvoicePdfGenerator.create(context, sale, lines)
                     shareInvoicePdf(context, pdfUri, sale.invoiceNumber)
+                }
+            },
+            onPrint = {
+                val lines = selectedItems.mapNotNull { item ->
+                    products.find { it.id == item.productId }?.let { product ->
+                        PosCartLine(product = product, quantity = item.quantity, unitPrice = item.unitPrice)
+                    }
+                }
+                if (lines.isEmpty()) {
+                    UiErrorBus.show("No hay productos asociados para imprimir esta venta.")
+                } else if (printers.isEmpty()) {
+                    UiErrorBus.show("Configura una impresora Bluetooth desde Impresoras para usar Térmico.")
+                } else {
+                    printerViewModel.printSaleToConfiguredPrinter(sale, lines)
                 }
             },
             onReturn = { viewModel.selectSale(null); onReturns() },

@@ -127,6 +127,11 @@ MiCatalogo Android ahora presenta esos indicadores con datos locales: capital ca
   devoluciones y la sesión remota de caja. Permite abrir caja, mostrar entradas/salidas,
   calcular el efectivo esperado y cerrar registrando el efectivo contado, con el mismo
   mecanismo idempotente de operaciones financieras.
+- El selector de fecha del cierre móvil consulta períodos de un solo día como Puntto y no
+  modifica la caja hasta que el usuario confirma una apertura o cierre.
+- El detalle histórico de ventas y el dashboard ahora exponen `Térmico` y reutilizan el
+  motor Bluetooth configurado para enviar la factura. Sin impresora registrada se muestra
+  una instrucción explícita para configurarla desde `Impresoras`.
 - Completar el recorrido de cada grupo del menú y contrastar formularios, permisos, estados vacíos y mensajes de validación con las pantallas equivalentes de MiCatalogo.
 - Ejecutar una prueba equivalente de cada operación en la APK oficial firmada y en la web antes de publicar.
 
