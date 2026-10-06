@@ -32,6 +32,12 @@ El dashboard expone `Ventas`, `Ganancia`, `Ticket promedio` y `Por cobrar`, adem
 
 El menú lateral se organiza en `OPERACIÓN`, `COMPRAS`, `CATÁLOGO`, `COBROS`, `FINANZAS`, `ANÁLISIS` y `EQUIPO`, seguido por `AJUSTES`, `Ver tienda` y la cuenta. La navegación conserva un encabezado con menú, breadcrumb, plan y ayuda, y una barra inferior con `Terminal`, `Pedidos`, `Inventario` y `Menú`.
 
+## Inventario verificado en Puntto
+
+La pantalla muestra acciones para añadir del catálogo, precios y costos, movimientos, importar/exportar, combos y nuevo producto. Antes de la lista presenta capital al costo, productos/unidades, nivel bajo y una alerta de productos sin foto. La lista permite seleccionar un producto para consultar sus acciones y existencias.
+
+MiCatalogo Android ahora presenta esos indicadores con datos locales: capital calculado desde `averageCost`, unidades, nivel bajo y productos activos sin imagen. Se conservan los flujos de importar CSV/XLSX/PDF, recepción de mercancía, conteo físico, motivos, ajustes y Kardex.
+
 ## Cambios ya incorporados en MiCatalogo Android
 
 - Navegación con breadcrumb, transiciones de entrada y expansión animada del menú.
