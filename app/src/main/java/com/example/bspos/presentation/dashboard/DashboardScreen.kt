@@ -92,8 +92,15 @@ fun DashboardScreen(
     val zone = ZoneId.systemDefault()
     val today = Instant.now().atZone(zone).toLocalDate()
     val completed = sales.filter { it.status == SaleStatus.COMPLETED }.sortedByDescending { it.date }
-    val todaySales = completed.filter { it.date.atZone(zone).toLocalDate() == today }.sumOf { it.total }
-    val todayCollected = completed.filter { it.date.atZone(zone).toLocalDate() == today }.sumOf { it.paidAmount }
+    val periodStart = when (selectedPeriod) {
+        "Este mes" -> today.withDayOfMonth(1)
+        "Últimos 7" -> today.minusDays(6)
+        else -> today
+    }
+    val periodSales = completed.filter { it.date.atZone(zone).toLocalDate() >= periodStart }
+    val periodLabel = if (selectedPeriod == "Hoy") "de hoy" else selectedPeriod.lowercase(Locale("es"))
+    val todaySales = periodSales.sumOf { it.total }
+    val todayCollected = periodSales.sumOf { it.paidAmount }
     val receivable = customers.sumOf { it.balance }
     val quantities = stock.associate { it.productId to it.quantity }
     val activeProducts = products.filter { it.isActive && it.deletedAt == null }
@@ -108,8 +115,8 @@ fun DashboardScreen(
         listOf("sales_today", "collections_today", "receivables") + if (!sellerMode) listOf("low_stock", "active_customers") else emptyList()
     }
     val kpis = buildList {
-        if ("sales_today" in visibleWidgets && showSales) add(Kpi("Ventas de hoy", money(todaySales), "Operacion del dia", Icons.Default.BarChart, BSPOSTheme.colors.primary, BSPOSTheme.colors.primaryLight))
-        if ("collections_today" in visibleWidgets && showCollections) add(Kpi("Cobros de hoy", money(todayCollected), "Efectivo y otros metodos", Icons.Default.AccountBalanceWallet, BSPOSTheme.colors.success, BSPOSTheme.colors.successLight))
+        if ("sales_today" in visibleWidgets && showSales) add(Kpi("Ventas $periodLabel", money(todaySales), "Operación del periodo", Icons.Default.BarChart, BSPOSTheme.colors.primary, BSPOSTheme.colors.primaryLight))
+        if ("collections_today" in visibleWidgets && showCollections) add(Kpi("Cobros $periodLabel", money(todayCollected), "Efectivo y otros métodos", Icons.Default.AccountBalanceWallet, BSPOSTheme.colors.success, BSPOSTheme.colors.successLight))
         if ("receivables" in visibleWidgets) add(Kpi("Cuentas por cobrar", money(receivable), "Cartera pendiente", Icons.Default.ReceiptLong, BSPOSTheme.colors.warning, BSPOSTheme.colors.warningLight))
         if ("low_stock" in visibleWidgets && showInventory) add(Kpi("Productos bajos", lowProducts.size.toString(), "Requieren atencion", Icons.Default.Inventory2, BSPOSTheme.colors.error, BSPOSTheme.colors.errorLight))
         if ("active_customers" in visibleWidgets) add(Kpi("Clientes activos", customers.count { it.isActive }.toString(), "Directorio comercial", Icons.Default.People, BSPOSTheme.colors.primary, BSPOSTheme.colors.primaryLight))

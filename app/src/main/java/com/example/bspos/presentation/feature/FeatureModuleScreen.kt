@@ -2,6 +2,10 @@ package com.example.bspos.presentation.feature
 
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -37,6 +41,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.example.bspos.core.ui.theme.BSPOSTheme
 import com.example.bspos.data.micatalogo.dto.FeatureDefinitionDto
@@ -83,7 +88,7 @@ private fun FeatureContent(definition: FeatureDefinitionDto, module: FeatureModu
             }
         }
         module.note?.takeIf { it.isNotBlank() }?.let { note ->
-            item { Card(colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.primaryLight)) { Text(note, Modifier.padding(14.dp), color = BSPOSTheme.colors.textPrimary) } }
+            item { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.primaryLight), modifier = Modifier.animateContentSize()) { Text(note, Modifier.padding(14.dp), color = BSPOSTheme.colors.textPrimary) } }
         }
         if (module.actions.isNotEmpty()) {
             item {
@@ -111,7 +116,7 @@ private fun FeatureContent(definition: FeatureDefinitionDto, module: FeatureModu
         }
         if (module.rows.isEmpty()) {
             item {
-                Card(colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface)) {
+                Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface)) {
                     Column(Modifier.fillMaxWidth().padding(18.dp)) {
                         Text(if (module.kind == "prepared") "Estamos preparando este módulo" else "Todavía no hay registros", fontWeight = FontWeight.Bold)
                         Spacer(Modifier.height(4.dp))
@@ -120,7 +125,12 @@ private fun FeatureContent(definition: FeatureDefinitionDto, module: FeatureModu
                 }
             }
         } else {
-            items(module.rows) { row -> FeatureRow(row) }
+            items(module.rows, key = { row -> "${row.primary}-${row.id}" }) { row ->
+                AnimatedVisibility(
+                    visible = true,
+                    enter = fadeIn() + slideInHorizontally { it / 12 }
+                ) { FeatureRow(row) }
+            }
         }
     }
 }
@@ -131,7 +141,7 @@ private fun String.toUriOrNull(): Uri? = runCatching {
 
 @Composable
 private fun KpiCard(kpi: FeatureKpiDto, modifier: Modifier = Modifier) {
-    Card(modifier, colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface)) {
+    Card(modifier, shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface)) {
         Column(Modifier.padding(12.dp)) {
             Text(kpi.label, style = MaterialTheme.typography.labelSmall, color = BSPOSTheme.colors.textSecondary)
             Spacer(Modifier.height(5.dp))
@@ -142,7 +152,7 @@ private fun KpiCard(kpi: FeatureKpiDto, modifier: Modifier = Modifier) {
 
 @Composable
 private fun FeatureRow(row: FeatureRowDto) {
-    Card(colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface)) {
+    Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface)) {
         Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(row.primary.ifBlank { "Registro" }, fontWeight = FontWeight.Bold, color = BSPOSTheme.colors.textPrimary)
