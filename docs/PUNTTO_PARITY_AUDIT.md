@@ -28,6 +28,13 @@ También se recorrió el tutorial contextual de cuatro pasos:
 
 El dashboard expone `Ventas`, `Ganancia`, `Ticket promedio` y `Por cobrar`, además de `Registrar cobro`, `Nueva venta` y una guía de primeros pasos con progreso. La selección de periodo es `Hoy`, `Este mes` y `Últimos 7`.
 
+La reauditoría del 6 de octubre confirmó que, debajo de esos indicadores, Puntto organiza
+los bloques `Top productos`, `Encargos`, `Por cobrar`, `Dinero por método`, `Cierre`,
+`Inventario bajo` y `Productos sin foto — revisar`. La cabecera conserva el breadcrumb
+`Operación / Resumen`, el plan y `Ayuda`; la navegación inferior mantiene `Terminal`,
+`Pedidos`, `Inventario` y `Menú`. Estos bloques sirven como referencia de contenido y no
+solo de estilo para el dashboard móvil de MiCatalogo.
+
 ## Menú observado
 
 El menú lateral se organiza en `OPERACIÓN`, `COMPRAS`, `CATÁLOGO`, `COBROS`, `FINANZAS`, `ANÁLISIS` y `EQUIPO`, seguido por `AJUSTES`, `Ver tienda` y la cuenta. La navegación conserva un encabezado con menú, breadcrumb, plan y ayuda, y una barra inferior con `Terminal`, `Pedidos`, `Inventario` y `Menú`.
