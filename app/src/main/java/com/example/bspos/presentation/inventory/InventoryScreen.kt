@@ -8,6 +8,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -17,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -90,8 +92,13 @@ fun InventoryScreen(viewModel: InventoryViewModel = hiltViewModel()) {
     var reasonForm by remember { mutableStateOf(false) }
     var selectedProduct by remember { mutableStateOf<UUID?>(null) }
     val names = products.associate { it.id to it.name }
+    val productById = products.associateBy { it.id }
     val filtered = stock.filter { filter == 0 || (filter == 1 && it.quantity <= 0L) || (filter == 2 && it.quantity > 0L) }
     val unavailable = stock.count { it.quantity <= 0L }
+    val lowStock = stock.count { row -> productById[row.productId]?.let { product -> product.minimumStock > 0L && row.quantity <= product.minimumStock } == true }
+    val totalUnits = stock.sumOf { it.quantity }
+    val capitalAtCost = stock.sumOf { row -> row.quantity * (productById[row.productId]?.averageCost ?: 0L) }
+    val productsWithoutPhoto = products.count { it.isActive && it.deletedAt == null && it.imagePath.isNullOrBlank() }
     val stockEditableProducts = products.filter { it.remoteSaleUnit != "decant" && (it.remoteShopId == null || it.remoteShopId in editableShopIds) }
     val productsWithoutStock = stockEditableProducts.filter { product -> stock.none { it.productId == product.id } }
     val fileLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -111,6 +118,25 @@ fun InventoryScreen(viewModel: InventoryViewModel = hiltViewModel()) {
     ) {
         item {
             Text("Almacén principal y Kardex", color = BSPOSTheme.colors.textSecondary)
+        }
+        item {
+            InventorySummaryRow(
+                capitalAtCost = capitalAtCost,
+                productCount = products.count { it.isActive && it.deletedAt == null },
+                totalUnits = totalUnits,
+                lowStock = lowStock
+            )
+        }
+        if (productsWithoutPhoto > 0) {
+            item {
+                Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.warningLight)) {
+                    Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.WarningAmber, null, tint = BSPOSTheme.colors.warning)
+                        Spacer(Modifier.width(10.dp))
+                        Text("$productsWithoutPhoto ${if (productsWithoutPhoto == 1) "producto sin foto" else "productos sin foto"} · revisa el catálogo", color = BSPOSTheme.colors.warning, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
         }
         if (importShop != null) {
             item {
@@ -214,6 +240,33 @@ fun InventoryScreen(viewModel: InventoryViewModel = hiltViewModel()) {
             text = { Text(text) },
             confirmButton = { TextButton(viewModel::consumeMessage) { Text("Cerrar") } }
         )
+    }
+}
+
+@Composable
+private fun InventorySummaryRow(capitalAtCost: Long, productCount: Int, totalUnits: Long, lowStock: Int) {
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val metrics = listOf(
+            Triple("Capital al costo", MoneyUtils.formatCents(capitalAtCost, LocalCurrency.current), BSPOSTheme.colors.primary),
+            Triple("Productos", "$productCount · $totalUnits unidades", BSPOSTheme.colors.textPrimary),
+            Triple("Nivel bajo", lowStock.toString(), if (lowStock > 0) BSPOSTheme.colors.warning else BSPOSTheme.colors.success)
+        )
+        if (maxWidth < 540.dp) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) { metrics.forEach { (label, value, color) -> InventoryMetricCard(label, value, color) } }
+        } else {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) { metrics.forEach { (label, value, color) -> InventoryMetricCard(label, value, color, Modifier.weight(1f)) } }
+        }
+    }
+}
+
+@Composable
+private fun InventoryMetricCard(label: String, value: String, color: androidx.compose.ui.graphics.Color, modifier: Modifier = Modifier) {
+    Card(modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface)) {
+        Column(Modifier.padding(14.dp)) {
+            Text(label, color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+            Spacer(Modifier.height(4.dp))
+            Text(value, color = color, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold, maxLines = 2)
+        }
     }
 }
 
