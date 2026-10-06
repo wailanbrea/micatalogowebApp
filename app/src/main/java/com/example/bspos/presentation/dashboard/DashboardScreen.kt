@@ -45,6 +45,7 @@ import com.example.bspos.domain.model.Sale
 import com.example.bspos.domain.model.SaleItem
 import com.example.bspos.domain.model.SalePaymentType
 import com.example.bspos.domain.model.SaleStatus
+import com.example.bspos.domain.model.MiCatalogoBusinessPresentation
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -67,6 +68,7 @@ fun DashboardScreen(
     showCollections: Boolean = true,
     showInventory: Boolean = true,
     showProducts: Boolean = true,
+    presentation: MiCatalogoBusinessPresentation = MiCatalogoBusinessPresentation(),
     isExpanded: Boolean = false,
     viewModel: DashboardViewModel = hiltViewModel()
 ) {
@@ -93,17 +95,17 @@ fun DashboardScreen(
     val week = (6 downTo 0).map { today.minusDays(it.toLong()) }
     val dailySales = week.map { day -> completed.filter { it.date.atZone(zone).toLocalDate() == day }.sumOf { it.total } }
     val customerNames = customers.associate { it.id to it.businessName }
-    val kpis = if (sellerMode) listOf(
-        Kpi("Ventas de hoy", money(todaySales), "Operacion del dia", Icons.Default.BarChart, BSPOSTheme.colors.primary, BSPOSTheme.colors.primaryLight),
-        Kpi("Cobros de hoy", money(todayCollected), "Efectivo y otros metodos", Icons.Default.AccountBalanceWallet, BSPOSTheme.colors.success, BSPOSTheme.colors.successLight),
-        Kpi("Cuentas por cobrar", money(receivable), "Cartera pendiente", Icons.Default.ReceiptLong, BSPOSTheme.colors.warning, BSPOSTheme.colors.warningLight)
-    ) else listOf(
-        Kpi("Ventas de hoy", money(todaySales), "Operacion del dia", Icons.Default.BarChart, BSPOSTheme.colors.primary, BSPOSTheme.colors.primaryLight),
-        Kpi("Cobros de hoy", money(todayCollected), "Efectivo y otros metodos", Icons.Default.AccountBalanceWallet, BSPOSTheme.colors.success, BSPOSTheme.colors.successLight),
-        Kpi("Cuentas por cobrar", money(receivable), "Cartera pendiente", Icons.Default.ReceiptLong, BSPOSTheme.colors.warning, BSPOSTheme.colors.warningLight),
-        Kpi("Productos bajos", lowProducts.size.toString(), "Requieren atencion", Icons.Default.Inventory2, BSPOSTheme.colors.error, BSPOSTheme.colors.errorLight),
-        Kpi("Clientes activos", customers.count { it.isActive }.toString(), "Directorio comercial", Icons.Default.People, BSPOSTheme.colors.primary, BSPOSTheme.colors.primaryLight)
-    ) + if (routesEnabled) listOf(Kpi("Rutas activas", routes.count { it.isActive }.toString(), "Disponibles hoy", Icons.Default.LocationOn, BSPOSTheme.colors.primary, BSPOSTheme.colors.primaryLight)) else emptyList()
+    val visibleWidgets = presentation.dashboardWidgets.ifEmpty {
+        listOf("sales_today", "collections_today", "receivables") + if (!sellerMode) listOf("low_stock", "active_customers") else emptyList()
+    }
+    val kpis = buildList {
+        if ("sales_today" in visibleWidgets && showSales) add(Kpi("Ventas de hoy", money(todaySales), "Operacion del dia", Icons.Default.BarChart, BSPOSTheme.colors.primary, BSPOSTheme.colors.primaryLight))
+        if ("collections_today" in visibleWidgets && showCollections) add(Kpi("Cobros de hoy", money(todayCollected), "Efectivo y otros metodos", Icons.Default.AccountBalanceWallet, BSPOSTheme.colors.success, BSPOSTheme.colors.successLight))
+        if ("receivables" in visibleWidgets) add(Kpi("Cuentas por cobrar", money(receivable), "Cartera pendiente", Icons.Default.ReceiptLong, BSPOSTheme.colors.warning, BSPOSTheme.colors.warningLight))
+        if ("low_stock" in visibleWidgets && showInventory) add(Kpi("Productos bajos", lowProducts.size.toString(), "Requieren atencion", Icons.Default.Inventory2, BSPOSTheme.colors.error, BSPOSTheme.colors.errorLight))
+        if ("active_customers" in visibleWidgets) add(Kpi("Clientes activos", customers.count { it.isActive }.toString(), "Directorio comercial", Icons.Default.People, BSPOSTheme.colors.primary, BSPOSTheme.colors.primaryLight))
+        if (routesEnabled) add(Kpi("Rutas activas", routes.count { it.isActive }.toString(), "Disponibles hoy", Icons.Default.LocationOn, BSPOSTheme.colors.primary, BSPOSTheme.colors.primaryLight))
+    }
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val compact = !isExpanded || maxWidth < 840.dp
@@ -113,7 +115,7 @@ fun DashboardScreen(
             contentPadding = PaddingValues(if (compact) 16.dp else 28.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            item { DashboardHeading(compact, sellerMode) }
+            item { DashboardHeading(compact, sellerMode, presentation.dashboardTitle) }
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     kpis.chunked(kpiColumns).forEach { row ->
@@ -124,18 +126,18 @@ fun DashboardScreen(
                     }
                 }
             }
-            item { QuickActions(onNewSale, onCollections, onInventory, onProducts, compact, sellerMode, showSales, showCollections, showInventory, showProducts) }
+            item { QuickActions(onNewSale, onCollections, onInventory, onProducts, compact, sellerMode, showSales, showCollections, showInventory, showProducts, presentation.dashboardQuickActions) }
             item {
                 if (sellerMode) {
                     WeeklySalesCard(dailySales, week.map { it.dayOfWeek.getDisplayName(TextStyle.SHORT, Locale("es")) })
                 } else if (compact) {
                     WeeklySalesCard(dailySales, week.map { it.dayOfWeek.getDisplayName(TextStyle.SHORT, Locale("es")) })
                     Spacer(Modifier.height(16.dp))
-                    PortfolioCard(completed.sumOf { it.paidAmount }, receivable, customers.count { it.balance > 0 })
+                    if ("receivables" in visibleWidgets) PortfolioCard(completed.sumOf { it.paidAmount }, receivable, customers.count { it.balance > 0 })
                 } else {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                         WeeklySalesCard(dailySales, week.map { it.dayOfWeek.getDisplayName(TextStyle.SHORT, Locale("es")) }, Modifier.weight(1.35f))
-                        PortfolioCard(completed.sumOf { it.paidAmount }, receivable, customers.count { it.balance > 0 }, Modifier.weight(.85f))
+                        if ("receivables" in visibleWidgets) PortfolioCard(completed.sumOf { it.paidAmount }, receivable, customers.count { it.balance > 0 }, Modifier.weight(.85f))
                     }
                 }
             }
@@ -145,13 +147,13 @@ fun DashboardScreen(
                 } else if (compact) {
                     if (routesEnabled) RoutesCard(routes.filter { it.isActive }, onRoutes)
                     Spacer(Modifier.height(16.dp))
-                    LowStockCard(lowProducts.take(5), quantities, onInventory)
+                    if ("low_stock" in visibleWidgets && showInventory) LowStockCard(lowProducts.take(5), quantities, onInventory)
                     Spacer(Modifier.height(16.dp))
                     RecentSalesCard(completed.take(5), customerNames, viewModel::selectSale, { showAllSales = true })
                 } else {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                         if (routesEnabled) RoutesCard(routes.filter { it.isActive }, onRoutes, Modifier.weight(1f))
-                        LowStockCard(lowProducts.take(5), quantities, onInventory, Modifier.weight(1f))
+                        if ("low_stock" in visibleWidgets && showInventory) LowStockCard(lowProducts.take(5), quantities, onInventory, Modifier.weight(1f))
                         RecentSalesCard(completed.take(5), customerNames, viewModel::selectSale, { showAllSales = true }, Modifier.weight(1f))
                     }
                 }
@@ -180,8 +182,9 @@ fun DashboardScreen(
 private data class Kpi(val title: String, val value: String, val helper: String, val icon: androidx.compose.ui.graphics.vector.ImageVector, val accent: Color, val soft: Color)
 
 @Composable
-private fun DashboardHeading(compact: Boolean, sellerMode: Boolean) {
+private fun DashboardHeading(compact: Boolean, sellerMode: Boolean, title: String) {
     Column {
+        Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
         Text(
             if (sellerMode) "Resumen de tus ventas, cobros y clientes pendientes."
             else "Controla tus ventas, cobros y clientes pendientes desde un solo lugar.",
@@ -218,13 +221,15 @@ private fun QuickActions(
     showSales: Boolean,
     showCollections: Boolean,
     showInventory: Boolean,
-    showProducts: Boolean
+    showProducts: Boolean,
+    configuredActions: List<String>
 ) {
+    val allowedActions = configuredActions.ifEmpty { listOf("new_sale", "collect", "inventory", "new_product") }
     val actions = buildList {
-        if (showSales) add(QuickAction("Nueva venta", Icons.Default.ShoppingCart, true, onNewSale))
-        if (showCollections) add(QuickAction("Registrar cobro", Icons.Default.AccountBalanceWallet, false, onCollections))
-        if (sellerMode && showProducts) add(QuickAction("Productos", Icons.Default.Inventory2, false, onProducts))
-        if (!sellerMode && showInventory) add(QuickAction("Inventario", Icons.Default.Inventory2, false, onInventory))
+        if (showSales && "new_sale" in allowedActions) add(QuickAction("Nueva venta", Icons.Default.ShoppingCart, true, onNewSale))
+        if (showCollections && "collect" in allowedActions) add(QuickAction("Registrar cobro", Icons.Default.AccountBalanceWallet, false, onCollections))
+        if (showProducts && "new_product" in allowedActions) add(QuickAction("Productos", Icons.Default.Inventory2, false, onProducts))
+        if (showInventory && "inventory" in allowedActions) add(QuickAction("Inventario", Icons.Default.Inventory2, false, onInventory))
     }
 
     if (actions.isEmpty()) return

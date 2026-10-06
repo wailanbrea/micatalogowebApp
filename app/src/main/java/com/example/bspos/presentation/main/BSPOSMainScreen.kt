@@ -377,6 +377,8 @@ fun BSPOSMainScreen(
                 showSettings = canSeeMenu("settings"),
                 showAdminShops = connection.isAdmin,
                 remoteShopAvailable = connectedShop != null,
+                presentation = connectedShop?.presentation ?: com.example.bspos.domain.model.MiCatalogoBusinessPresentation(),
+                productFields = connectedShop?.productFields?.toSet().orEmpty(),
                 canSeeMenu = canSeeMenu,
                 modifier = Modifier.padding(paddingValues)
             )
@@ -394,6 +396,8 @@ fun BSPOSNavHost(
     showSettings: Boolean = false,
     showAdminShops: Boolean = false,
     remoteShopAvailable: Boolean = false,
+    presentation: com.example.bspos.domain.model.MiCatalogoBusinessPresentation = com.example.bspos.domain.model.MiCatalogoBusinessPresentation(),
+    productFields: Set<String> = emptySet(),
     canSeeMenu: (String) -> Boolean = { true },
     modifier: Modifier = Modifier
 ) {
@@ -417,19 +421,27 @@ fun BSPOSNavHost(
                 showCollections = canSeeMenu("collections"),
                 showInventory = canSeeMenu("inventory"),
                 showProducts = canSeeMenu("products"),
+                presentation = presentation,
                 isExpanded = isTablet
             )
         }
         composable(Screen.POS.route) {
             RestrictedMenuDestination(canSeeMenu("sales"), navController) {
-                PosScreen(onOpenCash = { navController.navigate(Screen.Cash.route) })
+                PosScreen(presentation = presentation.copy(posShowCredit = presentation.posShowCredit && canSeeMenu("collections")), onOpenCash = { navController.navigate(Screen.Cash.route) })
             }
         }
         composable(Screen.Catalog.route) {
-            RestrictedMenuDestination(canSeeMenu("products"), navController) { CatalogHomeScreen(isTablet) }
+            RestrictedMenuDestination(canSeeMenu("products"), navController) {
+                CatalogHomeScreen(
+                    isTablet = isTablet,
+                    presentation = presentation,
+                    showCost = !sellerMode || canSeeMenu("inventory") || canSeeMenu("finance"),
+                    showProductCode = productFields.isEmpty() || "sku" in productFields || "barcode" in productFields
+                )
+            }
         }
         composable(Screen.Customers.route) {
-            RestrictedMenuDestination(canSeeMenu("customers"), navController) { CustomerScreen() }
+            RestrictedMenuDestination(canSeeMenu("customers"), navController) { CustomerScreen(presentation = presentation.copy(customersShowCredit = presentation.customersShowCredit && canSeeMenu("collections"))) }
         }
         composable(Screen.Routes.route) {
             if (routesEnabled && canSeeMenu("routes")) {
@@ -458,7 +470,7 @@ fun BSPOSNavHost(
                     showSuppliers = canSeeMenu("more"),
                     showInventory = canSeeMenu("inventory"),
                     showCollections = canSeeMenu("collections"),
-                    showCredit = canSeeMenu("sales"),
+                    showCredit = canSeeMenu("collections"),
                     showCash = canSeeMenu("cash"),
                     showReturns = canSeeMenu("returns"),
                     showRouteLoads = routesEnabled && canSeeMenu("routes"),
@@ -478,7 +490,7 @@ fun BSPOSNavHost(
             RestrictedMenuDestination(canSeeMenu("collections"), navController) { CollectionScreen() }
         }
         composable(Screen.Credit.route) {
-            RestrictedMenuDestination(canSeeMenu("sales"), navController) { PosScreen(creditOnly = true) }
+            RestrictedMenuDestination(canSeeMenu("sales") && canSeeMenu("collections"), navController) { PosScreen(creditOnly = true, presentation = presentation.copy(posShowCredit = true)) }
         }
         composable(Screen.Cash.route) {
             RestrictedMenuDestination(canSeeMenu("cash"), navController) {

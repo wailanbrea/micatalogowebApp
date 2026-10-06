@@ -34,20 +34,27 @@ import com.example.bspos.core.money.MoneyUtils
 import com.example.bspos.domain.model.Category
 import com.example.bspos.domain.model.Product
 import com.example.bspos.domain.model.UnitOfMeasure
+import com.example.bspos.domain.model.MiCatalogoBusinessPresentation
 import com.example.bspos.domain.usecase.ProductInput
 import com.example.bspos.presentation.common.DialogScrollableColumn
 import coil.compose.AsyncImage
 import java.util.Locale
 
 @Composable
-fun CatalogHomeScreen(isTablet: Boolean, viewModel: ProductCatalogViewModel = hiltViewModel()) {
+fun CatalogHomeScreen(
+    isTablet: Boolean,
+    presentation: MiCatalogoBusinessPresentation = MiCatalogoBusinessPresentation(),
+    showCost: Boolean = false,
+    showProductCode: Boolean = true,
+    viewModel: ProductCatalogViewModel = hiltViewModel()
+) {
     var baseCatalog by remember { mutableStateOf(false) }
     var showForm by remember { mutableStateOf(false) }
     var editingProduct by remember { mutableStateOf<Product?>(null) }
     var deleteTarget by remember { mutableStateOf<Product?>(null) }
     if (baseCatalog) {
         Column(Modifier.fillMaxSize().background(BSPOSTheme.colors.background).padding(20.dp)) {
-            TextButton({ baseCatalog = false }) { Text("Productos") }
+            TextButton({ baseCatalog = false }) { Text(presentation.term("products", "Productos")) }
             CatalogSettingsScreen(Modifier.weight(1f))
         }
         return
@@ -66,7 +73,7 @@ fun CatalogHomeScreen(isTablet: Boolean, viewModel: ProductCatalogViewModel = hi
     Column(Modifier.fillMaxSize().background(BSPOSTheme.colors.background).padding(if (isTablet) 28.dp else 20.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text("Catalogo comercial", color = BSPOSTheme.colors.textSecondary)
+                Text(presentation.term("catalog", "Catálogo comercial"), color = BSPOSTheme.colors.textSecondary)
             }
             TextButton({ baseCatalog = true }) { Text("Categorias") }
         }
@@ -74,26 +81,26 @@ fun CatalogHomeScreen(isTablet: Boolean, viewModel: ProductCatalogViewModel = hi
         Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), color = BSPOSTheme.colors.surface, border = androidx.compose.foundation.BorderStroke(1.dp, BSPOSTheme.colors.outline)) {
             Row(Modifier.padding(horizontal = 14.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.Search, null, tint = BSPOSTheme.colors.primary)
-                OutlinedTextField(query, { query = it }, Modifier.weight(1f), placeholder = { Text("Buscar producto o codigo") }, singleLine = true, colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = androidx.compose.ui.graphics.Color.Transparent, unfocusedBorderColor = androidx.compose.ui.graphics.Color.Transparent))
+                OutlinedTextField(query, { query = it }, Modifier.weight(1f), placeholder = { Text(presentation.catalogSearchPlaceholder) }, singleLine = true, colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = androidx.compose.ui.graphics.Color.Transparent, unfocusedBorderColor = androidx.compose.ui.graphics.Color.Transparent))
             }
         }
         Spacer(Modifier.height(12.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Text("${filtered.size} productos", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelLarge)
-            Button({ showForm = true }, enabled = categories.any { it.isActive } && units.any { it.isActive }, shape = RoundedCornerShape(14.dp)) { Icon(Icons.Default.Add, null); Spacer(Modifier.width(5.dp)); Text("Nuevo producto") }
+            Text("${filtered.size} ${presentation.term("products", "productos").lowercase()}", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelLarge)
+            Button({ showForm = true }, enabled = categories.any { it.isActive } && units.any { it.isActive }, shape = RoundedCornerShape(14.dp)) { Icon(Icons.Default.Add, null); Spacer(Modifier.width(5.dp)); Text(presentation.term("new_product", "Nuevo producto")) }
         }
         Spacer(Modifier.height(12.dp))
         if (filtered.isEmpty()) {
-            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) { Text(if (query.isBlank()) "Crea tu primer producto para empezar" else "Sin coincidencias", color = BSPOSTheme.colors.textSecondary) }
+            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) { Text(if (query.isBlank()) presentation.catalogEmptyMessage else "Sin coincidencias", color = BSPOSTheme.colors.textSecondary) }
         } else {
             LazyVerticalGrid(GridCells.Fixed(if (isTablet) 4 else 2), Modifier.weight(1f), contentPadding = PaddingValues(bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                items(filtered, key = { it.id }) { product -> ProductCard(product, quantities[product.id] ?: 0L, categoryNames[product.categoryId],
+                items(filtered, key = { it.id }) { product -> ProductCard(product, quantities[product.id] ?: 0L, categoryNames[product.categoryId], presentation.catalogShowStock, showCost,
                     { if (viewModel.canEdit(product)) editingProduct = product else viewModel.reportReadOnly() },
                     { if (viewModel.canEdit(product)) deleteTarget = product else viewModel.reportReadOnly() }) }
             }
         }
     }
-    if (showForm || editingProduct != null) ProductForm(editingProduct, quantities[editingProduct?.id] ?: 0L, categories.filter { it.isActive }, units.filter { it.isActive }, { input, initialQuantity -> if (editingProduct == null) viewModel.add(input, initialQuantity) else viewModel.update(editingProduct!!, input); showForm = false; editingProduct = null }, { showForm = false; editingProduct = null }, shops)
+    if (showForm || editingProduct != null) ProductForm(editingProduct, quantities[editingProduct?.id] ?: 0L, categories.filter { it.isActive }, units.filter { it.isActive }, presentation, showCost, presentation.inventoryEnabled, showProductCode, { input, initialQuantity -> if (editingProduct == null) viewModel.add(input, initialQuantity) else viewModel.update(editingProduct!!, input); showForm = false; editingProduct = null }, { showForm = false; editingProduct = null }, shops)
     deleteTarget?.let { product ->
         AlertDialog(onDismissRequest = { deleteTarget = null }, title = { Text("Eliminar producto") }, text = { Text("¿Eliminar ${product.name}? El producto dejará de aparecer en el catálogo.") }, confirmButton = { TextButton({ viewModel.delete(product); deleteTarget = null }) { Text("Eliminar", color = BSPOSTheme.colors.error) } }, dismissButton = { TextButton({ deleteTarget = null }) { Text("Cancelar") } })
     }
@@ -101,7 +108,7 @@ fun CatalogHomeScreen(isTablet: Boolean, viewModel: ProductCatalogViewModel = hi
 }
 
 @Composable
-private fun ProductCard(product: Product, quantity: Long, category: String?, onClick: () -> Unit, onLongClick: () -> Unit) {
+private fun ProductCard(product: Product, quantity: Long, category: String?, showStock: Boolean, showCost: Boolean, onClick: () -> Unit, onLongClick: () -> Unit) {
     val statusColor = when {
         quantity <= 0 -> BSPOSTheme.colors.error
         product.minimumStock > 0 && quantity <= product.minimumStock -> BSPOSTheme.colors.warning
@@ -120,15 +127,17 @@ private fun ProductCard(product: Product, quantity: Long, category: String?, onC
             Text(category ?: product.internalCode, color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Spacer(Modifier.height(7.dp))
             Text("Venta: ${money(product.salePrice)}", color = BSPOSTheme.colors.textPrimary, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold)
-            Text("Compra: ${money(product.lastPurchaseCost)}", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelSmall)
-            Spacer(Modifier.height(9.dp))
-            Surface(shape = RoundedCornerShape(50), color = statusColor.copy(alpha = .12f)) { Text("$statusText ($quantity)", modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp), color = statusColor, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold) }
+            if (showCost) Text("Compra: ${money(product.lastPurchaseCost)}", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelSmall)
+            if (showStock) {
+                Spacer(Modifier.height(9.dp))
+                Surface(shape = RoundedCornerShape(50), color = statusColor.copy(alpha = .12f)) { Text("$statusText ($quantity)", modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp), color = statusColor, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold) }
+            }
         }
     }
 }
 
 @Composable
-private fun ProductForm(current: Product?, currentQuantity: Long, categories: List<Category>, units: List<UnitOfMeasure>, onSave: (ProductInput, Long) -> Unit, onDismiss: () -> Unit, shops: List<com.example.bspos.domain.model.MiCatalogoShop>) {
+private fun ProductForm(current: Product?, currentQuantity: Long, categories: List<Category>, units: List<UnitOfMeasure>, presentation: MiCatalogoBusinessPresentation, showCost: Boolean, showInventoryFields: Boolean, showProductCode: Boolean, onSave: (ProductInput, Long) -> Unit, onDismiss: () -> Unit, shops: List<com.example.bspos.domain.model.MiCatalogoShop>) {
     val context = LocalContext.current
     var name by remember(current?.id) { mutableStateOf(current?.name.orEmpty()) }
     var code by remember(current?.id) { mutableStateOf(current?.internalCode.orEmpty()) }
@@ -166,15 +175,15 @@ private fun ProductForm(current: Product?, currentQuantity: Long, categories: Li
             }
             OutlinedButton({ imageLauncher.launch(arrayOf("image/*")) }, Modifier.fillMaxWidth()) { Icon(Icons.Default.PhotoCamera, null); Spacer(Modifier.width(6.dp)); Text(if (imagePath == null) "Subir foto" else "Cambiar foto") }
             if (shopId != null) Text("La foto se enviará como principal. Se conservan las anteriores y se respeta el límite de tu plan.", style = MaterialTheme.typography.bodySmall)
-            OutlinedTextField(name, { name = it }, label = { Text("Nombre") })
-            OutlinedTextField(code, { code = it }, label = { Text("Codigo interno") })
-            OutlinedTextField(purchasePrice, { value -> if (current == null) purchasePrice = value; purchaseChanged = true; priceError = false }, label = { Text("Precio de compra (${LocalCurrency.current.symbol})") }, enabled = current == null, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), isError = priceError, supportingText = { if (current != null) Text("Se actualiza desde una entrada de inventario") })
+            OutlinedTextField(name, { name = it }, label = { Text(presentation.term("product", "Nombre")) })
+            if (showProductCode) OutlinedTextField(code, { code = it }, label = { Text("Código interno") })
+            if (showCost) OutlinedTextField(purchasePrice, { value -> if (current == null) purchasePrice = value; purchaseChanged = true; priceError = false }, label = { Text("Precio de compra (${LocalCurrency.current.symbol})") }, enabled = current == null, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), isError = priceError, supportingText = { if (current != null) Text("Se actualiza desde una entrada de inventario") })
             OutlinedTextField(price, { value -> price = value; priceChanged = true; priceError = false }, label = { Text("Precio de venta (${LocalCurrency.current.symbol})") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), isError = priceError, supportingText = { if (priceError) Text("Indica un precio válido, con hasta dos decimales") })
-            OutlinedTextField(initialQuantity, { value -> if (current == null) initialQuantity = value.filter(Char::isDigit) }, label = { Text("Stock inicial") }, enabled = current == null, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), supportingText = { Text(if (current == null) "Se registra en 0 si lo dejas así" else "Edita existencias desde Inventario") })
+            if (showInventoryFields) OutlinedTextField(initialQuantity, { value -> if (current == null) initialQuantity = value.filter(Char::isDigit) }, label = { Text("Stock inicial") }, enabled = current == null, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), supportingText = { Text(if (current == null) "Se registra en 0 si lo dejas así" else "Edita existencias desde Inventario") })
             Box { TextButton({ categoryOpen = true }) { Text("Categoria: ${category.name}") }; DropdownMenu(categoryOpen, { categoryOpen = false }) { categories.forEach { item -> DropdownMenuItem({ Text(item.name) }, { category = item; categoryOpen = false }) } } }
             Box { TextButton({ unitOpen = true }) { Text("Unidad: ${unit.name}") }; DropdownMenu(unitOpen, { unitOpen = false }) { units.forEach { item -> DropdownMenuItem({ Text(item.name) }, { unit = item; unitOpen = false }) } } }
         }
-    }, confirmButton = { TextButton({ val sale = if (!priceChanged && current != null) current.salePrice else price.toPesosCents(); val purchase = if (!purchaseChanged && current != null) current.lastPurchaseCost else purchasePrice.toPesosCents(); val quantity = initialQuantity.toLongOrNull(); if (name.isBlank() || code.isBlank() || sale == null || sale < 0 || purchase == null || purchase < 0 || quantity == null || quantity < 0) priceError = true else onSave(ProductInput(name, code, category.id, unit.id, sale, purchasePrice = purchase, imagePath = imagePath, thumbnailPath = imagePath, minimumStock = current?.minimumStock ?: 0, tracksExpiration = current?.tracksExpiration ?: false, remoteShopId = shopId), if (current == null) quantity else 0L) }) { Text("Guardar") } }, dismissButton = { TextButton(onDismiss) { Text("Cancelar") } })
+    }, confirmButton = { TextButton({ val sale = if (!priceChanged && current != null) current.salePrice else price.toPesosCents(); val purchase = if (!showCost) (current?.lastPurchaseCost ?: 0L) else if (!purchaseChanged && current != null) current.lastPurchaseCost else purchasePrice.toPesosCents(); val quantity = if (showInventoryFields) initialQuantity.toLongOrNull() else 0L; val effectiveCode = code.ifBlank { "AUTO-" + name.trim().uppercase(Locale.ROOT).replace(Regex("[^A-Z0-9]+"), "-").take(24) }; if (name.isBlank() || effectiveCode.isBlank() || sale == null || sale < 0 || purchase == null || purchase < 0 || quantity == null || quantity < 0) priceError = true else onSave(ProductInput(name, effectiveCode, category.id, unit.id, sale, purchasePrice = purchase, imagePath = imagePath, thumbnailPath = imagePath, minimumStock = current?.minimumStock ?: 0, tracksExpiration = current?.tracksExpiration ?: false, remoteShopId = shopId), if (current == null) quantity else 0L) }) { Text("Guardar") } }, dismissButton = { TextButton(onDismiss) { Text("Cancelar") } })
 }
 
 @Composable

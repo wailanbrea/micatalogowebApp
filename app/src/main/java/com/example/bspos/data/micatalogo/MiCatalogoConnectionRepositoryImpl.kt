@@ -17,6 +17,7 @@ import com.example.bspos.domain.model.MiCatalogoResult
 import com.example.bspos.domain.model.MiCatalogoShop
 import com.example.bspos.domain.model.MiCatalogoShopQuota
 import com.example.bspos.domain.model.MiCatalogoSeller
+import com.example.bspos.domain.model.MiCatalogoBusinessPresentation
 import com.example.bspos.domain.repository.MiCatalogoConnectionRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -131,6 +132,23 @@ class MiCatalogoConnectionRepositoryImpl @Inject constructor(
                     businessTypeLabel = shop.businessTypeLabel,
                     capabilities = shop.capabilities,
                     productFields = shop.productFields,
+                    presentation = MiCatalogoBusinessPresentation(
+                        archetype = shop.presentation.archetype,
+                        terminology = shop.presentation.terminology,
+                        dashboardWidgets = shop.presentation.dashboard.widgets,
+                        dashboardQuickActions = shop.presentation.dashboard.quickActions,
+                        dashboardTitle = shop.presentation.dashboard.title,
+                        posSearchPlaceholder = shop.presentation.pos.searchPlaceholder,
+                        posShowWholesale = shop.presentation.pos.showWholesale,
+                        posShowCredit = shop.presentation.pos.showCredit,
+                        posShowInventory = shop.presentation.pos.showInventory,
+                        catalogSearchPlaceholder = shop.presentation.catalog.searchPlaceholder,
+                        catalogEmptyMessage = shop.presentation.catalog.emptyMessage,
+                        catalogShowStock = shop.presentation.catalog.showStock,
+                        inventoryTitle = shop.presentation.inventory.title,
+                        inventoryEnabled = shop.presentation.inventory.enabled,
+                        customersShowCredit = shop.presentation.customers.showCredit
+                    ),
                     menuPermissions = shop.menuPermissions,
                     canManageSellers = shop.canManageSellers,
                     sellers = shop.sellers.map { seller ->

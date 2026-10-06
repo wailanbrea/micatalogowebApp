@@ -8,11 +8,32 @@ data class MiCatalogoShop(
     val businessTypeLabel: String? = null,
     val capabilities: Map<String, String> = emptyMap(),
     val productFields: List<String> = emptyList(),
+    val presentation: MiCatalogoBusinessPresentation = MiCatalogoBusinessPresentation(),
     val quota: MiCatalogoShopQuota? = null,
     val menuPermissions: List<String> = emptyList(),
     val canManageSellers: Boolean = false,
     val sellers: List<MiCatalogoSeller> = emptyList()
 )
+
+data class MiCatalogoBusinessPresentation(
+    val archetype: String = "general_retail",
+    val terminology: Map<String, String> = emptyMap(),
+    val dashboardWidgets: List<String> = emptyList(),
+    val dashboardQuickActions: List<String> = emptyList(),
+    val dashboardTitle: String = "Resumen de tu negocio",
+    val posSearchPlaceholder: String = "Buscar producto o código",
+    val posShowWholesale: Boolean = false,
+    val posShowCredit: Boolean = false,
+    val posShowInventory: Boolean = true,
+    val catalogSearchPlaceholder: String = "Buscar productos",
+    val catalogEmptyMessage: String = "Crea tu primer producto para empezar",
+    val catalogShowStock: Boolean = true,
+    val inventoryTitle: String = "Existencias y movimientos",
+    val inventoryEnabled: Boolean = true,
+    val customersShowCredit: Boolean = false
+) {
+    fun term(key: String, fallback: String): String = terminology[key].orEmpty().ifBlank { fallback }
+}
 
 data class MiCatalogoManagedShop(
     val id: String,

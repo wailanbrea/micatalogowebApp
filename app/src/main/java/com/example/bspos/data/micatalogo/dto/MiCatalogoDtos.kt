@@ -50,10 +50,55 @@ data class ShopDto(
     @SerialName("business_type_label") val businessTypeLabel: String? = null,
     val capabilities: Map<String, String> = emptyMap(),
     @SerialName("product_fields") val productFields: List<String> = emptyList(),
+    val presentation: BusinessPresentationDto = BusinessPresentationDto(),
     val quota: ShopQuotaDto? = null,
     @SerialName("menu_permissions") val menuPermissions: List<String> = emptyList(),
     @SerialName("can_manage_sellers") val canManageSellers: Boolean = false,
     val sellers: List<ShopSellerDto> = emptyList()
+)
+
+@Serializable
+data class BusinessPresentationDto(
+    val archetype: String = "general_retail",
+    val terminology: Map<String, String> = emptyMap(),
+    val dashboard: BusinessDashboardPresentationDto = BusinessDashboardPresentationDto(),
+    val pos: BusinessPosPresentationDto = BusinessPosPresentationDto(),
+    val catalog: BusinessCatalogPresentationDto = BusinessCatalogPresentationDto(),
+    val inventory: BusinessInventoryPresentationDto = BusinessInventoryPresentationDto(),
+    val customers: BusinessCustomersPresentationDto = BusinessCustomersPresentationDto()
+)
+
+@Serializable
+data class BusinessDashboardPresentationDto(
+    val widgets: List<String> = emptyList(),
+    @SerialName("quick_actions") val quickActions: List<String> = emptyList(),
+    val title: String = "Resumen de tu negocio"
+)
+
+@Serializable
+data class BusinessPosPresentationDto(
+    @SerialName("search_placeholder") val searchPlaceholder: String = "Buscar producto o código",
+    @SerialName("show_wholesale") val showWholesale: Boolean = false,
+    @SerialName("show_credit") val showCredit: Boolean = false,
+    @SerialName("show_inventory") val showInventory: Boolean = true
+)
+
+@Serializable
+data class BusinessCatalogPresentationDto(
+    @SerialName("search_placeholder") val searchPlaceholder: String = "Buscar productos",
+    @SerialName("empty_message") val emptyMessage: String = "Crea tu primer producto para empezar",
+    @SerialName("show_stock") val showStock: Boolean = true
+)
+
+@Serializable
+data class BusinessInventoryPresentationDto(
+    val title: String = "Existencias y movimientos",
+    val enabled: Boolean = true
+)
+
+@Serializable
+data class BusinessCustomersPresentationDto(
+    @SerialName("show_credit") val showCredit: Boolean = false
 )
 
 @Serializable
