@@ -123,6 +123,7 @@ fun canAccessMiCatalogoMenu(
         "cash" -> "cash"
         "expenses" -> "expenses"
         "finance" -> "finance"
+        "decants" -> "decants"
         else -> null
     }
     if (requiredCapability != null && capabilities.isNotEmpty() && capabilities[requiredCapability] != "enabled") return false

@@ -26,6 +26,28 @@ class MiCatalogoMenuAccessTest {
     }
 
     @Test
+    fun decantsRequiresTheBusinessCapabilityWhenCapabilitiesAreKnown() {
+        assertFalse(
+            canAccessMiCatalogoMenu(
+                isPlatformOwner = false,
+                canManageShop = true,
+                menuPermissions = emptyList(),
+                menu = "decants",
+                capabilities = mapOf("decants" to "disabled")
+            )
+        )
+        assertTrue(
+            canAccessMiCatalogoMenu(
+                isPlatformOwner = false,
+                canManageShop = true,
+                menuPermissions = emptyList(),
+                menu = "decants",
+                capabilities = mapOf("decants" to "enabled")
+            )
+        )
+    }
+
+    @Test
     fun sellerPermissionEditorCoversTheSameFeatureKeysAsThePanel() {
         val expected = setOf(
             "sales", "products", "printers", "quotes", "orders", "encargos", "shipments",
