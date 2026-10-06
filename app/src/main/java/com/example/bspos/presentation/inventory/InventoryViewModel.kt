@@ -77,7 +77,8 @@ class InventoryViewModel @Inject constructor(
                     is MiCatalogoResult.Success -> {
                         _editableShopIds.value = result.value.filter { state.isAdmin || it.canManageSellers }.map { it.id }.toSet()
                         _importShop.value = result.value.firstOrNull { shop ->
-                            (state.isAdmin || shop.canManageSellers) && "bulk_import" in (shop.quota?.features.orEmpty())
+                            (state.isAdmin || shop.canManageSellers) &&
+                                (state.isAdmin || "bulk_import" in (shop.quota?.features.orEmpty()))
                         }
                     }
                     is MiCatalogoResult.Failure -> {

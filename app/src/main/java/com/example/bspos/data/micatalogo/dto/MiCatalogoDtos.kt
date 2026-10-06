@@ -2,6 +2,34 @@ package com.example.bspos.data.micatalogo.dto
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.KSerializer
+import kotlinx.serialization.descriptors.PrimitiveKind
+import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
+import kotlinx.serialization.descriptors.SerialDescriptor
+import kotlinx.serialization.json.JsonDecoder
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonPrimitive
+
+/**
+ * Some legacy feature endpoints returned row ids as JSON numbers while newer
+ * responses return them as strings. The UI only needs a stable textual key,
+ * so accept both representations at the API boundary.
+ */
+object FlexibleStringSerializer : KSerializer<String> {
+    override val descriptor: SerialDescriptor =
+        PrimitiveSerialDescriptor("FlexibleString", PrimitiveKind.STRING)
+
+    override fun serialize(encoder: kotlinx.serialization.encoding.Encoder, value: String) {
+        encoder.encodeString(value)
+    }
+
+    override fun deserialize(decoder: kotlinx.serialization.encoding.Decoder): String {
+        val jsonDecoder = decoder as? JsonDecoder
+            ?: return decoder.decodeString()
+        val element: JsonElement = jsonDecoder.decodeJsonElement()
+        return (element as? JsonPrimitive)?.content ?: element.toString()
+    }
+}
 
 @Serializable
 data class LoginRequestDto(
@@ -129,6 +157,7 @@ data class FeatureKpiDto(
 
 @Serializable
 data class FeatureRowDto(
+    @Serializable(with = FlexibleStringSerializer::class)
     val id: String? = null,
     val primary: String = "",
     val secondary: String = "",

@@ -45,6 +45,7 @@ import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -74,6 +75,7 @@ import java.util.UUID
 fun InventoryScreen(
     onOpenProducts: (() -> Unit)? = null,
     onOpenPrices: (() -> Unit)? = null,
+    initialImport: Boolean = false,
     viewModel: InventoryViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
@@ -94,6 +96,7 @@ fun InventoryScreen(
     var countForm by remember { mutableStateOf(false) }
     var adjustmentForm by remember { mutableStateOf(false) }
     var reasonForm by remember { mutableStateOf(false) }
+    var importRequested by remember(initialImport) { mutableStateOf(initialImport) }
     var selectedProduct by remember { mutableStateOf<UUID?>(null) }
     val names = products.associate { it.id to it.name }
     val productById = products.associateBy { it.id }
@@ -124,6 +127,19 @@ fun InventoryScreen(
             viewModel.previewImport(file.name, file.mimeType, file.bytes)
         }
     }
+    LaunchedEffect(importRequested, importShop?.id) {
+        if (importRequested && importShop != null && !isLoadingImport) {
+            importRequested = false
+            fileLauncher.launch(
+                arrayOf(
+                    "text/*",
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    "application/vnd.ms-excel",
+                    "application/pdf"
+                )
+            )
+        }
+    }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize().background(BSPOSTheme.colors.background),
@@ -132,8 +148,12 @@ fun InventoryScreen(
     ) {
         item {
             Text("CATÁLOGO", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
-            Text("Inventario", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold, color = BSPOSTheme.colors.textPrimary)
-            Text("Tus productos y lo que tienes en existencia.", color = BSPOSTheme.colors.textSecondary)
+            Text(if (initialImport) "Importar inventario" else "Inventario", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold, color = BSPOSTheme.colors.textPrimary)
+            Text(
+                if (initialImport) "Carga Excel, CSV o PDF y revisa los datos antes de guardarlos."
+                else "Tus productos y lo que tienes en existencia.",
+                color = BSPOSTheme.colors.textSecondary
+            )
         }
         item {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {

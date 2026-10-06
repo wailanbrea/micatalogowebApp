@@ -76,6 +76,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -682,6 +683,9 @@ fun BSPOSMainScreen(
                     presentation = connectedShop?.presentation ?: MiCatalogoBusinessPresentation(),
                     businessName = businessName,
                     productFields = connectedShop?.productFields?.toSet().orEmpty(),
+                    shopName = connectedShop?.name,
+                    shopId = connectedShop?.id,
+                    shopSlug = connectedShop?.slug,
                     canSeeMenu = canSeeMenu,
                     modifier = Modifier.padding(paddingValues)
                 )
@@ -703,6 +707,9 @@ fun BSPOSNavHost(
     presentation: MiCatalogoBusinessPresentation = MiCatalogoBusinessPresentation(),
     businessName: String = "tu negocio",
     productFields: Set<String> = emptySet(),
+    shopName: String? = null,
+    shopId: String? = null,
+    shopSlug: String? = null,
     canSeeMenu: (String) -> Boolean = { true },
     modifier: Modifier = Modifier
 ) {
@@ -784,13 +791,29 @@ fun BSPOSNavHost(
                 )
             }
         }
-        composable(Screen.Storefront.route) { FeatureDestination("storefront", canSeeMenu("storefront"), navController) }
+        composable(Screen.Storefront.route) {
+            RestrictedMenuDestination(canSeeMenu("storefront"), navController) {
+                StorefrontWorkspaceScreen(
+                    shopName = shopName,
+                    shopId = shopId,
+                    shopSlug = shopSlug
+                )
+            }
+        }
         composable(Screen.Services.route) { FeatureDestination("services", canSeeMenu("services"), navController) }
         composable(Screen.PriceHealth.route) { FeatureDestination("price_health", canSeeMenu("price_health"), navController) }
         composable(Screen.AutomaticPrices.route) { FeatureDestination("pricing", canSeeMenu("pricing"), navController) }
         composable(Screen.Decants.route) { FeatureDestination("decants", canSeeMenu("decants"), navController) }
         composable(Screen.Attributes.route) { FeatureDestination("attributes", canSeeMenu("attributes"), navController) }
-        composable(Screen.Import.route) { FeatureDestination("import", canSeeMenu("import"), navController) }
+        composable(Screen.Import.route) {
+            RestrictedMenuDestination(canSeeMenu("import"), navController) {
+                InventoryScreen(
+                    onOpenProducts = if (canSeeMenu("products")) {{ navController.navigate(Screen.Catalog.route) }} else null,
+                    onOpenPrices = if (canSeeMenu("price_health")) {{ navController.navigate(Screen.PriceHealth.route) }} else null,
+                    initialImport = true
+                )
+            }
+        }
         composable(Screen.InventoryAdjustments.route) { FeatureDestination("inventory_adjustments", canSeeMenu("inventory_adjustments"), navController) }
         composable(Screen.Partners.route) { FeatureDestination("partners", canSeeMenu("partners"), navController) }
         composable(Screen.Reports.route) { FeatureDestination("reports", canSeeMenu("reports"), navController) }
@@ -974,6 +997,60 @@ private fun RestrictedMenuDestination(
         LaunchedEffect(Unit) {
             navController.popBackStack(Screen.Dashboard.route, false)
         }
+    }
+}
+
+@Composable
+private fun StorefrontWorkspaceScreen(
+    shopName: String?,
+    shopId: String?,
+    shopSlug: String?
+) {
+    val context = LocalContext.current
+    val baseUrl = BuildConfig.MICATALOGO_API_BASE_URL.trimEnd('/')
+    val publicUrl = shopSlug?.trim()?.takeIf { it.isNotBlank() }?.let { "$baseUrl/tienda/$it" }
+    val settingsUrl = shopId?.trim()?.takeIf { it.isNotBlank() }?.let { "$baseUrl/panel/tiendas/$it/editar" }
+
+    fun openUrl(url: String?, unavailableMessage: String) {
+        if (url.isNullOrBlank()) {
+            UiErrorBus.show(unavailableMessage)
+            return
+        }
+        runCatching {
+            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+        }.onFailure {
+            UiErrorBus.show("No se pudo abrir el enlace de la tienda.")
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(BSPOSTheme.colors.background)
+            .verticalScroll(rememberScrollState())
+            .padding(20.dp),
+        verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(14.dp)
+    ) {
+        Text("CATÁLOGO", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+        Text("Mi tienda", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold)
+        Text("Administra la vitrina pública y revisa la experiencia que ven tus clientes.", color = BSPOSTheme.colors.textSecondary)
+        Text(shopName?.takeIf { it.isNotBlank() } ?: "Tienda activa", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Text("Los cambios de catálogo se reflejan en el mismo enlace público.", color = BSPOSTheme.colors.textSecondary)
+        TextButton(onClick = { openUrl(publicUrl, "Esta tienda todavía no tiene un enlace público.") }) {
+            Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null)
+            Spacer(Modifier.width(8.dp))
+            Text("Ver mi tienda")
+        }
+        TextButton(onClick = { openUrl(settingsUrl, "No se encontró la configuración de esta tienda.") }) {
+            Icon(Icons.Default.Settings, contentDescription = null)
+            Spacer(Modifier.width(8.dp))
+            Text("Personalizar apariencia")
+        }
+        Text(
+            "La edición avanzada continúa en el panel web; esta entrada ya conserva el contexto de la tienda activa y evita dejar una pantalla sin acción.",
+            color = BSPOSTheme.colors.textSecondary,
+            style = MaterialTheme.typography.bodySmall
+        )
     }
 }
 

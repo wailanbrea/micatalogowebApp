@@ -43,8 +43,8 @@ android {
         applicationId = "com.bsolutions.micatalogo"
         minSdk = 26
         targetSdk = 37
-        versionCode = 29
-        versionName = "1.0.28"
+        versionCode = 32
+        versionName = "1.0.31"
         buildConfigField("String", "MICATALOGO_API_BASE_URL", "\"${miCatalogoApiBaseUrl.get()}\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
