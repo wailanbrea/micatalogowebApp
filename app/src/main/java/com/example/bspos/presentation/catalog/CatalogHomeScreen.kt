@@ -47,10 +47,11 @@ fun CatalogHomeScreen(
     showCost: Boolean = false,
     showProductCode: Boolean = true,
     photosOnly: Boolean = false,
+    initialDecantMode: Boolean = false,
     viewModel: ProductCatalogViewModel = hiltViewModel()
 ) {
     var baseCatalog by remember { mutableStateOf(false) }
-    var showForm by remember { mutableStateOf(false) }
+    var showForm by remember { mutableStateOf(initialDecantMode) }
     var editingProduct by remember { mutableStateOf<Product?>(null) }
     var deleteTarget by remember { mutableStateOf<Product?>(null) }
     if (baseCatalog) {
@@ -66,6 +67,10 @@ fun CatalogHomeScreen(
     val stock by viewModel.stock.collectAsState()
     val message by viewModel.message.collectAsState()
     val shops by viewModel.shops.collectAsState()
+    val sourceProducts = products.filter {
+        it.isActive && it.deletedAt == null && it.remoteShopId != null && it.remoteProductId != null &&
+            it.remoteSaleUnit in setOf("bottle", "ml") && it.remoteVolumeMl != null
+    }
     var query by remember { mutableStateOf("") }
     val quantities = stock.associate { it.productId to it.quantity }
     val categoryNames = categories.associate { it.id to it.name }
@@ -78,7 +83,7 @@ fun CatalogHomeScreen(
     Column(Modifier.fillMaxSize().background(BSPOSTheme.colors.background).padding(if (isTablet) 28.dp else 20.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text(if (photosOnly) "CATÁLOGO / FOTOS" else presentation.term("products", "Catalogo comercial"), color = BSPOSTheme.colors.textSecondary)
+                Text(if (photosOnly) "CATÁLOGO / FOTOS" else if (initialDecantMode) "CATÁLOGO / DECANTS" else presentation.term("products", "Catalogo comercial"), color = BSPOSTheme.colors.textSecondary)
                 if (photosOnly) Text("Productos sin foto", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
             }
             if (!photosOnly) TextButton({ baseCatalog = true }) { Text("Categorias") }
@@ -97,7 +102,7 @@ fun CatalogHomeScreen(
                 color = BSPOSTheme.colors.textSecondary,
                 style = MaterialTheme.typography.labelLarge
             )
-            Button({ showForm = true }, enabled = categories.any { it.isActive } && units.any { it.isActive }, shape = RoundedCornerShape(14.dp)) { Icon(Icons.Default.Add, null); Spacer(Modifier.width(5.dp)); Text("Nuevo producto") }
+            Button({ showForm = true }, enabled = categories.any { it.isActive } && units.any { it.isActive }, shape = RoundedCornerShape(14.dp)) { Icon(Icons.Default.Add, null); Spacer(Modifier.width(5.dp)); Text(if (initialDecantMode) "Nueva presentación" else "Nuevo producto") }
         }
         Spacer(Modifier.height(12.dp))
         if (filtered.isEmpty()) {
@@ -119,7 +124,21 @@ fun CatalogHomeScreen(
             }
         }
     }
-    if (showForm || editingProduct != null) ProductForm(editingProduct, quantities[editingProduct?.id] ?: 0L, categories.filter { it.isActive }, units.filter { it.isActive }, presentation, showCost, presentation.inventoryEnabled, showProductCode, { input, initialQuantity -> if (editingProduct == null) viewModel.add(input, initialQuantity) else viewModel.update(editingProduct!!, input); showForm = false; editingProduct = null }, { showForm = false; editingProduct = null }, shops)
+    if (showForm || editingProduct != null) ProductForm(
+        current = editingProduct,
+        currentQuantity = quantities[editingProduct?.id] ?: 0L,
+        categories = categories.filter { it.isActive },
+        units = units.filter { it.isActive },
+        presentation = presentation,
+        showCost = showCost,
+        showInventoryFields = presentation.inventoryEnabled,
+        showProductCode = showProductCode,
+        onSave = { input, initialQuantity -> if (editingProduct == null) viewModel.add(input, initialQuantity) else viewModel.update(editingProduct!!, input); showForm = false; editingProduct = null },
+        onDismiss = { showForm = false; editingProduct = null },
+        shops = shops,
+        decantMode = initialDecantMode,
+        sourceProducts = sourceProducts
+    )
     deleteTarget?.let { product ->
         AlertDialog(onDismissRequest = { deleteTarget = null }, title = { Text("Eliminar producto") }, text = { Text("¿Eliminar ${product.name}? El producto dejará de aparecer en el catálogo.") }, confirmButton = { TextButton({ viewModel.delete(product); deleteTarget = null }) { Text("Eliminar", color = BSPOSTheme.colors.error) } }, dismissButton = { TextButton({ deleteTarget = null }) { Text("Cancelar") } })
     }
@@ -153,7 +172,7 @@ private fun ProductCard(product: Product, quantity: Long, category: String?, sho
 }
 
 @Composable
-private fun ProductForm(current: Product?, currentQuantity: Long, categories: List<Category>, units: List<UnitOfMeasure>, presentation: MiCatalogoBusinessPresentation, showCost: Boolean, showInventoryFields: Boolean, showProductCode: Boolean, onSave: (ProductInput, Long) -> Unit, onDismiss: () -> Unit, shops: List<com.example.bspos.domain.model.MiCatalogoShop>) {
+private fun ProductForm(current: Product?, currentQuantity: Long, categories: List<Category>, units: List<UnitOfMeasure>, presentation: MiCatalogoBusinessPresentation, showCost: Boolean, showInventoryFields: Boolean, showProductCode: Boolean, onSave: (ProductInput, Long) -> Unit, onDismiss: () -> Unit, shops: List<com.example.bspos.domain.model.MiCatalogoShop>, decantMode: Boolean = false, sourceProducts: List<Product> = emptyList()) {
     val context = LocalContext.current
     var name by remember(current?.id) { mutableStateOf(current?.name.orEmpty()) }
     var code by remember(current?.id) { mutableStateOf(current?.internalCode.orEmpty()) }
@@ -172,13 +191,34 @@ private fun ProductForm(current: Product?, currentQuantity: Long, categories: Li
     var imagePath by remember(current?.id) { mutableStateOf(current?.imagePath) }
     var shopId by remember(current?.id, shops) { mutableStateOf(current?.remoteShopId ?: shops.singleOrNull()?.id) }
     var shopOpen by remember { mutableStateOf(false) }
+    val effectiveDecantMode = decantMode || current?.remoteSaleUnit == "decant"
+    var volumeMl by remember(current?.id, effectiveDecantMode) { mutableStateOf(current?.remoteVolumeMl?.toString().orEmpty()) }
+    var sourceProduct by remember(current?.id, sourceProducts) { mutableStateOf(sourceProducts.firstOrNull { it.remoteProductId == current?.remoteSourceProductId }) }
+    var sourceOpen by remember { mutableStateOf(false) }
     val imageLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri ?: return@rememberLauncherForActivityResult
         runCatching { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
         imagePath = uri.toString()
     }
-    AlertDialog(onDismissRequest = onDismiss, title = { Text(if (current == null) "Nuevo producto" else "Editar producto") }, text = {
+    AlertDialog(onDismissRequest = onDismiss, title = { Text(if (effectiveDecantMode) "Nueva presentación decant" else if (current == null) "Nuevo producto" else "Editar producto") }, text = {
         DialogScrollableColumn {
+            if (effectiveDecantMode) {
+                Text("La presentación comparte el inventario de su producto fuente. Cada venta descuenta los ml correspondientes.", style = MaterialTheme.typography.bodySmall)
+                Spacer(Modifier.height(8.dp))
+                Box {
+                    TextButton({ sourceOpen = true }) { Text("Fuente: ${sourceProduct?.name ?: "Seleccionar botella o producto en ml"}") }
+                    DropdownMenu(sourceOpen, { sourceOpen = false }) {
+                        sourceProducts.forEach { item ->
+                            DropdownMenuItem(
+                                text = { Text("${item.name} · ${item.remoteVolumeMl} ml") },
+                                onClick = { sourceProduct = item; sourceOpen = false }
+                            )
+                        }
+                    }
+                }
+                if (sourceProducts.isEmpty()) Text("Primero sincroniza o crea una botella fuente con volumen y control de inventario.", color = BSPOSTheme.colors.warning, style = MaterialTheme.typography.bodySmall)
+                OutlinedTextField(volumeMl, { volumeMl = it.filter(Char::isDigit) }, label = { Text("Tamaño del decant (ml)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), supportingText = { Text("Máximo: ${sourceProduct?.remoteVolumeMl ?: "—"} ml") })
+            }
             if (current == null) Box {
                 TextButton({ shopOpen = true }) { Text("Destino: ${shops.find { it.id == shopId }?.name ?: "Solo este dispositivo"}") }
                 DropdownMenu(shopOpen, { shopOpen = false }) {
@@ -195,10 +235,10 @@ private fun ProductForm(current: Product?, currentQuantity: Long, categories: Li
             if (shopId != null) Text("La foto se enviará como principal. Se conservan las anteriores y se respeta el límite de tu plan.", style = MaterialTheme.typography.bodySmall)
             OutlinedTextField(name, { name = it }, label = { Text(presentation.term("product", "Nombre")) })
             if (showProductCode) OutlinedTextField(code, { code = it }, label = { Text("Código interno") })
-            if (showCost) OutlinedTextField(purchasePrice, { value -> if (current == null) purchasePrice = value; purchaseChanged = true; priceError = false }, label = { Text("Precio de compra (${LocalCurrency.current.symbol})") }, enabled = current == null, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), isError = priceError, supportingText = { if (current != null) Text("Se actualiza desde una entrada de inventario") })
+            if (showCost && !effectiveDecantMode) OutlinedTextField(purchasePrice, { value -> if (current == null) purchasePrice = value; purchaseChanged = true; priceError = false }, label = { Text("Precio de compra (${LocalCurrency.current.symbol})") }, enabled = current == null, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), isError = priceError, supportingText = { if (current != null) Text("Se actualiza desde una entrada de inventario") })
             OutlinedTextField(price, { value -> price = value; priceChanged = true; priceError = false }, label = { Text("Precio de venta (${LocalCurrency.current.symbol})") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), isError = priceError, supportingText = { if (priceError) Text("Indica un precio válido, con hasta dos decimales") })
             OutlinedTextField(wholesalePrice, { wholesalePrice = it; priceError = false }, label = { Text("Precio por mayor (${LocalCurrency.current.symbol})") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), supportingText = { Text("Opcional; habilita el modo mayorista en el POS") })
-            if (showInventoryFields) OutlinedTextField(initialQuantity, { value -> if (current == null) initialQuantity = value.filter(Char::isDigit) }, label = { Text("Stock inicial") }, enabled = current == null, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), supportingText = { Text(if (current == null) "Se registra en 0 si lo dejas así" else "Edita existencias desde Inventario") })
+            if (showInventoryFields && !effectiveDecantMode) OutlinedTextField(initialQuantity, { value -> if (current == null) initialQuantity = value.filter(Char::isDigit) }, label = { Text("Stock inicial") }, enabled = current == null, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), supportingText = { Text(if (current == null) "Se registra en 0 si lo dejas así" else "Edita existencias desde Inventario") })
             OutlinedTextField(minimumStock, { minimumStock = it.filter(Char::isDigit) }, label = { Text("Aviso de mínimo") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), supportingText = { Text("Te avisaremos al llegar a esta cantidad") })
             Box { TextButton({ categoryOpen = true }) { Text("Categoria: ${category.name}") }; DropdownMenu(categoryOpen, { categoryOpen = false }) { categories.forEach { item -> DropdownMenuItem({ Text(item.name) }, { category = item; categoryOpen = false }) } } }
             Box { TextButton({ unitOpen = true }) { Text("Unidad: ${unit.name}") }; DropdownMenu(unitOpen, { unitOpen = false }) { units.forEach { item -> DropdownMenuItem({ Text(item.name) }, { unit = item; unitOpen = false }) } } }
@@ -211,12 +251,15 @@ private fun ProductForm(current: Product?, currentQuantity: Long, categories: Li
             val quantity = initialQuantity.toLongOrNull()
             val minimum = minimumStock.toLongOrNull()
             val effectiveCode = code.ifBlank { "AUTO-" + name.trim().uppercase(Locale.ROOT).replace(Regex("[^A-Z0-9]+"), "-").take(24) }
-            val effectivePurchase = if (showCost) purchase else (current?.lastPurchaseCost ?: 0L)
-            val effectiveQuantity = if (showInventoryFields) quantity else 0L
-            if (name.isBlank() || (showProductCode && effectiveCode.isBlank()) || sale == null || sale < 0 || effectivePurchase == null || effectivePurchase < 0 || wholesale?.let { it < 0 } == true || effectiveQuantity == null || effectiveQuantity < 0 || minimum == null || minimum < 0) {
+            val effectivePurchase = if (effectiveDecantMode) 0L else if (showCost) purchase else (current?.lastPurchaseCost ?: 0L)
+            val effectiveQuantity = if (showInventoryFields && !effectiveDecantMode) quantity else 0L
+            val selectedVolume = volumeMl.toIntOrNull()
+            val sourceVolume = sourceProduct?.remoteVolumeMl
+            val validPresentation = !effectiveDecantMode || (shopId != null && sourceProduct?.remoteProductId != null && selectedVolume != null && selectedVolume > 0 && sourceVolume != null && selectedVolume <= sourceVolume)
+            if (name.isBlank() || (showProductCode && effectiveCode.isBlank()) || sale == null || sale < 0 || effectivePurchase == null || effectivePurchase < 0 || wholesale?.let { it < 0 } == true || effectiveQuantity == null || effectiveQuantity < 0 || minimum == null || minimum < 0 || !validPresentation) {
                 priceError = true
             } else {
-                onSave(ProductInput(name, effectiveCode, category.id, unit.id, sale, purchasePrice = effectivePurchase, wholesalePrice = wholesale, imagePath = imagePath, thumbnailPath = imagePath, minimumStock = minimum, tracksExpiration = current?.tracksExpiration ?: false, remoteShopId = shopId), if (current == null) effectiveQuantity else 0L)
+                onSave(ProductInput(name, effectiveCode, category.id, unit.id, sale, purchasePrice = if (effectiveDecantMode) 0L else effectivePurchase, wholesalePrice = wholesale, imagePath = imagePath, thumbnailPath = imagePath, minimumStock = minimum, tracksExpiration = current?.tracksExpiration ?: false, remoteShopId = shopId, remoteSaleUnit = if (decantMode) "decant" else null, remoteVolumeMl = if (decantMode) selectedVolume else null, remoteSourceProductId = if (decantMode) sourceProduct?.remoteProductId else null), if (current == null) effectiveQuantity else 0L)
             }
         }) { Text("Guardar") }
     }, dismissButton = { TextButton(onDismiss) { Text("Cancelar") } })

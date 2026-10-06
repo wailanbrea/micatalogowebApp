@@ -36,7 +36,9 @@ fun ProductEntity.toDomain() = Product(
     lastPurchaseCost = lastPurchaseCost, minimumStock = minimumStock, imagePath = imagePath,
     thumbnailPath = thumbnailPath, isActive = isActive, tracksExpiration = tracksExpiration,
     createdAt = createdAt, updatedAt = updatedAt, deletedAt = deletedAt,
-    remoteShopId = miCatalogoShopId, remoteProductId = miCatalogoProductId, remoteSaleUnit = miCatalogoSaleUnit
+    remoteShopId = miCatalogoShopId, remoteProductId = miCatalogoProductId, remoteSaleUnit = miCatalogoSaleUnit,
+    remoteVolumeMl = miCatalogoVolumeMl, remoteAvailableMl = miCatalogoAvailableMl,
+    remoteSourceProductId = miCatalogoSourceProductId
 )
 
 fun Product.toEntity() = ProductEntity(
@@ -48,7 +50,11 @@ fun Product.toEntity() = ProductEntity(
     thumbnailPath = thumbnailPath, isActive = isActive, tracksExpiration = tracksExpiration,
     createdAt = createdAt, updatedAt = updatedAt, deletedAt = deletedAt,
     miCatalogoShopId = remoteShopId, miCatalogoProductId = remoteProductId,
-    miCatalogoInternalCode = if (remoteProductId != null) internalCode else null
+    miCatalogoInternalCode = if (remoteProductId != null) internalCode else null,
+    miCatalogoSourceProductId = remoteSourceProductId,
+    miCatalogoVolumeMl = remoteVolumeMl,
+    miCatalogoAvailableMl = remoteAvailableMl,
+    miCatalogoSaleUnit = remoteSaleUnit
 )
 
 fun SupplierEntity.toDomain() = Supplier(

@@ -66,6 +66,13 @@ sealed class Screen(
         unselectedIcon = Icons.Outlined.Inventory2
     )
 
+    data object DecantCreate : Screen(
+        route = "decant_create",
+        title = "Nueva presentación decant",
+        selectedIcon = Icons.Filled.Inventory2,
+        unselectedIcon = Icons.Outlined.Inventory2
+    )
+
     data object Customers : Screen(
         route = "customers",
         title = "Clientes",

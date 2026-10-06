@@ -26,5 +26,8 @@ data class Product(
     val deletedAt: Instant? = null,
     val remoteShopId: String? = null,
     val remoteProductId: String? = null,
-    val remoteSaleUnit: String? = null
+    val remoteSaleUnit: String? = null,
+    val remoteVolumeMl: Int? = null,
+    val remoteAvailableMl: Int? = null,
+    val remoteSourceProductId: String? = null
 )

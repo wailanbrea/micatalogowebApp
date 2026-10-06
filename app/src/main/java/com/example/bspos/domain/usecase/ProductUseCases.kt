@@ -22,7 +22,10 @@ data class ProductInput(
     val tracksExpiration: Boolean = false,
     val imagePath: String? = null,
     val thumbnailPath: String? = null,
-    val remoteShopId: String? = null
+    val remoteShopId: String? = null,
+    val remoteSaleUnit: String? = null,
+    val remoteVolumeMl: Int? = null,
+    val remoteSourceProductId: String? = null
 )
 
 class ProductUseCases @Inject constructor(
@@ -47,7 +50,10 @@ class ProductUseCases @Inject constructor(
             barcode = current.barcode,
             remoteShopId = current.remoteShopId,
             remoteProductId = current.remoteProductId,
-            remoteSaleUnit = current.remoteSaleUnit,
+            remoteSaleUnit = input.remoteSaleUnit ?: current.remoteSaleUnit,
+            remoteVolumeMl = if (input.remoteSaleUnit != null) input.remoteVolumeMl else current.remoteVolumeMl,
+            remoteAvailableMl = current.remoteAvailableMl,
+            remoteSourceProductId = if (input.remoteSaleUnit != null) input.remoteSourceProductId else current.remoteSourceProductId,
             lastPurchaseCost = current.lastPurchaseCost,
             imagePath = input.imagePath ?: current.imagePath,
             thumbnailPath = input.thumbnailPath ?: current.thumbnailPath,
@@ -81,7 +87,10 @@ class ProductUseCases @Inject constructor(
             createdAt = createdAt,
             updatedAt = updatedAt,
             remoteShopId = input.remoteShopId,
-            remoteProductId = input.remoteShopId?.let { com.example.bspos.data.micatalogo.RemoteMutationRecorder.productId(id) }
+            remoteProductId = input.remoteShopId?.let { com.example.bspos.data.micatalogo.RemoteMutationRecorder.productId(id) },
+            remoteSaleUnit = input.remoteSaleUnit,
+            remoteVolumeMl = input.remoteVolumeMl,
+            remoteSourceProductId = input.remoteSourceProductId
         )
     }
 }

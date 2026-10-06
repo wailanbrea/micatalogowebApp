@@ -838,6 +838,17 @@ fun BSPOSNavHost(
                 )
             }
         }
+        composable(Screen.DecantCreate.route) {
+            RestrictedMenuDestination(canSeeMenu("decants"), navController) {
+                CatalogHomeScreen(
+                    isTablet = isTablet,
+                    presentation = presentation,
+                    showCost = !sellerMode || canSeeMenu("inventory") || canSeeMenu("finance"),
+                    showProductCode = productFields.isEmpty() || "sku" in productFields || "barcode" in productFields,
+                    initialDecantMode = true
+                )
+            }
+        }
         composable(Screen.Customers.route) {
             RestrictedMenuDestination(canSeeMenu("customers"), navController) {
                 CustomerScreen(presentation = presentation.copy(customersShowCredit = presentation.customersShowCredit && canSeeMenu("collections")))
@@ -1081,7 +1092,8 @@ private fun navigateFeatureAction(
         "ver ganancias", "ver ganancias y resumen" -> Screen.Finance
         "ver reportes" -> Screen.Reports
         "ver clientes y cobros", "gestionar clientes" -> Screen.Customers
-        "ver productos", "crear producto o servicio", "crear presentación decant" -> Screen.Catalog
+        "ver productos", "crear producto o servicio" -> Screen.Catalog
+        "crear presentación decant" -> Screen.DecantCreate
         "precios automáticos", "precios y costos" -> Screen.PriceHealth
         "administrar reglas" -> Screen.AutomaticPrices
         "abrir importador" -> Screen.Import
