@@ -15,6 +15,7 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ChevronRight
@@ -60,6 +61,8 @@ fun PosScreen(
     creditOnly: Boolean = false,
     presentation: MiCatalogoBusinessPresentation = MiCatalogoBusinessPresentation(),
     onOpenCash: () -> Unit = {},
+    onOpenQuotes: () -> Unit = {},
+    onOpenDayClose: () -> Unit = {},
     viewModel: PosViewModel = hiltViewModel()
 ) {
     val products by viewModel.products.collectAsState()
@@ -79,6 +82,8 @@ fun PosScreen(
     var choosingCustomer by remember { mutableStateOf(false) }
     var showCart by rememberSaveable { mutableStateOf(false) }
     var showingSplitDialog by remember { mutableStateOf(false) }
+    var showingTerminalGuide by remember { mutableStateOf(false) }
+    var showingTerminalOptions by remember { mutableStateOf(false) }
     val cartSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val snackbarHostState = remember { SnackbarHostState() }
     val context = LocalContext.current
@@ -117,8 +122,7 @@ fun PosScreen(
         val tablet = maxWidth >= 700.dp
         if (tablet) {
             Column(Modifier.fillMaxSize().padding(28.dp)) {
-                Text(if (creditOnly) "Venta a credito" else "Nueva venta", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.ExtraBold)
-                Text(if (creditOnly) "Asigna un cliente y los productos para registrar el saldo" else "Selecciona los productos para agregarlos al carrito", color = BSPOSTheme.colors.textSecondary)
+                TerminalHeader(creditOnly, { showingTerminalGuide = true }, { showingTerminalOptions = true })
                 if (presentation.posShowWholesale) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         FilterChip(selected = !wholesaleMode, onClick = { viewModel.setWholesaleMode(false) }, label = { Text("Detalle") }, enabled = !isProcessing)
@@ -151,8 +155,7 @@ fun PosScreen(
                     }
                 ) { contentPadding ->
                     Column(Modifier.fillMaxSize().padding(contentPadding).padding(horizontal = 18.dp)) {
-                        Text(if (creditOnly) "Venta a credito" else "Nueva venta", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.ExtraBold)
-                        Text(if (creditOnly) "Asigna un cliente y los productos para registrar el saldo" else "Selecciona los productos para agregarlos al carrito", color = BSPOSTheme.colors.textSecondary)
+                        TerminalHeader(creditOnly, { showingTerminalGuide = true }, { showingTerminalOptions = true })
                         if (presentation.posShowWholesale) {
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 FilterChip(selected = !wholesaleMode, onClick = { viewModel.setWholesaleMode(false) }, label = { Text("Detalle") }, enabled = !isProcessing)
@@ -195,6 +198,17 @@ fun PosScreen(
             )
         }
     }
+    if (showingTerminalGuide) {
+        TerminalGuideDialog { showingTerminalGuide = false }
+    }
+    if (showingTerminalOptions) {
+        TerminalOptionsSheet(
+            onDismiss = { showingTerminalOptions = false },
+            onQuote = { showingTerminalOptions = false; onOpenQuotes() },
+            onDayClose = { showingTerminalOptions = false; onOpenDayClose() },
+            onCash = { showingTerminalOptions = false; onOpenCash() }
+        )
+    }
     if (showingSplitDialog) {
         SplitPaymentDialog(
             totalCents = cartTotal,
@@ -233,6 +247,77 @@ fun PosScreen(
                 viewModel.consumeCheckoutResult()
             }
         )
+    }
+}
+
+@Composable
+private fun TerminalHeader(creditOnly: Boolean, onGuide: () -> Unit, onOptions: () -> Unit) {
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        if (maxWidth >= 560.dp) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+                Column(Modifier.weight(1f)) {
+                    Text(if (creditOnly) "Venta a crédito" else "Nueva venta", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.ExtraBold)
+                    Text(if (creditOnly) "Asigna un cliente y los productos para registrar el saldo" else "Selecciona los productos para agregarlos al carrito", color = BSPOSTheme.colors.textSecondary)
+                }
+                TextButton(onClick = onGuide) { Text("Cómo hacer una venta") }
+                OutlinedButton(onClick = onOptions, shape = RoundedCornerShape(14.dp)) { Text("Opciones") }
+            }
+        } else {
+            Column(Modifier.fillMaxWidth()) {
+                Text(if (creditOnly) "Venta a crédito" else "Nueva venta", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.ExtraBold)
+                Text(if (creditOnly) "Asigna un cliente y los productos para registrar el saldo" else "Selecciona los productos para agregarlos al carrito", color = BSPOSTheme.colors.textSecondary)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    TextButton(onClick = onGuide) { Text("Ayuda") }
+                    OutlinedButton(onClick = onOptions, shape = RoundedCornerShape(14.dp)) { Text("Opciones") }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TerminalGuideDialog(onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Cómo hacer una venta") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                GuideStep("1", "Busca un producto", "Usa el buscador o revisa el catálogo.")
+                GuideStep("2", "Agrégalo al carrito", "Toca la tarjeta o el botón + y ajusta la cantidad.")
+                GuideStep("3", "Elige cliente y pago", "Puedes vender al contado, por tarjeta, transferencia, mixto o crédito.")
+                GuideStep("4", "Confirma y comparte", "La venta descuenta inventario y permite compartir el recibo PDF.")
+            }
+        },
+        confirmButton = { Button(onClick = onDismiss) { Text("Entendido") } }
+    )
+}
+
+@Composable
+private fun GuideStep(number: String, title: String, description: String) {
+    Row(verticalAlignment = Alignment.Top) {
+        Surface(shape = CircleShape, color = BSPOSTheme.colors.primaryLight) {
+            Text(number, modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp), color = BSPOSTheme.colors.primary, fontWeight = FontWeight.ExtraBold)
+        }
+        Spacer(Modifier.width(10.dp))
+        Column {
+            Text(title, fontWeight = FontWeight.Bold)
+            Text(description, color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodySmall)
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun TerminalOptionsSheet(onDismiss: () -> Unit, onQuote: () -> Unit, onDayClose: () -> Unit, onCash: () -> Unit) {
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = BSPOSTheme.colors.surface) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).navigationBarsPadding(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Opciones de la terminal", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
+            Text("Acciones relacionadas con esta jornada de ventas.", color = BSPOSTheme.colors.textSecondary)
+            TextButton(onClick = onQuote, modifier = Modifier.fillMaxWidth()) { Text("Crear cotización", modifier = Modifier.fillMaxWidth()) }
+            TextButton(onClick = onDayClose, modifier = Modifier.fillMaxWidth()) { Text("Cierre de día", modifier = Modifier.fillMaxWidth()) }
+            TextButton(onClick = onCash, modifier = Modifier.fillMaxWidth()) { Text("Abrir o revisar caja", modifier = Modifier.fillMaxWidth()) }
+            Spacer(Modifier.height(12.dp))
+        }
     }
 }
 

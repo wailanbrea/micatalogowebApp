@@ -678,7 +678,9 @@ fun BSPOSNavHost(
             RestrictedMenuDestination(canSeeMenu("sales"), navController) {
                 PosScreen(
                     presentation = presentation.copy(posShowCredit = presentation.posShowCredit && canSeeMenu("collections")),
-                    onOpenCash = { navController.navigate(Screen.Cash.route) }
+                    onOpenCash = { navController.navigate(Screen.Cash.route) },
+                    onOpenQuotes = { if (canSeeMenu("quotes")) navController.navigate(Screen.Quotes.route) },
+                    onOpenDayClose = { if (canSeeMenu("day_close")) navController.navigate(Screen.DayClose.route) }
                 )
             }
         }
