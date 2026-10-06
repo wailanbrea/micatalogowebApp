@@ -127,7 +127,10 @@ class InventoryViewModel @Inject constructor(
         val file = pendingImportFile ?: return
         viewModelScope.launch {
             _isLoadingImport.value = true
-            when (val result = connection.previewInventoryImport(shop.id, file.name, file.mimeType, file.bytes, mapping)) {
+            val current = _importMappingPreview.value ?: return@launch
+            val options = mapOf("sheet_index" to current.sheetIndex.toString(), "header_row" to current.headerRow.toString()) +
+                mapping.filterKeys { it.startsWith("attribute_columns[") }
+            when (val result = connection.previewInventoryImport(shop.id, file.name, file.mimeType, file.bytes, mapping.filterKeys { !it.startsWith("attribute_columns[") }, options)) {
                 is MiCatalogoResult.Success -> {
                     _importMappingPreview.value = null
                     _importPreview.value = result.value
@@ -141,13 +144,28 @@ class InventoryViewModel @Inject constructor(
         }
     }
 
-    fun confirmImport() {
+    fun selectImportLayout(sheetIndex: Int, headerRow: Int?) {
+        val shop = _importShop.value ?: return
+        val file = pendingImportFile ?: return
+        viewModelScope.launch {
+            _isLoadingImport.value = true
+            val options = mapOf("sheet_index" to sheetIndex.toString()) + (headerRow?.let { mapOf("header_row" to it.toString()) } ?: emptyMap())
+            when (val result = connection.previewInventoryImport(shop.id, file.name, file.mimeType, file.bytes, options = options)) {
+                is MiCatalogoResult.Success -> _importMappingPreview.value = result.value
+                is MiCatalogoResult.Failure -> { _message.value = result.message; UiErrorBus.show(result.message) }
+            }
+            _isLoadingImport.value = false
+        }
+    }
+
+    fun confirmImport(duplicateStrategy: String = "skip", createMissingCategories: Boolean = false) {
         val shop = _importShop.value ?: return
         val preview = _importPreview.value ?: return
-        if (_isImporting.value || preview.validRows == 0 || preview.validRows > preview.quota.productsRemaining) return
+        val sessionId = preview.sessionId ?: run { _message.value = "Vuelve a analizar el archivo para generar una sesión segura."; return }
+        if (_isImporting.value || preview.validRows == 0 || preview.newRows > preview.quota.productsRemaining) return
         viewModelScope.launch {
             _isImporting.value = true
-            when (val result = connection.importInventory(shop.id, preview.rows.filter { it.valid })) {
+            when (val result = connection.importInventory(shop.id, sessionId, duplicateStrategy, createMissingCategories)) {
                 is MiCatalogoResult.Success -> {
                     _importPreview.value = null
                     val syncMessage = when (val sync = catalog.syncCatalog(shop.id)) {

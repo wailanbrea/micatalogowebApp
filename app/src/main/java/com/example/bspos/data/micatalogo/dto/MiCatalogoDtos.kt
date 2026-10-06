@@ -130,8 +130,26 @@ data class InventoryImportPreviewDto(
     val fields: Map<String, String> = emptyMap(),
     val rows: List<InventoryImportRowDto> = emptyList(),
     @SerialName("valid_rows") val validRows: Int = 0,
-    @SerialName("invalid_rows") val invalidRows: Int = 0
+    @SerialName("invalid_rows") val invalidRows: Int = 0,
+    @SerialName("session_id") val sessionId: String? = null,
+    @SerialName("header_row") val headerRow: Int = 1,
+    val sheet: ImportSheetDto? = null,
+    val sheets: List<ImportSheetDto> = emptyList(),
+    @SerialName("needs_header_selection") val needsHeaderSelection: Boolean = false,
+    @SerialName("original_headers") val originalHeaders: List<String> = emptyList(),
+    @SerialName("mapping_confidence") val mappingConfidence: Map<String, ImportMappingDetailDto> = emptyMap(),
+    @SerialName("ignored_columns") val ignoredColumns: List<ImportMappingDetailDto> = emptyList(),
+    val warnings: List<String> = emptyList(),
+    @SerialName("new_rows_count") val newRows: Int = 0,
+    @SerialName("existing_rows_count") val existingRows: Int = 0,
+    @SerialName("duplicate_rows_count") val duplicateRows: Int = 0
 )
+
+@Serializable
+data class ImportSheetDto(val name: String = "", val index: Int = 0, @SerialName("header_row") val headerRow: Int = 1, @SerialName("data_rows") val dataRows: Int = 0)
+
+@Serializable
+data class ImportMappingDetailDto(@SerialName("source_column") val source: String = "", @SerialName("original_header") val header: String = "", val confidence: Double = 0.0, val reason: String = "", val examples: List<String> = emptyList())
 
 @Serializable
 data class InventoryImportRowDto(
@@ -143,8 +161,8 @@ data class InventoryImportRowDto(
     val category: String? = null,
     val description: String? = null,
     val notes: String? = null,
-    val price: Double? = null,
-    @SerialName("cost_price") val costPrice: Double? = null,
+    val price: String? = null,
+    @SerialName("cost_price") val costPrice: String? = null,
     val stock: Int? = null,
     val attributes: List<InventoryImportAttributeDto> = emptyList(),
     val errors: List<String> = emptyList(),
@@ -159,7 +177,10 @@ data class InventoryImportAttributeDto(
 
 @Serializable
 data class InventoryImportRequestDto(
-    val rows: List<InventoryImportRowDto>
+    val rows: List<InventoryImportRowDto> = emptyList(),
+    @SerialName("session_id") val sessionId: String? = null,
+    @SerialName("duplicate_strategy") val duplicateStrategy: String = "skip",
+    @SerialName("create_missing_categories") val createMissingCategories: Boolean = false
 )
 
 @Serializable

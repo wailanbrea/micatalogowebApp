@@ -20,7 +20,7 @@ interface MiCatalogoConnectionRepository {
     suspend fun shops(): MiCatalogoResult<List<MiCatalogoShop>>
     suspend fun managedShops(): MiCatalogoResult<List<MiCatalogoManagedShop>>
     suspend fun updateManagedShop(shop: MiCatalogoManagedShop): MiCatalogoResult<MiCatalogoManagedShop>
-    suspend fun previewInventoryImport(shopId: String, fileName: String, mimeType: String?, bytes: ByteArray, mapping: Map<String, String> = emptyMap()): MiCatalogoResult<MiCatalogoInventoryImportPreview>
-    suspend fun importInventory(shopId: String, rows: List<MiCatalogoInventoryImportRow>): MiCatalogoResult<MiCatalogoInventoryImportResult>
+    suspend fun previewInventoryImport(shopId: String, fileName: String, mimeType: String?, bytes: ByteArray, mapping: Map<String, String> = emptyMap(), options: Map<String, String> = emptyMap()): MiCatalogoResult<MiCatalogoInventoryImportPreview>
+    suspend fun importInventory(shopId: String, sessionId: String, duplicateStrategy: String = "skip", createMissingCategories: Boolean = false): MiCatalogoResult<MiCatalogoInventoryImportResult>
     suspend fun clearConnection()
 }

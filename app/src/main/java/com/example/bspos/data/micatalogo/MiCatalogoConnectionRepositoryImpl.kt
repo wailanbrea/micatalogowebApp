@@ -7,9 +7,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import com.example.bspos.core.network.MiCatalogoBaseUrl
 import com.example.bspos.data.micatalogo.api.MiCatalogoApi
 import com.example.bspos.data.micatalogo.dto.LoginRequestDto
-import com.example.bspos.data.micatalogo.dto.InventoryImportAttributeDto
 import com.example.bspos.data.micatalogo.dto.InventoryImportRequestDto
-import com.example.bspos.data.micatalogo.dto.InventoryImportRowDto
 import com.example.bspos.data.micatalogo.dto.MenuPermissionsUpdateDto
 import com.example.bspos.data.micatalogo.dto.MeDto
 import com.example.bspos.data.micatalogo.dto.ProfileUpdateDto
@@ -176,14 +174,15 @@ class MiCatalogoConnectionRepositoryImpl @Inject constructor(
         fileName: String,
         mimeType: String?,
         bytes: ByteArray,
-        mapping: Map<String, String>
+        mapping: Map<String, String>,
+        options: Map<String, String>
     ): MiCatalogoResult<MiCatalogoInventoryImportPreview> = runCatching {
         require(bytes.size <= 10 * 1024 * 1024) { "El archivo no puede superar 10 MB." }
         val body = bytes.toRequestBody(mimeType?.toMediaTypeOrNull())
         val part = MultipartBody.Part.createFormData("file", fileName, body)
         val mappingParts = mapping.mapValues { (_, value) ->
             value.toRequestBody("text/plain".toMediaTypeOrNull())
-        }.mapKeys { (key, _) -> "mapping[$key]" }
+        }.mapKeys { (key, _) -> "mapping[$key]" } + options.mapValues { (_, value) -> value.toRequestBody("text/plain".toMediaTypeOrNull()) }
         val response = api.get().previewInventoryImport(shopId, part, mappingParts)
         if (!response.isSuccessful) error(response.apiErrorMessage("No se pudo leer el inventario."))
         val preview = response.body() ?: error("MiCatalogo devolvió una vista previa vacía.")
@@ -213,7 +212,20 @@ class MiCatalogoConnectionRepositoryImpl @Inject constructor(
                 )
             },
             validRows = preview.validRows,
-            invalidRows = preview.invalidRows
+            invalidRows = preview.invalidRows,
+            sessionId = preview.sessionId,
+            headerRow = preview.headerRow,
+            sheetIndex = preview.sheet?.index ?: 0,
+            sheetName = preview.sheet?.name.orEmpty(),
+            sheets = preview.sheets.map { com.example.bspos.domain.model.ImportSheet(it.name, it.index, it.headerRow, it.dataRows) },
+            needsHeaderSelection = preview.needsHeaderSelection,
+            originalHeaders = preview.originalHeaders,
+            mappingDetails = preview.mappingConfidence.mapValues { (_, d) -> com.example.bspos.domain.model.ImportMappingDetail(d.source, d.header, d.confidence, d.reason, d.examples) },
+            ignoredColumns = preview.ignoredColumns.map { d -> com.example.bspos.domain.model.ImportMappingDetail(d.source, d.header, d.confidence, d.reason, d.examples) },
+            warnings = preview.warnings,
+            newRows = preview.newRows,
+            existingRows = preview.existingRows,
+            duplicateRows = preview.duplicateRows
         )
     }.fold(
         onSuccess = { MiCatalogoResult.Success(it) },
@@ -222,28 +234,14 @@ class MiCatalogoConnectionRepositoryImpl @Inject constructor(
 
     override suspend fun importInventory(
         shopId: String,
-        rows: List<MiCatalogoInventoryImportRow>
+        sessionId: String,
+        duplicateStrategy: String,
+        createMissingCategories: Boolean
     ): MiCatalogoResult<MiCatalogoInventoryImportResult> = runCatching {
+        require(sessionId.isNotBlank()) { "No existe una sesión válida. Vuelve a analizar el archivo." }
         val response = api.get().importInventory(
             shopId,
-            InventoryImportRequestDto(rows.map { row ->
-                InventoryImportRowDto(
-                    line = row.line,
-                    name = row.name,
-                    productCode = row.productCode,
-                    barcode = row.barcode,
-                    brand = row.brand,
-                    category = row.category,
-                    description = row.description,
-                    notes = row.notes,
-                    price = row.price,
-                    costPrice = row.costPrice,
-                    stock = row.stock,
-                    attributes = row.attributes.map { attribute -> InventoryImportAttributeDto(attribute.name, attribute.value) },
-                    errors = row.errors,
-                    valid = row.valid
-                )
-            })
+            InventoryImportRequestDto(sessionId = sessionId, duplicateStrategy = duplicateStrategy, createMissingCategories = createMissingCategories)
         )
         if (!response.isSuccessful) error(response.apiErrorMessage("No se pudo importar el inventario."))
         val result = response.body() ?: error("MiCatalogo no devolvió el resultado de la importación.")

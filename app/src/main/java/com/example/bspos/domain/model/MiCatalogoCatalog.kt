@@ -87,8 +87,24 @@ data class MiCatalogoInventoryImportPreview(
     val fields: Map<String, String> = emptyMap(),
     val rows: List<MiCatalogoInventoryImportRow>,
     val validRows: Int,
-    val invalidRows: Int
+    val invalidRows: Int,
+    val sessionId: String? = null,
+    val headerRow: Int = 1,
+    val sheetIndex: Int = 0,
+    val sheetName: String = "",
+    val sheets: List<ImportSheet> = emptyList(),
+    val needsHeaderSelection: Boolean = false,
+    val originalHeaders: List<String> = emptyList(),
+    val mappingDetails: Map<String, ImportMappingDetail> = emptyMap(),
+    val ignoredColumns: List<ImportMappingDetail> = emptyList(),
+    val warnings: List<String> = emptyList(),
+    val newRows: Int = 0,
+    val existingRows: Int = 0,
+    val duplicateRows: Int = 0
 )
+
+data class ImportSheet(val name: String, val index: Int, val headerRow: Int, val dataRows: Int)
+data class ImportMappingDetail(val source: String, val header: String, val confidence: Double, val reason: String, val examples: List<String>)
 
 data class MiCatalogoInventoryImportRow(
     val line: Int,
@@ -99,8 +115,8 @@ data class MiCatalogoInventoryImportRow(
     val category: String?,
     val description: String?,
     val notes: String?,
-    val price: Double?,
-    val costPrice: Double?,
+    val price: String?,
+    val costPrice: String?,
     val stock: Int?,
     val attributes: List<MiCatalogoInventoryImportAttribute>,
     val errors: List<String>,

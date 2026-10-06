@@ -1,4 +1,18 @@
-# BSPOS — ARQUITECTURA DEL SISTEMA
+# MiCatalogo — arquitectura del sistema
+
+## Integración vigente (2026-10-05)
+
+Room 21 guarda operaciones locales y ACKs; Laravel es autoridad del catálogo compartido,
+sesiones de importación y contabilidad remota. POS offline y caja local están separados
+de reportes/caja remota. No se interpreta ausencia de conexión como saldo cero.
+
+Importador: archivo → Retrofit multipart → detección Laravel → mapping revisable Compose
+→ session_id → confirmación server-side → sincronización Room. DTO/dominio conservan
+precios/costos importados como strings decimales y códigos como strings con ceros.
+Los metadatos nuevos son opcionales; 1.0.23 sigue siendo compatible. La sesión, no Android,
+contiene las filas autoritativas. Cambiar hoja/fila no necesita editar el Excel.
+Confianza/razones/ejemplos y atributos opt-in se muestran antes de confirmar.
+No hay migración Room ni tabla nueva para el importador. Contrato: repo backend docs/API_CONTRACT.md.
 
 ## 1. PRINCIPIOS DE DISEÑO ARQUITECTÓNICO
 
@@ -24,7 +38,7 @@ Se rige por los siguientes principios no negociables:
    ```
    **Prohibición absoluta:** Los Composables y ViewModels nunca acceden directamente a las entidades ni a los DAOs de Room.
 4. **Integridad Transaccional de Negocio:** Toda operación que modifique más de un registro o afecte el inventario/balance financiero se ejecuta de forma atómica dentro de una transacción Room (`@Transaction`), garantizando rollback automático ante cualquier fallo.
-5. **Alineación Offline-First con Preparación a la Nube:** La base de datos Room local es la única fuente de verdad operativa. Todas las entidades utilizan identificadores primarios basados en UUID (v4) universales, timestamps UTC (`Instant`), números de versión o flags de auditoría y soporte para soft-delete (`deletedAt`), lo que permitirá a futuro implementar un motor de sincronización bidireccional contra `BSPOS Cloud` sin requerir migraciones destructivas del esquema.
+5. **Offline-first y autoridad remota:** Room es autoridad de operaciones locales aún no sincronizadas; Laravel confirma catálogo/contabilidad remotos y sesiones de importación. UUID estables, timestamps UTC, versiones y soft-delete permiten reintentos y migraciones no destructivas. El ACK del servidor se conserva antes de marcar SENT.
 
 ---
 
@@ -123,7 +137,7 @@ Se implementa una arquitectura de UI de un solo código fuente que se adapta flu
 
 ## 6. PREPARACIÓN ESTRATÉGICA PARA EL FUTURO (BSPOS CLOUD)
 
-Aunque BSPOS funciona 100% desconectado, se diseñó bajo las siguientes normas para garantizar una sincronización sin fricción:
+Las funciones locales de MiCatalogo permiten trabajar desconectado; importaciones, reportes y caja remota requieren conexión. La sincronización sigue estas normas:
 
 1. **IDs Universales (UUID):** Ninguna tabla usa autoincrementales como identificador de dominio; todos los registros se crean con `UUID.randomUUID().toString()`, eliminando colisiones al sincronizar dispositivos independientes.
 2. **Marcas de Tiempo UTC:** Todas las marcas temporales se almacenan en milisegundos desde la época Unix (UTC) (`Instant.toEpochMilli()`).

@@ -121,7 +121,7 @@ fun InventoryScreen(viewModel: InventoryViewModel = hiltViewModel()) {
                 ) {
                     if (isLoadingImport) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
                     Spacer(Modifier.width(8.dp))
-                    Text(if (isLoadingImport) "Leyendo archivo..." else "Subir inventario CSV/XLSX")
+                    Text(if (isLoadingImport) "Leyendo archivo..." else "Subir inventario CSV/Excel")
                 }
             }
         }
@@ -195,6 +195,7 @@ fun InventoryScreen(viewModel: InventoryViewModel = hiltViewModel()) {
             preview = preview,
             loading = isLoadingImport,
             onApply = viewModel::applyImportMapping,
+            onLayout = viewModel::selectImportLayout,
             onDismiss = viewModel::dismissImportMapping
         )
     }
@@ -209,39 +210,61 @@ fun InventoryScreen(viewModel: InventoryViewModel = hiltViewModel()) {
 }
 
 @Composable
-private fun InventoryImportMappingDialog(
+internal fun InventoryImportMappingDialog(
     preview: MiCatalogoInventoryImportPreview,
     loading: Boolean,
     onApply: (Map<String, String>) -> Unit,
+    onLayout: (Int, Int?) -> Unit,
     onDismiss: () -> Unit
 ) {
     var mapping by remember(preview.headers, preview.mapping) { mutableStateOf(preview.mapping) }
+    var headerRow by remember(preview) { mutableStateOf(preview.headerRow.toString()) }
+    var attributes by remember(preview) { mutableStateOf(emptySet<String>()) }
     val canPreview = mapping["name"].orEmpty().isNotBlank() && mapping["price"].orEmpty().isNotBlank()
     AlertDialog(
         onDismissRequest = { if (!loading) onDismiss() },
         title = { Text("Relaciona las columnas") },
         text = {
             DialogScrollableColumn {
-                Text("Revisamos los encabezados del archivo. Esta selección se guardará para esta tienda.", color = BSPOSTheme.colors.textSecondary)
+                Text("Hoja: ${preview.sheetName} · Encabezados: fila ${preview.headerRow}", fontWeight = FontWeight.Bold)
+                preview.warnings.forEach { Text(it, color = BSPOSTheme.colors.warning) }
+                var sheetOpen by remember { mutableStateOf(false) }
+                Box {
+                    OutlinedButton(onClick = { sheetOpen = true }, enabled = !loading) { Text("Cambiar hoja") }
+                    DropdownMenu(sheetOpen, { sheetOpen = false }) {
+                        preview.sheets.forEach { sheet -> DropdownMenuItem(text = { Text("${sheet.name} · ${sheet.dataRows} filas") }, onClick = { sheetOpen = false; onLayout(sheet.index, null) }) }
+                    }
+                }
+                OutlinedTextField(headerRow, { headerRow = it }, label = { Text("Fila de encabezados") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+                TextButton(onClick = { onLayout(preview.sheetIndex, headerRow.toIntOrNull()) }, enabled = !loading && headerRow.toIntOrNull() in 1..5050) { Text("Detectar esta fila") }
                 preview.fields.forEach { (field, label) ->
                     var open by remember(field) { mutableStateOf(false) }
                     Box(Modifier.fillMaxWidth()) {
                         OutlinedButton(onClick = { open = true }, modifier = Modifier.fillMaxWidth()) {
-                            Text("$label: ${mapping[field]?.ifBlank { "No importar" } ?: "No importar"}")
+                            val index = preview.headers.indexOf(mapping[field])
+                            Text("$label: ${preview.originalHeaders.getOrNull(index) ?: mapping[field]?.ifBlank { "No importar" } ?: "No importar"}")
                         }
                         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
                             DropdownMenuItem(text = { Text("No importar") }, onClick = { mapping = mapping + (field to ""); open = false })
-                            preview.headers.forEach { header ->
-                                DropdownMenuItem(text = { Text(header) }, onClick = { mapping = mapping + (field to header); open = false })
+                            preview.headers.forEachIndexed { index, header ->
+                                DropdownMenuItem(text = { Text(preview.originalHeaders.getOrNull(index) ?: header) }, onClick = { mapping = mapping + (field to header); open = false })
                             }
                         }
+                    }
+                    preview.mappingDetails[field]?.let { detail -> Text("${(detail.confidence * 100).toInt()}% · ${detail.reason}\nEjemplos: ${detail.examples.joinToString(" · ")}", style = MaterialTheme.typography.bodySmall, color = BSPOSTheme.colors.textSecondary) }
+                }
+                if (preview.ignoredColumns.isNotEmpty()) Text("Columnas ignoradas", fontWeight = FontWeight.Bold)
+                preview.ignoredColumns.forEach { column ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        androidx.compose.material3.Checkbox(checked = column.source in attributes, onCheckedChange = { checked -> attributes = if (checked) attributes + column.source else attributes - column.source })
+                        Text("${column.header} · Importar como atributo\n${column.examples.joinToString(" · ")}", style = MaterialTheme.typography.bodySmall)
                     }
                 }
                 if (!canPreview) Text("Nombre y precio son obligatorios.", color = BSPOSTheme.colors.error)
             }
         },
         confirmButton = {
-            TextButton(onClick = { onApply(mapping) }, enabled = canPreview && !loading) {
+            TextButton(onClick = { onApply(mapping + attributes.mapIndexed { index, source -> "attribute_columns[$index]" to source }.toMap()) }, enabled = canPreview && !loading && !preview.needsHeaderSelection && mapping.values.filter { it.isNotBlank() }.distinct().size == mapping.values.count { it.isNotBlank() }) {
                 if (loading) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Text("Ver vista previa")
             }
         },
@@ -250,34 +273,48 @@ private fun InventoryImportMappingDialog(
 }
 
 @Composable
-private fun InventoryImportPreviewDialog(
+internal fun InventoryImportPreviewDialog(
     preview: MiCatalogoInventoryImportPreview,
     importing: Boolean,
-    onConfirm: () -> Unit,
+    onConfirm: (String, Boolean) -> Unit,
     onDismiss: () -> Unit
 ) {
-    val exceedsQuota = preview.validRows > preview.quota.productsRemaining
+    var strategy by remember { mutableStateOf("skip") }
+    var createCategories by remember { mutableStateOf(false) }
+    val exceedsQuota = preview.newRows > preview.quota.productsRemaining
     AlertDialog(
         onDismissRequest = { if (!importing) onDismiss() },
         title = { Text("Vista previa del inventario") },
         text = {
             DialogScrollableColumn {
                 Text("${preview.validRows} filas listas y ${preview.invalidRows} necesitan revisión.", fontWeight = FontWeight.Bold)
+                Text("${preview.newRows} nuevos · ${preview.existingRows} existentes · ${preview.duplicateRows} posibles duplicados")
+                preview.warnings.forEach { Text(it, color = BSPOSTheme.colors.textSecondary) }
+                if (preview.existingRows + preview.duplicateRows > 0) {
+                    Text("Productos existentes", fontWeight = FontWeight.Bold)
+                    listOf("skip" to "Omitir", "update" to "Actualizar", "create" to "Crear (sin repetir EAN)").forEach { (value, label) ->
+                        Row(verticalAlignment = Alignment.CenterVertically) { androidx.compose.material3.RadioButton(strategy == value, { strategy = value }); Text(label) }
+                    }
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) { androidx.compose.material3.Checkbox(createCategories, { createCategories = it }); Text("Crear categorías faltantes") }
                 Text("Cupo disponible: ${preview.quota.productsRemaining} productos.", color = BSPOSTheme.colors.textSecondary)
                 if (exceedsQuota) Text("El archivo supera el cupo de tu plan.", color = BSPOSTheme.colors.error, fontWeight = FontWeight.Bold)
-                preview.rows.take(30).forEach { row ->
+                preview.rows.take(10).forEach { row ->
                     Text(
-                        text = "Fila ${row.line}: ${row.name.ifBlank { "Sin nombre" }} · ${row.price?.let { "RD$ ${"%.2f".format(Locale.US, it)}" } ?: "Sin precio"}",
+                        text = "Fila ${row.line}: ${row.name.ifBlank { "Sin nombre" }} · ${row.price?.let { "RD$ $it" } ?: "Sin precio"}\n${row.barcode ?: row.productCode.orEmpty()}",
                         color = if (row.valid) BSPOSTheme.colors.textPrimary else BSPOSTheme.colors.error,
                         modifier = Modifier.padding(top = 8.dp)
                     )
                     if (row.errors.isNotEmpty()) Text(row.errors.joinToString(" "), color = BSPOSTheme.colors.error, style = MaterialTheme.typography.bodySmall)
                 }
-                if (preview.rows.size > 30) Text("Se muestran las primeras 30 filas.", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodySmall)
+                if (preview.rows.size > 10) {
+                    Text("Muestra de las primeras 10 filas. El servidor conserva ${preview.rows.size} filas.", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodySmall)
+                    preview.rows.drop(10).filter { !it.valid }.forEach { row -> Text("Fila ${row.line}: ${row.errors.joinToString(" ")}", color = BSPOSTheme.colors.error, style = MaterialTheme.typography.bodySmall) }
+                }
             }
         },
         confirmButton = {
-            TextButton(onClick = onConfirm, enabled = !importing && preview.validRows > 0 && !exceedsQuota) {
+            TextButton(onClick = { onConfirm(strategy, createCategories) }, enabled = !importing && preview.validRows > 0 && !exceedsQuota && !preview.sessionId.isNullOrBlank()) {
                 if (importing) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Text("Importar ${preview.validRows} productos")
             }
         },
@@ -293,7 +330,17 @@ private fun Context.readInventoryFile(uri: Uri): InventoryFile? {
     val name = contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
         if (cursor.moveToFirst()) cursor.getString(0) else null
     }?.ifBlank { null } ?: "inventario.csv"
-    val bytes = contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return null
+    val bytes = contentResolver.openInputStream(uri)?.use { stream ->
+        val output = java.io.ByteArrayOutputStream()
+        val buffer = ByteArray(8192)
+        while (true) {
+            val read = stream.read(buffer)
+            if (read < 0) break
+            if (output.size() + read > 10 * 1024 * 1024) return null
+            output.write(buffer, 0, read)
+        }
+        output.toByteArray()
+    } ?: return null
     if (bytes.size > 10 * 1024 * 1024) return null
     return InventoryFile(name, contentResolver.getType(uri), bytes)
 }
