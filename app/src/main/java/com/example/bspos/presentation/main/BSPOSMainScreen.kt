@@ -1081,7 +1081,7 @@ private fun navigateFeatureAction(
         "ver ganancias", "ver ganancias y resumen" -> Screen.Finance
         "ver reportes" -> Screen.Reports
         "ver clientes y cobros", "gestionar clientes" -> Screen.Customers
-        "ver productos", "crear producto o servicio" -> Screen.Catalog
+        "ver productos", "crear producto o servicio", "crear presentación decant" -> Screen.Catalog
         "precios automáticos", "precios y costos" -> Screen.PriceHealth
         "administrar reglas" -> Screen.AutomaticPrices
         "abrir importador" -> Screen.Import
