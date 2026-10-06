@@ -58,7 +58,10 @@ fun CollectionScreen(viewModel: CollectionViewModel = hiltViewModel()) {
     val customer by viewModel.customer.collectAsState()
     var choosing by remember { mutableStateOf(false) }
     var method by remember { mutableStateOf(PaymentMethod.CASH) }
-    val pending = sales.filter { it.customerId == customer?.id && it.pendingAmount > 0 }
+    var tab by remember { mutableStateOf("Por cobrar") }
+    val filteredSales = sales
+        .filter { customer == null || it.customerId == customer?.id }
+        .filter { sale -> if (tab == "Por cobrar") sale.pendingAmount > 0 else sale.pendingAmount <= 0 }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize().background(BSPOSTheme.colors.background),
@@ -70,7 +73,25 @@ fun CollectionScreen(viewModel: CollectionViewModel = hiltViewModel()) {
                 IconBadge()
                 Spacer(Modifier.width(12.dp))
                 Column {
-                    Text("Recibos y cartera de clientes", color = BSPOSTheme.colors.textSecondary)
+                    Text("COBROS", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+                    Text("Crédito", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold)
+                    Text("Consulta quién te debe y registra sus abonos.", color = BSPOSTheme.colors.textSecondary)
+                }
+            }
+        }
+        item {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf("Por cobrar", "Pagados").forEach { option ->
+                    FilterChip(
+                        selected = tab == option,
+                        onClick = { tab = option },
+                        label = { Text(option, fontWeight = FontWeight.Bold) },
+                        colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = if (tab == option) BSPOSTheme.colors.secondaryNavy else BSPOSTheme.colors.surface,
+                            selectedLabelColor = if (tab == option) androidx.compose.ui.graphics.Color.White else BSPOSTheme.colors.textPrimary,
+                            containerColor = BSPOSTheme.colors.surface
+                        )
+                    )
                 }
             }
         }
@@ -92,7 +113,7 @@ fun CollectionScreen(viewModel: CollectionViewModel = hiltViewModel()) {
                 }
             }
         }
-        if (customer != null) {
+        if (tab == "Por cobrar") {
             item {
                 Text("Método de cobro", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelLarge)
                 Spacer(Modifier.size(3.dp))
@@ -105,13 +126,22 @@ fun CollectionScreen(viewModel: CollectionViewModel = hiltViewModel()) {
             item {
                 Text("Facturas pendientes", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold)
             }
-            if (pending.isEmpty()) {
-                item { Text("Este cliente no tiene facturas pendientes.", color = BSPOSTheme.colors.textSecondary) }
+            if (filteredSales.isEmpty()) {
+                item { CreditEmptyState(tab) }
             } else {
-                items(pending, key = { it.id }) { sale -> PendingSaleCard(sale, method, viewModel::collect) }
+                items(filteredSales, key = { it.id }) { sale -> PendingSaleCard(sale, method, viewModel::collect) }
             }
         } else {
-            item { Text("Selecciona un cliente para consultar sus facturas pendientes.", color = BSPOSTheme.colors.textSecondary) }
+            item {
+                Text("Ventas pagadas", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold)
+            }
+            if (filteredSales.isEmpty()) {
+                item { CreditEmptyState(tab) }
+            } else {
+                items(filteredSales, key = { it.id }) { sale ->
+                    PaidSaleCard(sale, customer?.businessName ?: "Cliente")
+                }
+            }
         }
     }
 
@@ -137,6 +167,36 @@ private fun PendingSaleCard(sale: Sale, method: PaymentMethod, onCollect: (java.
                 OutlinedTextField(amount, { amount = it }, modifier = Modifier.weight(1f), label = { Text("Monto a cobrar") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true)
                 Button(onClick = { value?.takeIf { it > 0 && it <= sale.pendingAmount }?.let { onCollect(sale.id, it, method) } }, enabled = value != null && value > 0 && value <= sale.pendingAmount) { Text("Cobrar") }
             }
+        }
+    }
+}
+
+@Composable
+private fun PaidSaleCard(sale: Sale, customerName: String) {
+    Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface)) {
+        Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.AccountBalanceWallet, null, tint = BSPOSTheme.colors.success)
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(sale.invoiceNumber, fontWeight = FontWeight.ExtraBold)
+                Text(customerName, color = BSPOSTheme.colors.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            Text(money(sale.total), fontWeight = FontWeight.ExtraBold)
+        }
+    }
+}
+
+@Composable
+private fun CreditEmptyState(tab: String) {
+    Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface)) {
+        Column(Modifier.fillMaxWidth().padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Icon(Icons.Default.AccountBalanceWallet, null, tint = BSPOSTheme.colors.primary, modifier = Modifier.size(42.dp))
+            Text(if (tab == "Por cobrar") "Nadie te debe" else "No hay pagos registrados", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
+            Text(
+                if (tab == "Por cobrar") "Cuando vendas a crédito en Terminal, aquí verás quién te debe y a quién cobrar."
+                else "Las ventas pagadas aparecerán aquí para consultar tu historial.",
+                color = BSPOSTheme.colors.textSecondary
+            )
         }
     }
 }

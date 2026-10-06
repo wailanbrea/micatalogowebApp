@@ -40,6 +40,11 @@ Después presenta los indicadores `Vigentes`, `Por convertir` y `Vencidas`, una 
 por número o cliente y tarjetas con cliente, número, vigencia, artículos, estado y total.
 La prueba existente conservó `COT-000001` como `CONVERTIDA` por RD$950.
 
+En `Cobros / Crédito`, Puntto ofrece las pestañas `Por cobrar` y `Pagados`, un estado
+vacío guiado cuando no hay cartera y la explicación de que las cuentas aparecen después
+de vender a crédito desde Terminal. La pantalla también conserva `Exportar` como acción
+del módulo.
+
 ## Inventario verificado en Puntto
 
 La pantalla muestra acciones para añadir del catálogo, precios y costos, movimientos, importar/exportar, combos y nuevo producto. Antes de la lista presenta capital al costo, productos/unidades, nivel bajo y una alerta de productos sin foto. La lista permite seleccionar un producto para consultar sus acciones y existencias.
@@ -58,6 +63,9 @@ MiCatalogo Android ahora presenta esos indicadores con datos locales: capital ca
 - La pantalla Android de `Cotizaciones` ahora refleja esa jerarquía: contexto de ventas,
   resumen de vigentes/por convertir/vencidas, búsqueda y categorías, imágenes de producto
   en el selector y en el carrito, cantidades, cliente, teléfono, notas, guardado y conversión.
+- `Cobros / Crédito` ahora puede alternar entre `Por cobrar` y `Pagados`, consultar la
+  cartera global o filtrarla por cliente, mostrar un estado vacío orientativo y mantener
+  el registro de abonos con método de pago y validación de monto.
 
 ## Pendientes de paridad funcional
 
