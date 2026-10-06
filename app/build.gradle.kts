@@ -131,6 +131,12 @@ dependencies {
     implementation(libs.coil.compose)
     implementation(libs.coil.svg)
 
+    // POS barcode scanner
+    implementation(libs.androidx.camera.camera2)
+    implementation(libs.androidx.camera.lifecycle)
+    implementation(libs.androidx.camera.view)
+    implementation(libs.google.mlkit.barcode)
+
     // Coroutines
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.coroutines.android)

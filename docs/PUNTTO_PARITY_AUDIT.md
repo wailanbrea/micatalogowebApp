@@ -76,6 +76,9 @@ la parte inferior. MiCatalogo ya conserva detalle/mayoreo, ayuda, opciones, carr
 responsive y cobro contado, tarjeta, transferencia, mixto o crédito; la búsqueda ahora
 también compara el código de barras local para completar el flujo cuando el código se
 introduce manualmente o proviene de un lector externo.
+- El POS móvil ahora añade un escáner nativo con CameraX + ML Kit: solicita el permiso de
+  cámara solo al usarlo, muestra una guía visual clara, agrega automáticamente el producto
+  reconocido y deja el valor en la búsqueda cuando el código no pertenece al catálogo.
 
 ## Inventario verificado en Puntto
 

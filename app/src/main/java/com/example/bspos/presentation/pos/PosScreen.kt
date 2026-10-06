@@ -1,8 +1,18 @@
 package com.example.bspos.presentation.pos
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
 import android.print.PrintAttributes
 import android.print.PrintManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.camera.core.CameraSelector
+import androidx.camera.core.ImageAnalysis
+import androidx.camera.core.ImageProxy
+import androidx.camera.core.Preview
+import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.view.PreviewView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.Canvas
@@ -22,6 +32,7 @@ import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.ShoppingCart
@@ -38,6 +49,8 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -46,6 +59,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.core.content.ContextCompat
+import com.google.mlkit.vision.barcode.BarcodeScanning
+import com.google.mlkit.vision.common.InputImage
 import com.example.bspos.core.ui.theme.BSPOSTheme
 import com.example.bspos.core.money.LocalCurrency
 import com.example.bspos.core.money.MoneyUtils
@@ -84,6 +100,7 @@ fun PosScreen(
     var showingSplitDialog by remember { mutableStateOf(false) }
     var showingTerminalGuide by remember { mutableStateOf(false) }
     var showingTerminalOptions by remember { mutableStateOf(false) }
+    var showingBarcodeScanner by rememberSaveable { mutableStateOf(false) }
     val cartSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val snackbarHostState = remember { SnackbarHostState() }
     val context = LocalContext.current
@@ -136,7 +153,7 @@ fun PosScreen(
                     }
                 }
                 Spacer(Modifier.height(14.dp))
-                SearchField(query, { query = it }, presentation.posSearchPlaceholder)
+                SearchField(query, { query = it }, presentation.posSearchPlaceholder) { showingBarcodeScanner = true }
                 Spacer(Modifier.height(14.dp))
                 Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                      ProductGrid(catalog, quantities, selectedQuantities, settings.allowNegativeStock, { viewModel.add(it) }, 4, wholesaleMode, Modifier.weight(1f))
@@ -169,7 +186,7 @@ fun PosScreen(
                             }
                         }
                         Spacer(Modifier.height(14.dp))
-                        SearchField(query, { query = it }, presentation.posSearchPlaceholder)
+                        SearchField(query, { query = it }, presentation.posSearchPlaceholder) { showingBarcodeScanner = true }
                         Spacer(Modifier.height(14.dp))
                          ProductGrid(catalog, quantities, selectedQuantities, settings.allowNegativeStock, { viewModel.add(it) }, 2, wholesaleMode, Modifier.weight(1f).fillMaxWidth())
                     }
@@ -223,6 +240,18 @@ fun PosScreen(
             onDismiss = { showingSplitDialog = false },
             onConfirm = { payments, dueDate ->
                 viewModel.completeSplit(payments, dueDate)
+            }
+        )
+    }
+    if (showingBarcodeScanner) {
+        BarcodeScannerSheet(
+            onDismiss = { showingBarcodeScanner = false },
+            onCode = { code ->
+                showingBarcodeScanner = false
+                val match = products.firstOrNull {
+                    it.barcode.equals(code, ignoreCase = true) || it.internalCode.equals(code, ignoreCase = true)
+                }
+                if (match != null) viewModel.add(match) else query = code
             }
         )
     }
@@ -387,13 +416,121 @@ private fun lerp(from: Offset, to: Offset, fraction: Float): Offset = Offset(
 )
 
 @Composable
-private fun SearchField(value: String, onChange: (String) -> Unit, placeholder: String = "Buscar producto") {
+private fun SearchField(
+    value: String,
+    onChange: (String) -> Unit,
+    placeholder: String = "Buscar producto",
+    onScan: () -> Unit = {}
+) {
     Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), color = BSPOSTheme.colors.surface, border = androidx.compose.foundation.BorderStroke(1.dp, BSPOSTheme.colors.outline)) {
         Row(Modifier.padding(horizontal = 14.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Default.Search, null, tint = BSPOSTheme.colors.primary)
             OutlinedTextField(value, onChange, Modifier.weight(1f), placeholder = { Text(placeholder) }, singleLine = true, colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = androidx.compose.ui.graphics.Color.Transparent, unfocusedBorderColor = androidx.compose.ui.graphics.Color.Transparent))
+            IconButton(onClick = onScan) {
+                Icon(Icons.Default.QrCodeScanner, contentDescription = "Escanear código de barras", tint = BSPOSTheme.colors.primary)
+            }
         }
     }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun BarcodeScannerSheet(onDismiss: () -> Unit, onCode: (String) -> Unit) {
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val previewView = remember { PreviewView(context) }
+    var permissionGranted by remember {
+        mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED)
+    }
+    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+        permissionGranted = it
+    }
+    LaunchedEffect(Unit) {
+        if (!permissionGranted) permissionLauncher.launch(Manifest.permission.CAMERA)
+    }
+
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = BSPOSTheme.colors.surface) {
+        Column(
+            modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text("Escanear producto", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
+            Text("Apunta la cámara al código de barras. El producto se agregará al carrito automáticamente.", color = BSPOSTheme.colors.textSecondary)
+            if (permissionGranted) {
+                Box(Modifier.fillMaxWidth().height(320.dp).clip(RoundedCornerShape(20.dp))) {
+                    AndroidView(factory = { previewView }, modifier = Modifier.fillMaxSize())
+                    Surface(
+                        modifier = Modifier.align(Alignment.Center).fillMaxWidth(.78f).height(110.dp),
+                        color = Color.Transparent,
+                        border = androidx.compose.foundation.BorderStroke(2.dp, BSPOSTheme.colors.primary),
+                        shape = RoundedCornerShape(16.dp)
+                    ) {}
+                }
+                BarcodeCameraBinding(previewView, lifecycleOwner, onCode)
+            } else {
+                Text("Necesitamos permiso para usar la cámara.", color = BSPOSTheme.colors.textSecondary)
+                Button(onClick = { permissionLauncher.launch(Manifest.permission.CAMERA) }, modifier = Modifier.fillMaxWidth()) {
+                    Text("Permitir cámara")
+                }
+            }
+            OutlinedButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) { Text("Cerrar") }
+            Spacer(Modifier.height(8.dp))
+        }
+    }
+}
+
+@Composable
+private fun BarcodeCameraBinding(
+    previewView: PreviewView,
+    lifecycleOwner: androidx.lifecycle.LifecycleOwner,
+    onCode: (String) -> Unit
+) {
+    val context = LocalContext.current
+    val scanner = remember { BarcodeScanning.getClient() }
+    val delivered = remember { java.util.concurrent.atomic.AtomicBoolean(false) }
+    DisposableEffect(lifecycleOwner) {
+        val providerFuture = ProcessCameraProvider.getInstance(context)
+        val executor = ContextCompat.getMainExecutor(context)
+        providerFuture.addListener({
+            val provider = providerFuture.get()
+            val preview = Preview.Builder().build().also { it.surfaceProvider = previewView.surfaceProvider }
+            val analysis = ImageAnalysis.Builder()
+                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                .build()
+                .also { useCase ->
+                    useCase.setAnalyzer(executor) { imageProxy ->
+                        analyzeBarcode(imageProxy, scanner) { value ->
+                            if (delivered.compareAndSet(false, true)) onCode(value)
+                        }
+                    }
+                }
+            runCatching {
+                provider.unbindAll()
+                provider.bindToLifecycle(lifecycleOwner, CameraSelector.DEFAULT_BACK_CAMERA, preview, analysis)
+            }
+        }, executor)
+        onDispose {
+            scanner.close()
+            runCatching { providerFuture.get().unbindAll() }
+        }
+    }
+}
+
+private fun analyzeBarcode(
+    imageProxy: ImageProxy,
+    scanner: com.google.mlkit.vision.barcode.BarcodeScanner,
+    onCode: (String) -> Unit
+) {
+    val mediaImage = imageProxy.image
+    if (mediaImage == null) {
+        imageProxy.close()
+        return
+    }
+    scanner.process(InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees))
+        .addOnSuccessListener { barcodes ->
+            barcodes.firstOrNull()?.rawValue?.trim()?.takeIf { it.isNotBlank() }?.let(onCode)
+        }
+        .addOnCompleteListener { imageProxy.close() }
 }
 
 @Composable
