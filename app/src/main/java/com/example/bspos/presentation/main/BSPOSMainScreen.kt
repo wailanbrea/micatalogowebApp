@@ -942,7 +942,7 @@ private fun navigateFeatureAction(
         "precios automáticos", "precios y costos" -> Screen.PriceHealth
         "administrar reglas" -> Screen.AutomaticPrices
         "abrir importador" -> Screen.Import
-        "abrir métricas completas", "ver estadísticas", "descargar qr", "ver qr y métricas" -> Screen.Metrics
+        "abrir métricas completas", "ver estadísticas", "ver qr y métricas" -> Screen.Metrics
         "administrar equipo", "administrar vendedores" -> Screen.Team
         "ver comisiones" -> Screen.Commissions
         "configuración de tienda", "configurar apariencia", "editar configuración" -> Screen.ShopSettings
