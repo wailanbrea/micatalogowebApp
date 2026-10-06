@@ -105,6 +105,16 @@ fun InventoryScreen(
     val productsWithoutPhoto = products.count { it.isActive && it.deletedAt == null && it.imagePath.isNullOrBlank() }
     val stockEditableProducts = products.filter { it.remoteSaleUnit != "decant" && (it.remoteShopId == null || it.remoteShopId in editableShopIds) }
     val productsWithoutStock = stockEditableProducts.filter { product -> stock.none { it.productId == product.id } }
+    val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        val result = runCatching {
+            val csv = buildInventoryCsv(products, stock)
+            context.contentResolver.openOutputStream(uri)?.use { output ->
+                output.write(csv.toByteArray(Charsets.UTF_8))
+            } ?: error("No se pudo abrir el destino del archivo.")
+        }
+        viewModel.showMessage(result.fold({ "Inventario exportado correctamente." }, { "No se pudo exportar el inventario: ${it.message ?: "error desconocido"}" }))
+    }
     val fileLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri ?: return@rememberLauncherForActivityResult
         val file = context.readInventoryFile(uri)
@@ -141,6 +151,13 @@ fun InventoryScreen(
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = { stock.firstOrNull()?.productId?.let { id -> selectedProduct = id; viewModel.select(id) } }, enabled = stock.isNotEmpty(), modifier = Modifier.weight(1f)) {
                     Text("Movimientos")
+                }
+                OutlinedButton(
+                    onClick = { exportLauncher.launch("inventario-${System.currentTimeMillis()}.csv") },
+                    enabled = products.isNotEmpty(),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("Exportar")
                 }
                 OutlinedButton(
                     onClick = {
@@ -378,6 +395,30 @@ private fun Context.readInventoryFile(uri: Uri): InventoryFile? {
     if (bytes.size > 10 * 1024 * 1024) return null
     return InventoryFile(name, contentResolver.getType(uri), bytes)
 }
+
+private fun buildInventoryCsv(products: List<Product>, stock: List<com.example.bspos.domain.model.InventoryStock>): String {
+    val quantities = stock.groupBy { it.productId }.mapValues { (_, rows) -> rows.sumOf { it.quantity } }
+    return buildString {
+        appendLine("nombre,codigo,barras,existencias,precio_venta,costo_promedio,ultimo_costo,stock_minimo,unidad")
+        products.filter { it.isActive && it.deletedAt == null }.forEach { product ->
+            appendLine(
+                listOf(
+                    product.name,
+                    product.internalCode,
+                    product.barcode.orEmpty(),
+                    quantities[product.id]?.toString().orEmpty(),
+                    MoneyUtils.formatCentsCompact(product.salePrice),
+                    MoneyUtils.formatCentsCompact(product.averageCost),
+                    MoneyUtils.formatCentsCompact(product.lastPurchaseCost),
+                    product.minimumStock.toString(),
+                    product.remoteSaleUnit.orEmpty()
+                ).joinToString(",", transform = ::escapeCsv)
+            )
+        }
+    }
+}
+
+private fun escapeCsv(value: String): String = "\"${value.replace("\"", "\"\"")}\""
 
 @Composable
 private fun StockCard(name: String, quantity: Long, onClick: () -> Unit) {

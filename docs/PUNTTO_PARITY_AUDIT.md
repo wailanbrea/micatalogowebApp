@@ -97,6 +97,13 @@ MiCatalogo Android ahora presenta esos indicadores con datos locales: capital ca
   mismo flujo de órdenes con el módulo remoto correspondiente, título, descripción y
   estados vacíos propios. Así se conserva una sola implementación de confirmación y se
   evita duplicar lógica entre pedidos, encargos y entregas.
+- Las acciones de los módulos genéricos ya se resuelven dentro de la navegación Compose:
+  inventario, catálogo, clientes, caja, finanzas, precios, importador, métricas, tienda,
+  equipo, soporte y configuración ya no abren accidentalmente una URL web cuando existe
+  una pantalla móvil equivalente.
+- Inventario móvil incorpora `Exportar` junto a `Importar` y `Movimientos`. El CSV se
+  genera en el dispositivo con existencias, precio de venta, costo promedio, último costo
+  y mínimo, y se entrega mediante el selector de archivos del sistema.
 - La navegación Compose ahora usa transiciones cortas de entrada/salida y las tarjetas
   de los módulos aparecen escalonadas; se conserva el fondo claro y los acentos de
   MiCatalogo, sin copiar el color oscuro del menú de Puntto.

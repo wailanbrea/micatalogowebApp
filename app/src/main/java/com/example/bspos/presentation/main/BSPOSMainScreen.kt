@@ -940,10 +940,15 @@ private fun navigateFeatureAction(
         "ver clientes y cobros", "gestionar clientes" -> Screen.Customers
         "ver productos", "crear producto o servicio" -> Screen.Catalog
         "precios automáticos", "precios y costos" -> Screen.PriceHealth
-        "abrir métricas completas", "ver estadísticas", "descargar qr" -> Screen.Metrics
+        "administrar reglas" -> Screen.AutomaticPrices
+        "abrir importador" -> Screen.Import
+        "abrir métricas completas", "ver estadísticas", "descargar qr", "ver qr y métricas" -> Screen.Metrics
         "administrar equipo", "administrar vendedores" -> Screen.Team
-        "configuración de tienda", "configurar apariencia" -> Screen.ShopSettings
-        "abrir mi tienda", "abrir vitrina" -> Screen.Storefront
+        "ver comisiones" -> Screen.Commissions
+        "configuración de tienda", "configurar apariencia", "editar configuración" -> Screen.ShopSettings
+        "abrir mi tienda", "abrir vitrina", "ver mi tienda", "abrir catálogo público" -> Screen.Storefront
+        "registrar gasto" -> Screen.Expenses
+        "contactar soporte", "nueva solicitud" -> Screen.Support
         "volver al resumen" -> Screen.Dashboard
         else -> null
     } ?: return false
