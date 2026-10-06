@@ -717,7 +717,17 @@ fun BSPOSNavHost(
         }
         composable(Screen.Containers.route) { FeatureDestination("containers", canSeeMenu("containers"), navController) }
         composable(Screen.PurchaseInvoices.route) { FeatureDestination("purchase_invoices", canSeeMenu("purchase_invoices"), navController) }
-        composable(Screen.Photos.route) { FeatureDestination("photos", canSeeMenu("photos"), navController) }
+        composable(Screen.Photos.route) {
+            RestrictedMenuDestination(canSeeMenu("photos"), navController) {
+                CatalogHomeScreen(
+                    isTablet = isTablet,
+                    presentation = presentation,
+                    showCost = !sellerMode || canSeeMenu("inventory") || canSeeMenu("finance"),
+                    showProductCode = productFields.isEmpty() || "sku" in productFields || "barcode" in productFields,
+                    photosOnly = true
+                )
+            }
+        }
         composable(Screen.Storefront.route) { FeatureDestination("storefront", canSeeMenu("storefront"), navController) }
         composable(Screen.Services.route) { FeatureDestination("services", canSeeMenu("services"), navController) }
         composable(Screen.PriceHealth.route) { FeatureDestination("price_health", canSeeMenu("price_health"), navController) }

@@ -116,13 +116,18 @@ MiCatalogo Android ahora presenta esos indicadores con datos locales: capital ca
 - Inventario móvil ahora replica la jerarquía de Puntto con contexto `CATÁLOGO`, título,
   descripción y accesos directos a Productos, Salud de precios, Movimientos e Importar.
   Se conservan el Kardex, recepción, conteo, ajustes, motivos e importador existente.
+- `Catálogo / Fotos` ahora es una vista nativa accionable de productos sin imagen: permite
+  buscar, revisar el contador de pendientes, abrir el editor del producto para cargar o
+  cambiar la foto y mostrar un estado vacío cuando el catálogo ya está completo. La vista
+  mantiene el mismo editor de producto y no duplica la lógica de inventario.
 - El menú móvil ahora separa visualmente `Compras`, `Finanzas` y `Análisis` como Puntto y
   añade `Mi cuenta` para todos los roles, sin convertirlo en un permiso administrativo.
 
 ## Pendientes de paridad funcional
 
 - Editar y anular una venta requieren un flujo de dominio y contabilidad completo; no se debe simular con un botón que no revierta inventario/caja.
-- Térmico requiere enlazar la pantalla de detalle con la impresora configurada.
+- Térmico ya está enlazado desde el detalle histórico y el dashboard; queda validar el
+  recorrido físico con una impresora Bluetooth real, además de la prueba sin impresora.
 - `Cierre de día` móvil ahora une el período de hoy con ventas cobradas, abonos, gastos,
   devoluciones y la sesión remota de caja. Permite abrir caja, mostrar entradas/salidas,
   calcular el efectivo esperado y cerrar registrando el efectivo contado, con el mismo
@@ -132,6 +137,9 @@ MiCatalogo Android ahora presenta esos indicadores con datos locales: capital ca
 - El detalle histórico de ventas y el dashboard ahora exponen `Térmico` y reutilizan el
   motor Bluetooth configurado para enviar la factura. Sin impresora registrada se muestra
   una instrucción explícita para configurarla desde `Impresoras`.
+- La pantalla `Fotos` ya no es un destino genérico: filtra los productos sin imagen,
+  conserva búsqueda y edición, y permite resolver cada pendiente desde el mismo flujo de
+  producto.
 - Completar el recorrido de cada grupo del menú y contrastar formularios, permisos, estados vacíos y mensajes de validación con las pantallas equivalentes de MiCatalogo.
 - Ejecutar una prueba equivalente de cada operación en la APK oficial firmada y en la web antes de publicar.
 

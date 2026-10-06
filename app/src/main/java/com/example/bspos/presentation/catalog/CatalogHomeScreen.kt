@@ -46,6 +46,7 @@ fun CatalogHomeScreen(
     presentation: MiCatalogoBusinessPresentation = MiCatalogoBusinessPresentation(),
     showCost: Boolean = false,
     showProductCode: Boolean = true,
+    photosOnly: Boolean = false,
     viewModel: ProductCatalogViewModel = hiltViewModel()
 ) {
     var baseCatalog by remember { mutableStateOf(false) }
@@ -68,14 +69,19 @@ fun CatalogHomeScreen(
     var query by remember { mutableStateOf("") }
     val quantities = stock.associate { it.productId to it.quantity }
     val categoryNames = categories.associate { it.id to it.name }
-    val filtered = products.filter { it.isActive && it.deletedAt == null && (it.name.contains(query, true) || it.internalCode.contains(query, true)) }
+    val filtered = products.filter {
+        it.isActive && it.deletedAt == null &&
+            (!photosOnly || it.imagePath.isNullOrBlank()) &&
+            (it.name.contains(query, true) || it.internalCode.contains(query, true))
+    }
 
     Column(Modifier.fillMaxSize().background(BSPOSTheme.colors.background).padding(if (isTablet) 28.dp else 20.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text(presentation.term("products", "Catalogo comercial"), color = BSPOSTheme.colors.textSecondary)
+                Text(if (photosOnly) "CATÁLOGO / FOTOS" else presentation.term("products", "Catalogo comercial"), color = BSPOSTheme.colors.textSecondary)
+                if (photosOnly) Text("Productos sin foto", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
             }
-            TextButton({ baseCatalog = true }) { Text("Categorias") }
+            if (!photosOnly) TextButton({ baseCatalog = true }) { Text("Categorias") }
         }
         Spacer(Modifier.height(14.dp))
         Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), color = BSPOSTheme.colors.surface, border = androidx.compose.foundation.BorderStroke(1.dp, BSPOSTheme.colors.outline)) {
@@ -86,12 +92,25 @@ fun CatalogHomeScreen(
         }
         Spacer(Modifier.height(12.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Text("${filtered.size} productos", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelLarge)
+            Text(
+                if (photosOnly) "${filtered.size} pendientes de fotografía" else "${filtered.size} productos",
+                color = BSPOSTheme.colors.textSecondary,
+                style = MaterialTheme.typography.labelLarge
+            )
             Button({ showForm = true }, enabled = categories.any { it.isActive } && units.any { it.isActive }, shape = RoundedCornerShape(14.dp)) { Icon(Icons.Default.Add, null); Spacer(Modifier.width(5.dp)); Text("Nuevo producto") }
         }
         Spacer(Modifier.height(12.dp))
         if (filtered.isEmpty()) {
-            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) { Text(if (query.isBlank()) presentation.catalogEmptyMessage else "Sin coincidencias", color = BSPOSTheme.colors.textSecondary) }
+            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                Text(
+                    when {
+                        query.isNotBlank() -> "Sin coincidencias"
+                        photosOnly -> "Todos tus productos tienen foto"
+                        else -> presentation.catalogEmptyMessage
+                    },
+                    color = BSPOSTheme.colors.textSecondary
+                )
+            }
         } else {
             LazyVerticalGrid(GridCells.Fixed(if (isTablet) 4 else 2), Modifier.weight(1f), contentPadding = PaddingValues(bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 items(filtered, key = { it.id }) { product -> ProductCard(product, quantities[product.id] ?: 0L, categoryNames[product.categoryId], presentation.catalogShowStock, showCost, showProductCode,
