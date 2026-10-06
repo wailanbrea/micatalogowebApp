@@ -77,6 +77,8 @@ MiCatalogo Android ahora presenta esos indicadores con datos locales: capital ca
 
 - Navegación con breadcrumb, transiciones de entrada y expansión animada del menú.
 - Dashboard con periodos, guía de primeros pasos y tarjetas de KPI en la paleta clara de MiCatalogo.
+- Dashboard con contexto visual `RESUMEN`, selector de periodo con icono de calendario y
+  jerarquía de encabezado inspirada en Puntto, conservando los acentos claros de MiCatalogo.
 - Detalle de venta adaptable con acciones de recibo/compartir/devolución, estado, pago, cliente, origen, productos, subtotal y total.
 - Costo exacto por venta leído desde `sale_items.unit_cost_snapshot`; la ganancia del periodo no se estima con el precio actual.
 - KPI de ganancia y ticket promedio en el dashboard. La ganancia se oculta para el modo vendedor cuando no corresponde mostrar costos.

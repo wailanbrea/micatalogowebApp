@@ -17,6 +17,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.BarChart
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.People
@@ -310,7 +311,11 @@ private fun DashboardPeriodSelector(selected: String, onSelected: (String) -> Un
             )
         }
         Spacer(Modifier.weight(1f))
-        Text("▣", color = BSPOSTheme.colors.textSecondary, fontSize = 20.sp)
+        Icon(
+            imageVector = Icons.Default.CalendarMonth,
+            contentDescription = "Seleccionar periodo",
+            tint = BSPOSTheme.colors.textSecondary
+        )
     }
 }
 
@@ -356,6 +361,14 @@ private data class Kpi(val title: String, val value: String, val helper: String,
 @Composable
 private fun DashboardHeading(compact: Boolean, sellerMode: Boolean, presentation: MiCatalogoBusinessPresentation) {
     Column {
+        Text(
+            "RESUMEN",
+            color = BSPOSTheme.colors.textSecondary,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 2.sp
+        )
+        Spacer(Modifier.height(5.dp))
         Text(
             when {
                 sellerMode -> "Mis ventas"
