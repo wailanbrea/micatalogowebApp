@@ -96,6 +96,22 @@ data class QuoteResponseDto(
 )
 
 @Serializable
+data class OrderConfirmRequestDto(
+    @SerialName("payment_kind") val paymentKind: String = "paid",
+    @SerialName("payment_method") val paymentMethod: String = "cash",
+    @SerialName("customer_id") val customerId: String? = null,
+    @SerialName("credit_amount") val creditAmount: String? = null,
+    val reference: String? = null
+)
+
+@Serializable
+data class OrderConfirmResponseDto(
+    val message: String = "",
+    @SerialName("order_number") val orderNumber: String? = null,
+    @SerialName("invoice_number") val invoiceNumber: String? = null
+)
+
+@Serializable
 data class QuoteCreatedDto(
     val id: String = "",
     @SerialName("quote_number") val quoteNumber: String = "",
@@ -118,7 +134,8 @@ data class FeatureRowDto(
     val secondary: String = "",
     val value: String = "",
     val status: String = "",
-    @SerialName("can_convert") val canConvert: Boolean = false
+    @SerialName("can_convert") val canConvert: Boolean = false,
+    @SerialName("can_confirm") val canConfirm: Boolean = false
 )
 
 @Serializable

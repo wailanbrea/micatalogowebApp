@@ -50,6 +50,12 @@ abonos, gastos y devoluciones, calcula el efectivo esperado y solicita el efecti
 antes de cerrar. También advierte que después del cierre no se corrigen movimientos sin
 autorización del dueño.
 
+En `Operación / Pedidos`, Puntto muestra el estado de la bandeja, el total recibido y
+una tarjeta guiada cuando todavía no hay órdenes. Cuando existe una orden pendiente, el
+flujo esperado es revisar el pedido, escoger contado, crédito o mixto y confirmarlo como
+venta; esa confirmación debe descontar inventario y generar factura/caja en una sola
+transacción.
+
 ## Inventario verificado en Puntto
 
 La pantalla muestra acciones para añadir del catálogo, precios y costos, movimientos, importar/exportar, combos y nuevo producto. Antes de la lista presenta capital al costo, productos/unidades, nivel bajo y una alerta de productos sin foto. La lista permite seleccionar un producto para consultar sus acciones y existencias.
@@ -77,6 +83,14 @@ MiCatalogo Android ahora presenta esos indicadores con datos locales: capital ca
 - Los módulos móviles que llegan desde el mismo read model del backend ahora muestran
   grupo, título y descripción antes del contenido, evitando pantallas sin encabezado y
   manteniendo una jerarquía equivalente a Puntto.
+- `Operación / Pedidos` ahora tiene una pantalla móvil propia, con encabezado guiado,
+  KPIs, estado vacío, actualización manual, tarjetas de órdenes y diálogo de confirmación.
+  Permite contado, crédito o mixto, forma de pago, cliente sincronizado y referencia.
+  La API móvil usa `OrderConfirmationService`, el mismo dominio que la web, por lo que
+  la confirmación es idempotente y actualiza inventario, factura, caja y crédito juntos.
+- La navegación Compose ahora usa transiciones cortas de entrada/salida y las tarjetas
+  de los módulos aparecen escalonadas; se conserva el fondo claro y los acentos de
+  MiCatalogo, sin copiar el color oscuro del menú de Puntto.
 
 ## Pendientes de paridad funcional
 
@@ -97,6 +111,13 @@ MiCatalogo Android ahora presenta esos indicadores con datos locales: capital ca
 adb install -r app/build/outputs/apk/debug/app-debug.apk  PASS (variante aislada)
 UI smoke launch de com.bsolutions.micatalogo.offlinecheck  PASS
 git diff --check                   PASS
+```
+
+La prueba web de confirmación móvil cubre la creación de una sola factura, descuento de
+una unidad y repetición idempotente de la misma solicitud:
+
+```text
+vendor/bin/pest.bat tests/Feature/BusinessRemediationTest.php  PASS (9 tests, 67 assertions)
 ```
 
 La variante aislada se puede instalar como `com.bsolutions.micatalogo.offlinecheck` sin desinstalar ni tocar la aplicación oficial firmada.

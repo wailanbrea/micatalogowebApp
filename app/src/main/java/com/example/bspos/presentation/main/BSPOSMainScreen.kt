@@ -9,6 +9,7 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Box
@@ -111,6 +112,7 @@ import com.example.bspos.presentation.adminshops.AdminShopsScreen
 import com.example.bspos.presentation.finance.FinanceScreen
 import com.example.bspos.presentation.feature.FeatureModuleScreen
 import com.example.bspos.presentation.quote.QuoteScreen
+import com.example.bspos.presentation.orders.OrdersScreen
 import com.example.bspos.presentation.dayclose.DayCloseScreen
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import kotlinx.coroutines.launch
@@ -655,7 +657,11 @@ fun BSPOSNavHost(
         NavHost(
             navController = navController,
             startDestination = Screen.Dashboard.route,
-            modifier = modifier
+            modifier = modifier,
+            enterTransition = { fadeIn(animationSpec = tween(180)) + slideInHorizontally(animationSpec = tween(220)) { it / 12 } },
+            exitTransition = { fadeOut(animationSpec = tween(130)) + slideOutHorizontally(animationSpec = tween(180)) { -it / 12 } },
+            popEnterTransition = { fadeIn(animationSpec = tween(180)) + slideInHorizontally(animationSpec = tween(220)) { -it / 12 } },
+            popExitTransition = { fadeOut(animationSpec = tween(130)) + slideOutHorizontally(animationSpec = tween(180)) { it / 12 } }
         ) {
         composable(Screen.Dashboard.route) {
             DashboardScreen(
@@ -696,7 +702,9 @@ fun BSPOSNavHost(
         composable(Screen.Quotes.route) {
             RestrictedMenuDestination(canSeeMenu("quotes"), navController) { QuoteScreen() }
         }
-        composable(Screen.Orders.route) { FeatureDestination("orders", canSeeMenu("orders"), navController) }
+        composable(Screen.Orders.route) {
+            RestrictedMenuDestination(canSeeMenu("orders"), navController) { OrdersScreen() }
+        }
         composable(Screen.Encargos.route) { FeatureDestination("encargos", canSeeMenu("encargos"), navController) }
         composable(Screen.Shipments.route) { FeatureDestination("shipments", canSeeMenu("shipments"), navController) }
         composable(Screen.DayClose.route) {

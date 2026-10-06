@@ -41,6 +41,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.example.bspos.core.ui.theme.BSPOSTheme
@@ -89,7 +90,12 @@ private fun FeatureContent(definition: FeatureDefinitionDto, module: FeatureModu
         if (module.kpis.isNotEmpty()) {
             item {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    module.kpis.take(3).forEach { kpi -> KpiCard(kpi, Modifier.weight(1f)) }
+                    module.kpis.take(3).forEachIndexed { index, kpi ->
+                        AnimatedVisibility(
+                            visible = true,
+                            enter = fadeIn(animationSpec = tween(180, delayMillis = index * 55)) + slideInHorizontally { it / 10 }
+                        ) { KpiCard(kpi, Modifier.weight(1f)) }
+                    }
                 }
             }
         }
