@@ -99,6 +99,9 @@ MiCatalogo Android ahora presenta esos indicadores con datos locales: capital ca
   jerarquía de encabezado inspirada en Puntto, conservando los acentos claros de MiCatalogo.
 - Dashboard con bloques de `Top productos` y `Dinero por método`, calculados desde las
   líneas y ventas del periodo seleccionado, con diseño adaptable para móvil y tablet.
+- El resumen móvil sigue el orden observado en Puntto: saludo con el nombre de la tienda,
+  acciones rápidas, primeros pasos y luego el selector de período; los colores claros y
+  las métricas propias de MiCatalogo se conservan.
 - El icono de calendario del dashboard dejó de ser decorativo: abre un selector nativo de
   fecha y filtra ventas, cobros, ganancia, ticket, top productos y métodos para ese día.
 - Detalle de venta adaptable con acciones de recibo/compartir/devolución, estado, pago, cliente, origen, productos, subtotal y total.

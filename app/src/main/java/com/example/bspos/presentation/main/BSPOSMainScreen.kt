@@ -679,6 +679,7 @@ fun BSPOSMainScreen(
                     showAdminShops = connection.isAdmin,
                     remoteShopAvailable = connectedShop != null,
                     presentation = connectedShop?.presentation ?: MiCatalogoBusinessPresentation(),
+                    businessName = businessName,
                     productFields = connectedShop?.productFields?.toSet().orEmpty(),
                     canSeeMenu = canSeeMenu,
                     modifier = Modifier.padding(paddingValues)
@@ -699,6 +700,7 @@ fun BSPOSNavHost(
     showAdminShops: Boolean = false,
     remoteShopAvailable: Boolean = false,
     presentation: MiCatalogoBusinessPresentation = MiCatalogoBusinessPresentation(),
+    businessName: String = "tu negocio",
     productFields: Set<String> = emptySet(),
     canSeeMenu: (String) -> Boolean = { true },
     modifier: Modifier = Modifier
@@ -729,6 +731,7 @@ fun BSPOSNavHost(
                 showInventory = canSeeMenu("inventory"),
                 showProducts = canSeeMenu("products"),
                 presentation = presentation,
+                businessName = businessName,
                 isExpanded = isTablet
             )
         }

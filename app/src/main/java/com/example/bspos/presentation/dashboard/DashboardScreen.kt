@@ -88,6 +88,7 @@ fun DashboardScreen(
     showInventory: Boolean = true,
     showProducts: Boolean = true,
     presentation: MiCatalogoBusinessPresentation = MiCatalogoBusinessPresentation(),
+    businessName: String = "tu negocio",
     isExpanded: Boolean = false,
     viewModel: DashboardViewModel = hiltViewModel(),
     printerViewModel: PosViewModel = hiltViewModel()
@@ -180,14 +181,11 @@ fun DashboardScreen(
             contentPadding = PaddingValues(if (compact) 16.dp else 28.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            item { DashboardEnter { DashboardHeading(compact, sellerMode, presentation) } }
+            item { DashboardEnter { DashboardHeading(sellerMode, businessName, presentation) } }
             item {
-                DashboardPeriodSelector(
-                    selected = selectedPeriod,
-                    customDate = selectedDate,
-                    onSelected = { selectedDate = null; selectedPeriod = it },
-                    onDateSelected = { selectedDate = it }
-                )
+                DashboardEnter(delayMillis = 55) {
+                    QuickActions(onNewSale, onCollections, onInventory, onProducts, compact, sellerMode, showSales, showCollections, showInventory, showProducts, presentation.dashboardQuickActions)
+                }
             }
             item {
                 val setupItems = listOf(
@@ -207,6 +205,14 @@ fun DashboardScreen(
                 }
             }
             item {
+                DashboardPeriodSelector(
+                    selected = selectedPeriod,
+                    customDate = selectedDate,
+                    onSelected = { selectedDate = null; selectedPeriod = it },
+                    onDateSelected = { selectedDate = it }
+                )
+            }
+            item {
                 DashboardEnter(delayMillis = 120) {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         kpis.chunked(kpiColumns).forEach { row ->
@@ -218,7 +224,6 @@ fun DashboardScreen(
                     }
                 }
             }
-            item { DashboardEnter(delayMillis = 170) { QuickActions(onNewSale, onCollections, onInventory, onProducts, compact, sellerMode, showSales, showCollections, showInventory, showProducts, presentation.dashboardQuickActions) } }
             item {
                 DashboardEnter(delayMillis = 220) {
                     if (sellerMode) {
@@ -424,7 +429,11 @@ private data class TopProduct(val name: String, val quantity: Long, val revenue:
 private data class PaymentMix(val label: String, val amount: Long)
 
 @Composable
-private fun DashboardHeading(compact: Boolean, sellerMode: Boolean, presentation: MiCatalogoBusinessPresentation) {
+private fun DashboardHeading(
+    sellerMode: Boolean,
+    businessName: String,
+    presentation: MiCatalogoBusinessPresentation
+) {
     Column {
         Text(
             "RESUMEN",
@@ -435,22 +444,25 @@ private fun DashboardHeading(compact: Boolean, sellerMode: Boolean, presentation
         )
         Spacer(Modifier.height(5.dp))
         Text(
-            when {
-                sellerMode -> "Mis ventas"
-                presentation.dashboardTitle.isNotBlank() -> presentation.dashboardTitle
-                compact -> "Ventas y cobros"
-                else -> "Resumen de ventas"
-            },
+            "Buenas, ${businessName.ifBlank { "tu negocio" }}",
             color = BSPOSTheme.colors.secondaryNavy,
             style = MaterialTheme.typography.headlineLarge,
             fontWeight = FontWeight.ExtraBold
         )
         Text(
-            if (sellerMode) "Resumen de tus ventas, cobros y clientes pendientes."
-            else "Controla tus ventas, cobros y clientes pendientes desde un solo lugar.",
+            if (sellerMode) "Así van tus ventas hoy."
+            else "Así va tu negocio hoy.",
             color = BSPOSTheme.colors.textSecondary,
             style = MaterialTheme.typography.bodyLarge
         )
+        if (presentation.dashboardTitle.isNotBlank() && presentation.dashboardTitle != "Resumen de tu negocio") {
+            Text(
+                presentation.dashboardTitle,
+                color = BSPOSTheme.colors.primary,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold
+            )
+        }
     }
 }
 
