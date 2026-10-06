@@ -144,7 +144,7 @@ sealed class Screen(
 
     data object Profile : Screen(
         route = "profile",
-        title = "Mi perfil",
+        title = "Mi cuenta",
         selectedIcon = Icons.Filled.AccountCircle,
         unselectedIcon = Icons.Outlined.AccountCircle
     )

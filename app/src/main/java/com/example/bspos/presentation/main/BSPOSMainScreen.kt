@@ -180,7 +180,7 @@ fun BSPOSMainScreen(
         )
         add(
             DrawerGroup(
-                title = "Compras y abastecimiento",
+                title = "Compras",
                 screens = listOfNotNull(
                     Screen.Containers.takeIf { canSeeMenu("containers") },
                     Screen.RouteLoads.takeIf { canSeeMenu("loads") || (routesEnabled && canSeeMenu("routes")) },
@@ -220,7 +220,7 @@ fun BSPOSMainScreen(
         )
         add(
             DrawerGroup(
-                title = "Finanzas y análisis",
+                title = "Finanzas",
                 screens = listOfNotNull(
                     Screen.Finance.takeIf { canSeeMenu("finance") || canManageShop },
                     Screen.InventoryAdjustments.takeIf { canSeeMenu("inventory_adjustments") },
@@ -254,6 +254,7 @@ fun BSPOSMainScreen(
                     Screen.ShopSettings.takeIf { canSeeMenu("shop_settings") },
                     Screen.Team.takeIf { canSeeMenu("sellers") },
                     Screen.Accountant.takeIf { canSeeMenu("accountant") },
+                    Screen.Profile,
                     Screen.Updates.takeIf { canSeeMenu("updates") },
                     Screen.Help.takeIf { canSeeMenu("help") },
                     Screen.Practice.takeIf { canSeeMenu("practice") },

@@ -99,6 +99,8 @@ MiCatalogo Android ahora presenta esos indicadores con datos locales: capital ca
 - Inventario móvil ahora replica la jerarquía de Puntto con contexto `CATÁLOGO`, título,
   descripción y accesos directos a Productos, Salud de precios, Movimientos e Importar.
   Se conservan el Kardex, recepción, conteo, ajustes, motivos e importador existente.
+- El menú móvil ahora separa visualmente `Compras`, `Finanzas` y `Análisis` como Puntto y
+  añade `Mi cuenta` para todos los roles, sin convertirlo en un permiso administrativo.
 
 ## Pendientes de paridad funcional
 
