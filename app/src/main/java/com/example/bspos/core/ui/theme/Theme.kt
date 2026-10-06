@@ -1,7 +1,6 @@
 package com.example.bspos.core.ui.theme
 
 import android.app.Activity
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.material3.darkColorScheme
@@ -55,7 +54,11 @@ private val DarkColorScheme = darkColorScheme(
 
 @Composable
 fun BSPOSTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
+    // MiCatalogo conserva deliberadamente su lenguaje visual claro. Puntto sirve
+    // como referencia de jerarquía y movimiento, no como fuente de su tema oscuro.
+    // No depender del tema del dispositivo evita que una pantalla cambie de aspecto
+    // entre sesiones y mantiene consistentes el POS, el menú y los estados vacíos.
+    darkTheme: Boolean = false,
     content: @Composable () -> Unit
 ) {
     val colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme

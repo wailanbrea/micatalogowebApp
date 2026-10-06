@@ -137,6 +137,10 @@ MiCatalogo Android ahora presenta esos indicadores con datos locales: capital ca
 - La navegación Compose ahora usa transiciones cortas de entrada/salida y las tarjetas
   de los módulos aparecen escalonadas; se conserva el fondo claro y los acentos de
   MiCatalogo, sin copiar el color oscuro del menú de Puntto.
+- El tema de MiCatalogo queda fijado en modo claro por defecto. El modo oscuro de Puntto
+  no se propaga al sistema: se reutiliza su jerarquía, sus estados y su ritmo de
+  navegación, pero se mantienen los fondos claros, tarjetas blancas y acentos azules
+  propios de MiCatalogo aunque el teléfono esté configurado en modo oscuro.
 - Las acciones de los módulos se apilan en una columna adaptable en lugar de forzarse en
   una sola fila; esto evita cortes en teléfonos estrechos y mantiene accionables las rutas
   nativas aunque el backend no devuelva una URL externa.
