@@ -113,6 +113,9 @@ MiCatalogo Android ahora presenta esos indicadores con datos locales: capital ca
 - La navegación Compose ahora usa transiciones cortas de entrada/salida y las tarjetas
   de los módulos aparecen escalonadas; se conserva el fondo claro y los acentos de
   MiCatalogo, sin copiar el color oscuro del menú de Puntto.
+- Las acciones de los módulos se apilan en una columna adaptable en lugar de forzarse en
+  una sola fila; esto evita cortes en teléfonos estrechos y mantiene accionables las rutas
+  nativas aunque el backend no devuelva una URL externa.
 - Inventario móvil ahora replica la jerarquía de Puntto con contexto `CATÁLOGO`, título,
   descripción y accesos directos a Productos, Salud de precios, Movimientos e Importar.
   Se conservan el Kardex, recepción, conteo, ajustes, motivos e importador existente.

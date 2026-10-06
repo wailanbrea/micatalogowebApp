@@ -122,7 +122,10 @@ private fun FeatureContent(
         }
         if (module.actions.isNotEmpty()) {
             item {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
                     module.actions.forEach { action ->
                         val openAction = {
                             if (!onAction(action.label)) {
@@ -132,11 +135,11 @@ private fun FeatureContent(
                             }
                         }
                         if (action.tone.equals("primary", ignoreCase = true)) {
-                            Button(onClick = openAction, modifier = Modifier.weight(1f), enabled = action.url.isNotBlank()) {
+                            Button(onClick = openAction, modifier = Modifier.fillMaxWidth()) {
                                 Text(action.label)
                             }
                         } else {
-                            OutlinedButton(onClick = openAction, modifier = Modifier.weight(1f), enabled = action.url.isNotBlank()) {
+                            OutlinedButton(onClick = openAction, modifier = Modifier.fillMaxWidth()) {
                                 Text(action.label)
                             }
                         }
