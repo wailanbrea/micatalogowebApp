@@ -29,6 +29,7 @@ class DashboardViewModel @Inject constructor(
     routesRepository: RouteRepository
 ) : ViewModel() {
     val sales = saleRepository.observeAll().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    val costTotals = saleRepository.observeCostTotals().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
     val customers = customersRepository.observeAll().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val stock = inventory.observeStock(InventoryLocation.MAIN).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val products = productsRepository.observeAll().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())

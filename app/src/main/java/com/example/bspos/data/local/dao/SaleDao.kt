@@ -4,10 +4,14 @@ import com.example.bspos.data.local.entity.*
 import com.example.bspos.domain.model.*
 import kotlinx.coroutines.flow.Flow
 import java.util.UUID
+
+data class SaleCostTotal(@ColumnInfo(name = "sale_id") val saleId: UUID, val cost: Long)
+
 @Dao abstract class SaleDao {
  @Query("SELECT * FROM sales WHERE id=:id") abstract suspend fun findById(id:UUID):SaleEntity?
  @Query("SELECT * FROM sales ORDER BY date DESC,id DESC") abstract fun observeAll():Flow<List<SaleEntity>>
  @Query("SELECT * FROM sale_items WHERE sale_id=:saleId ORDER BY rowid") abstract fun observeItems(saleId:UUID):Flow<List<SaleItemEntity>>
+ @Query("SELECT sale_id, SUM(quantity * unit_cost_snapshot) AS cost FROM sale_items GROUP BY sale_id") abstract fun observeCostTotals():Flow<List<SaleCostTotal>>
  @Query("SELECT * FROM sale_items WHERE sale_id=:saleId ORDER BY rowid") abstract suspend fun itemsInInvoiceOrder(saleId:UUID):List<SaleItemEntity>
  @Insert protected abstract suspend fun insertSale(sale:SaleEntity)
  @Insert protected abstract suspend fun insertItems(items:List<SaleItemEntity>)
