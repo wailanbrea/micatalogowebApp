@@ -946,7 +946,7 @@ private fun navigateFeatureAction(
         "administrar equipo", "administrar vendedores" -> Screen.Team
         "ver comisiones" -> Screen.Commissions
         "configuración de tienda", "configurar apariencia", "editar configuración" -> Screen.ShopSettings
-        "abrir mi tienda", "abrir vitrina", "ver mi tienda", "abrir catálogo público" -> Screen.Storefront
+        "ver mi tienda" -> Screen.Storefront
         "registrar gasto" -> Screen.Expenses
         "contactar soporte", "nueva solicitud" -> Screen.Support
         "volver al resumen" -> Screen.Dashboard
