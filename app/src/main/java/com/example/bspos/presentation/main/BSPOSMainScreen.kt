@@ -462,7 +462,6 @@ fun BSPOSMainScreen(
                                 }
                             }
                         }
-                    }
 
                     accountQuota?.let { quota ->
                         Row(
@@ -565,6 +564,8 @@ fun BSPOSMainScreen(
                         color = BSPOSTheme.colors.textSecondary,
                         fontSize = 12.sp
                     )
+                    Spacer(Modifier.height(12.dp))
+                    }
                 }
             }
         }
