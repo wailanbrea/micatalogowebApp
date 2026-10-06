@@ -4,6 +4,10 @@ data class MiCatalogoShop(
     val id: String,
     val name: String,
     val slug: String?,
+    val businessType: String? = null,
+    val businessTypeLabel: String? = null,
+    val capabilities: Map<String, String> = emptyMap(),
+    val productFields: List<String> = emptyList(),
     val quota: MiCatalogoShopQuota? = null,
     val menuPermissions: List<String> = emptyList(),
     val canManageSellers: Boolean = false,
@@ -55,10 +59,26 @@ fun canAccessMiCatalogoMenu(
     isPlatformOwner: Boolean,
     canManageShop: Boolean,
     menuPermissions: Collection<String>,
-    menu: String
-): Boolean = isPlatformOwner || canManageShop || (
-    menu !in ownerOnlyMenuKeys && menu in (menuPermissions + requiredSellerMenuKeys)
-)
+    menu: String,
+    capabilities: Map<String, String> = emptyMap()
+): Boolean {
+    val requiredCapability = when (menu) {
+        "products" -> "products"
+        "inventory" -> "inventory"
+        "sales" -> "sales"
+        "customers" -> "customers"
+        "collections" -> "credit"
+        "cash" -> "cash"
+        "expenses" -> "expenses"
+        "finance" -> "finance"
+        else -> null
+    }
+    if (requiredCapability != null && capabilities.isNotEmpty() && capabilities[requiredCapability] != "enabled") return false
+
+    return isPlatformOwner || canManageShop || (
+        menu !in ownerOnlyMenuKeys && menu in (menuPermissions + requiredSellerMenuKeys)
+    )
+}
 
 data class MiCatalogoShopQuota(
     val plan: String,

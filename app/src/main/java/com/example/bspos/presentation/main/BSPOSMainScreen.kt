@@ -125,7 +125,7 @@ fun BSPOSMainScreen(
     val sellerMode = !canManageShop
     val menuPermissions = currentShop?.menuPermissions.orEmpty()
     val canSeeMenu: (String) -> Boolean = { key ->
-        canAccessMiCatalogoMenu(connection.isAdmin, canManageShop, menuPermissions, key)
+        canAccessMiCatalogoMenu(connection.isAdmin, canManageShop, menuPermissions, key, currentShop?.capabilities.orEmpty())
     }
     val drawerSections = buildList {
         add("PRINCIPAL" to listOf(Screen.Dashboard))

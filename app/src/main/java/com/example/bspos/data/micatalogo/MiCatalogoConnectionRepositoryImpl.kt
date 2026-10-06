@@ -127,6 +127,10 @@ class MiCatalogoConnectionRepositoryImpl @Inject constructor(
                     id = id,
                     name = shop.name?.ifBlank { id } ?: id,
                     slug = shop.slug,
+                    businessType = shop.businessType,
+                    businessTypeLabel = shop.businessTypeLabel,
+                    capabilities = shop.capabilities,
+                    productFields = shop.productFields,
                     menuPermissions = shop.menuPermissions,
                     canManageSellers = shop.canManageSellers,
                     sellers = shop.sellers.map { seller ->
