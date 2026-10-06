@@ -28,6 +28,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -64,26 +65,43 @@ fun FeatureModuleScreen(
         when {
             state.loading -> CircularProgressIndicator(Modifier.align(Alignment.Center), color = BSPOSTheme.colors.primary)
             state.error != null -> FeatureError(state.error!!, onRetry = { viewModel.load(feature) })
-            state.response != null -> FeatureContent(state.response!!.feature, state.response!!.module, onAction)
+            state.response != null -> FeatureContent(
+                state.response!!.feature,
+                state.response!!.module,
+                onAction,
+                onRefresh = { viewModel.load(feature) }
+            )
         }
     }
 }
 
 @Composable
-private fun FeatureContent(definition: FeatureDefinitionDto, module: FeatureModuleDto, onAction: (String) -> Boolean) {
+private fun FeatureContent(
+    definition: FeatureDefinitionDto,
+    module: FeatureModuleDto,
+    onAction: (String) -> Boolean,
+    onRefresh: () -> Unit
+) {
     val context = LocalContext.current
     LazyColumn(
         modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         item {
-            if (definition.group.isNotBlank()) {
-                Text(definition.group.uppercase(), color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.weight(1f)) {
+                    if (definition.group.isNotBlank()) {
+                        Text(definition.group.uppercase(), color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+                    }
+                    if (definition.title.isNotBlank()) {
+                        Text(definition.title, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold, color = BSPOSTheme.colors.textPrimary)
+                    }
+                    Text(definition.description, color = BSPOSTheme.colors.textSecondary)
+                }
+                IconButton(onClick = onRefresh) {
+                    Icon(Icons.Default.Refresh, contentDescription = "Actualizar", tint = BSPOSTheme.colors.primary)
+                }
             }
-            if (definition.title.isNotBlank()) {
-                Text(definition.title, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold, color = BSPOSTheme.colors.textPrimary)
-            }
-            Text(definition.description, color = BSPOSTheme.colors.textSecondary)
             Spacer(Modifier.height(4.dp))
             StatusPill(operational = module.kind != "prepared")
         }
