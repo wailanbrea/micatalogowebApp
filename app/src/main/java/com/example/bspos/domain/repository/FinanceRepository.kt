@@ -74,6 +74,4 @@ interface FinanceRepository {
         shopId: String,
         request: ExpenseCreateRequestDto
     ): MiCatalogoResult<ExpenseActionResponseDto>
-    suspend fun payExpense(shopId: String, expenseId: String,
-        request: com.example.bspos.data.micatalogo.dto.ExpensePaymentRequestDto): MiCatalogoResult<Unit>
 }

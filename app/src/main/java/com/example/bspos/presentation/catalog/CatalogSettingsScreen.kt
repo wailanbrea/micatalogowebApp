@@ -20,6 +20,7 @@ import com.example.bspos.presentation.common.DialogScrollableColumn
     var units by remember { mutableStateOf(false) }; var showForm by remember { mutableStateOf(false) }; var editCategory by remember { mutableStateOf<com.example.bspos.domain.model.Category?>(null) }; var editUnit by remember { mutableStateOf<com.example.bspos.domain.model.UnitOfMeasure?>(null) }
     val categories by viewModel.categoryList.collectAsState(); val unitList by viewModel.unitList.collectAsState()
     Column(modifier.fillMaxSize().background(BSPOSTheme.colors.background).padding(20.dp)) {
+        Text("Catálogo base", style = MaterialTheme.typography.headlineMedium, color = BSPOSTheme.colors.textPrimary)
         Text("Define cómo se organizan y miden tus productos", color = BSPOSTheme.colors.textSecondary)
         Spacer(Modifier.height(16.dp))
         SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {

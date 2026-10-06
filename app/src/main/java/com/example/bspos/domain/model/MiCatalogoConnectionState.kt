@@ -7,7 +7,9 @@ data class MiCatalogoConnectionState(
     val rememberedEmail: String = "",
     val accountEmail: String = "",
     val accountName: String = "",
-    val role: String = "seller"
+    val role: String = "seller",
+    /** Store selected by the user when the account has more than one store. */
+    val activeShopId: String? = null
 ) {
     // A build-time endpoint alone is not a tenant connection; a session is required.
     val isConfigured: Boolean get() = hasAccessToken

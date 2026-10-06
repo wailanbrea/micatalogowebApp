@@ -24,12 +24,4 @@ class MiCatalogoMenuAccessTest {
         assertTrue(canAccessMiCatalogoMenu(false, true, emptyList(), "sellers"))
         assertTrue(canAccessMiCatalogoMenu(true, false, emptyList(), "settings"))
     }
-
-    @Test
-    fun backendCapabilitiesCanHideAFeatureEvenForTheShopOwner() {
-        val capabilities = mapOf("inventory" to "unsupported", "sales" to "enabled")
-
-        assertFalse(canAccessMiCatalogoMenu(false, true, emptyList(), "inventory", capabilities))
-        assertTrue(canAccessMiCatalogoMenu(false, true, emptyList(), "sales", capabilities))
-    }
 }

@@ -5,6 +5,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.SystemClock
 import android.provider.Settings
+import android.widget.Toast
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.DisposableEffect
@@ -87,25 +88,17 @@ class MainActivity : FragmentActivity() {
                         is AppUpdateState.Available,
                         is AppUpdateState.Downloading,
                         is AppUpdateState.Failed,
-                        is AppUpdateState.InstallationPending,
-                        is AppUpdateState.ReadyToInstall,
                         is AppUpdateState.CheckFailed -> AppUpdateDialog(
                             appUpdateState,
                             appUpdateViewModel::download,
                             onRetryCheck = { appUpdateViewModel.checkForUpdate() },
-                            onDismissCheckFailure = appUpdateViewModel::dismissCheckFailure,
-                            onSkip = appUpdateViewModel::skip
+                            onDismissCheckFailure = appUpdateViewModel::dismissCheckFailure
                         )
-                        else -> Unit
-                    }
-                    val ready = appUpdateState as? AppUpdateState.ReadyToInstall
-                    LaunchedEffect(ready) {
-                        if (ready != null) {
-                            appUpdateViewModel.installationStarted()
-                            runCatching { installDownloadedUpdate(ready.apk) }.onFailure {
-                                appUpdateViewModel.installationFailed("No se pudo abrir el instalador. Reintenta la instalación.")
-                            }
+                        is AppUpdateState.ReadyToInstall -> {
+                            val apk = (appUpdateState as AppUpdateState.ReadyToInstall).apk
+                            LaunchedEffect(apk) { installDownloadedUpdate(apk) }
                         }
+                        else -> Unit
                     }
                 }
             }
@@ -123,7 +116,7 @@ class MainActivity : FragmentActivity() {
     }
 
     private fun installDownloadedUpdate(apk: File) {
-        check(apk.exists()) { "No se encuentra el APK descargado." }
+        if (!apk.exists()) return
         if (!packageManager.canRequestPackageInstalls()) {
             pendingSourcePermissionApk = apk
             startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:$packageName")))
@@ -138,6 +131,7 @@ class MainActivity : FragmentActivity() {
             .setDataAndType(contentUri, "application/vnd.android.package-archive")
             .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
 
-        startActivity(intent)
+        runCatching { startActivity(intent) }
+            .onFailure { Toast.makeText(this, "No se pudo abrir el instalador de la actualizacion.", Toast.LENGTH_LONG).show() }
     }
 }

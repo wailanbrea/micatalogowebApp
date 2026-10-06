@@ -19,22 +19,30 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material3.DrawerValue
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.NavigationDrawerItem
 import androidx.compose.material3.NavigationDrawerItemDefaults
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberDrawerState
@@ -68,6 +76,7 @@ import com.example.bspos.BuildConfig
 import com.example.bspos.core.money.LocalCurrency
 import com.example.bspos.domain.model.CurrencyUnit
 import com.example.bspos.domain.model.SellerMenuOptions
+import com.example.bspos.domain.model.MiCatalogoBusinessPresentation
 import com.example.bspos.domain.model.canAccessMiCatalogoMenu
 import com.example.bspos.presentation.navigation.Screen
 import com.example.bspos.presentation.catalog.CatalogSettingsScreen
@@ -90,8 +99,16 @@ import com.example.bspos.presentation.common.UiErrorBus
 import com.example.bspos.presentation.printer.BluetoothPrinterScreen
 import com.example.bspos.presentation.adminshops.AdminShopsScreen
 import com.example.bspos.presentation.finance.FinanceScreen
+import com.example.bspos.presentation.feature.FeatureModuleScreen
+import com.example.bspos.presentation.quote.QuoteScreen
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import kotlinx.coroutines.launch
+
+private data class DrawerGroup(
+    val title: String,
+    val screens: List<Screen>,
+    val administrative: Boolean = false
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -106,7 +123,9 @@ fun BSPOSMainScreen(
     LaunchedEffect(connection.isConfigured) {
         if (connection.isConfigured) settingsViewModel.loadShops()
     }
-    val accountQuota = accountState.shops.firstOrNull()?.quota
+    val activeShop = accountState.shops.firstOrNull { it.id == connection.activeShopId }
+        ?: accountState.shops.firstOrNull()
+    val accountQuota = activeShop?.quota
     val routesEnabled = settings?.routesEnabled == true
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
@@ -120,53 +139,130 @@ fun BSPOSMainScreen(
         }
     }
 
-    val currentShop = accountState.shops.firstOrNull()
+    val currentShop = activeShop
     val canManageShop = connection.isAdmin || currentShop?.canManageSellers == true
     val sellerMode = !canManageShop
     val menuPermissions = currentShop?.menuPermissions.orEmpty()
     val canSeeMenu: (String) -> Boolean = { key ->
         canAccessMiCatalogoMenu(connection.isAdmin, canManageShop, menuPermissions, key, currentShop?.capabilities.orEmpty())
     }
-    val drawerSections = buildList {
-        add("PRINCIPAL" to listOf(Screen.Dashboard))
-        add("VENTAS" to listOfNotNull(
-            if (canSeeMenu("sales")) Screen.POS else null,
-            if (canSeeMenu("returns")) Screen.Returns else null
-        ))
-        add("NEGOCIO" to listOfNotNull(
-            if (canSeeMenu("products")) Screen.Catalog else null,
-            if (canSeeMenu("inventory")) Screen.Inventory else null,
-            if (canSeeMenu("customers")) Screen.Customers else null,
-            if (canSeeMenu("collections")) Screen.Collections else null
-        ))
-        add("FINANZAS" to listOfNotNull(
-            if (canSeeMenu("cash")) Screen.Cash else null,
-            if (canSeeMenu("finance") || canManageShop) Screen.Finance else null,
-            if (canSeeMenu("expenses")) Screen.Expenses else null
-        ))
-        add("HERRAMIENTAS" to listOfNotNull(
-            if (canSeeMenu("printers")) Screen.Printers else null,
-            if (routesEnabled && canSeeMenu("routes")) Screen.Routes else null,
-            if (canSeeMenu("more")) Screen.More else null
-        ))
-        add("ADMINISTRACIÓN" to listOfNotNull(
-            if (canSeeMenu("settings")) Screen.Settings else null,
-            if (connection.isAdmin) Screen.AdminShops else null
-        ))
-    }.filter { (_, screens) -> screens.isNotEmpty() }
-    val drawerScreens = drawerSections.flatMap { (_, screens) -> screens }
+    val drawerGroups = buildList {
+        add(
+            DrawerGroup(
+                title = "Operación",
+                screens = listOfNotNull(
+                    Screen.Dashboard,
+                    Screen.POS.takeIf { canSeeMenu("sales") },
+                    Screen.Quotes.takeIf { canSeeMenu("quotes") },
+                    Screen.Orders.takeIf { canSeeMenu("orders") },
+                    Screen.Encargos.takeIf { canSeeMenu("encargos") },
+                    Screen.Shipments.takeIf { canSeeMenu("shipments") },
+                    Screen.DayClose.takeIf { canSeeMenu("day_close") },
+                    Screen.Cash.takeIf { canSeeMenu("cash") },
+                    Screen.Returns.takeIf { canSeeMenu("returns") },
+                    Screen.Routes.takeIf { routesEnabled && canSeeMenu("routes") }
+                )
+            )
+        )
+        add(
+            DrawerGroup(
+                title = "Compras y abastecimiento",
+                screens = listOfNotNull(
+                    Screen.Containers.takeIf { canSeeMenu("containers") },
+                    Screen.RouteLoads.takeIf { canSeeMenu("loads") || (routesEnabled && canSeeMenu("routes")) },
+                    Screen.Suppliers.takeIf { canSeeMenu("suppliers") || canSeeMenu("more") },
+                    Screen.PurchaseInvoices.takeIf { canSeeMenu("purchase_invoices") }
+                )
+            )
+        )
+        add(
+            DrawerGroup(
+                title = "Catálogo",
+                screens = listOfNotNull(
+                    Screen.Catalog.takeIf { canSeeMenu("products") },
+                    Screen.Inventory.takeIf { canSeeMenu("inventory") },
+                    Screen.Printers.takeIf { canSeeMenu("printers") },
+                    Screen.Photos.takeIf { canSeeMenu("photos") },
+                    Screen.Storefront.takeIf { canSeeMenu("storefront") },
+                    Screen.Services.takeIf { canSeeMenu("services") },
+                    Screen.PriceHealth.takeIf { canSeeMenu("price_health") },
+                    Screen.AutomaticPrices.takeIf { canSeeMenu("pricing") },
+                    Screen.Decants.takeIf { canSeeMenu("decants") },
+                    Screen.Attributes.takeIf { canSeeMenu("attributes") },
+                    Screen.Import.takeIf { canSeeMenu("import") },
+                    Screen.Metrics.takeIf { canSeeMenu("metrics") },
+                    Screen.PublicCatalog.takeIf { canSeeMenu("public_catalog") }
+                )
+            )
+        )
+        add(
+            DrawerGroup(
+                title = "Cobros",
+                screens = listOfNotNull(
+                    Screen.Credit.takeIf { canSeeMenu("sales") },
+                    Screen.Collections.takeIf { canSeeMenu("collections") },
+                    Screen.Customers.takeIf { canSeeMenu("customers") }
+                )
+            )
+        )
+        add(
+            DrawerGroup(
+                title = "Finanzas y análisis",
+                screens = listOfNotNull(
+                    Screen.Finance.takeIf { canSeeMenu("finance") || canManageShop },
+                    Screen.InventoryAdjustments.takeIf { canSeeMenu("inventory_adjustments") },
+                    Screen.Expenses.takeIf { canSeeMenu("finance") || canManageShop },
+                    Screen.Partners.takeIf { canSeeMenu("partners") }
+                )
+            )
+        )
+        add(
+            DrawerGroup(
+                title = "Análisis",
+                screens = listOfNotNull(Screen.Reports.takeIf { canSeeMenu("reports") })
+            )
+        )
+        add(
+            DrawerGroup(
+                title = "Equipo",
+                administrative = true,
+                screens = listOfNotNull(
+                    Screen.Commissions.takeIf { canSeeMenu("commissions") },
+                    Screen.Authorizations.takeIf { canSeeMenu("authorizations") }
+                )
+            )
+        )
+        add(
+            DrawerGroup(
+                title = "Ajustes",
+                administrative = true,
+                screens = listOfNotNull(
+                    Screen.Settings.takeIf { canSeeMenu("settings") },
+                    Screen.ShopSettings.takeIf { canSeeMenu("shop_settings") },
+                    Screen.Team.takeIf { canSeeMenu("sellers") },
+                    Screen.Accountant.takeIf { canSeeMenu("accountant") },
+                    Screen.Updates.takeIf { canSeeMenu("updates") },
+                    Screen.Help.takeIf { canSeeMenu("help") },
+                    Screen.Practice.takeIf { canSeeMenu("practice") },
+                    Screen.Support.takeIf { canSeeMenu("support") },
+                    Screen.AdminShops.takeIf { connection.isAdmin }
+                )
+            )
+        )
+    }.filter { it.screens.isNotEmpty() }
+    val drawerScreens = drawerGroups.flatMap { it.screens }
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
-    val currentScreen = (drawerScreens + listOf(
-        Screen.Profile, Screen.Suppliers, Screen.Credit, Screen.RouteLoads, Screen.Expenses
-    )).firstOrNull { it.route == currentRoute }
-    val connectedShop = accountState.shops.firstOrNull()
+    var shopMenuOpen by remember { mutableStateOf(false) }
+    var menuQuery by remember { mutableStateOf("") }
+    var collapsedGroups by remember { mutableStateOf(emptySet<String>()) }
+    val currentScreen = drawerScreens.firstOrNull { it.route == currentRoute }
+    val connectedShop = activeShop
     val businessName = connectedShop?.name ?: settings?.invoice?.businessName?.ifBlank { null } ?: "MiCatalogo"
-    val screenWidth = LocalConfiguration.current.screenWidthDp.dp
     val drawerWidth = if (windowWidthSizeClass == WindowWidthSizeClass.Expanded) {
         360.dp
     } else {
-        minOf(320.dp, (screenWidth - 56.dp).coerceAtLeast(280.dp))
+        LocalConfiguration.current.screenWidthDp.dp * 0.62f
     }
     val navigateTo: (Screen) -> Unit = { screen ->
         if (currentRoute != screen.route) {
@@ -223,25 +319,94 @@ fun BSPOSMainScreen(
                         }
                     }
 
+                    if (accountState.shops.size > 1) {
+                        Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp)) {
+                            TextButton(
+                                onClick = { shopMenuOpen = true },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(Modifier.weight(1f), horizontalAlignment = Alignment.Start) {
+                                    Text("Tienda activa", fontSize = 11.sp, color = BSPOSTheme.colors.textSecondary)
+                                    Text(
+                                        connectedShop?.name ?: "Seleccionar tienda",
+                                        fontWeight = FontWeight.Bold,
+                                        color = BSPOSTheme.colors.primary,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                                Text("Cambiar", color = BSPOSTheme.colors.primary, fontSize = 12.sp)
+                            }
+                            DropdownMenu(
+                                expanded = shopMenuOpen,
+                                onDismissRequest = { shopMenuOpen = false }
+                            ) {
+                                accountState.shops.forEach { shop ->
+                                    DropdownMenuItem(
+                                        text = { Text(shop.name, fontWeight = if (shop.id == connectedShop?.id) FontWeight.Bold else FontWeight.Normal) },
+                                        onClick = {
+                                            shopMenuOpen = false
+                                            settingsViewModel.selectShop(shop)
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    OutlinedTextField(
+                        value = menuQuery,
+                        onValueChange = { menuQuery = it },
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
+                        singleLine = true,
+                        placeholder = { Text("Buscar en el menú…") },
+                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) }
+                    )
+
                     Column(
                         modifier = Modifier
                             .weight(1f)
                             .verticalScroll(rememberScrollState())
                             .padding(top = 16.dp)
                     ) {
-                        drawerSections.forEachIndexed { sectionIndex, (sectionTitle, screens) ->
-                            Text(
-                                text = sectionTitle,
-                                modifier = Modifier.padding(
-                                    start = 16.dp,
-                                    top = if (sectionIndex == 0) 0.dp else 12.dp,
-                                    bottom = 4.dp
-                                ),
-                                color = BSPOSTheme.colors.textSecondary,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 11.sp
-                            )
-                            screens.forEach { screen ->
+                        drawerGroups.forEach { group ->
+                            val visibleScreens = group.screens.filter { screen ->
+                                menuQuery.isBlank() || screen.title.contains(menuQuery.trim(), ignoreCase = true)
+                            }
+                            if (visibleScreens.isNotEmpty()) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().clickable {
+                                        collapsedGroups = if (group.title in collapsedGroups) {
+                                            collapsedGroups - group.title
+                                        } else {
+                                            collapsedGroups + group.title
+                                        }
+                                    }.padding(start = 12.dp, top = 12.dp, bottom = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = group.title,
+                                        modifier = Modifier.weight(1f),
+                                        color = if (group.administrative) BSPOSTheme.colors.primary else BSPOSTheme.colors.textSecondary,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.ExtraBold
+                                    )
+                                    Text(
+                                        text = if (group.title in collapsedGroups) "›" else "⌄",
+                                        color = BSPOSTheme.colors.textSecondary,
+                                        fontSize = 18.sp,
+                                        modifier = Modifier.padding(end = 8.dp)
+                                    )
+                                }
+                                if (group.administrative) {
+                                    androidx.compose.material3.HorizontalDivider(
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                                        color = BSPOSTheme.colors.primary,
+                                        thickness = 2.dp
+                                    )
+                                }
+                            }
+                            if (visibleScreens.isNotEmpty() && group.title !in collapsedGroups) visibleScreens.forEach { screen ->
                                 val selected = currentRoute == screen.route
                                 NavigationDrawerItem(
                                     label = { Text(screen.title, fontWeight = if (selected) FontWeight.ExtraBold else FontWeight.SemiBold) },
@@ -253,7 +418,7 @@ fun BSPOSMainScreen(
                                             contentDescription = null
                                         )
                                     },
-                                    modifier = Modifier.padding(vertical = 2.dp),
+                                    modifier = Modifier.padding(vertical = 3.dp),
                                     colors = NavigationDrawerItemDefaults.colors(
                                         selectedContainerColor = BSPOSTheme.colors.primaryLight,
                                         selectedIconColor = BSPOSTheme.colors.primary,
@@ -336,11 +501,45 @@ fun BSPOSMainScreen(
             modifier = modifier.fillMaxSize(),
             containerColor = BSPOSTheme.colors.background,
             snackbarHost = { SnackbarHost(snackbarHostState) },
+            bottomBar = {
+                if (windowWidthSizeClass != WindowWidthSizeClass.Expanded) {
+                    val bottomItems = listOfNotNull(
+                        Triple("Terminal", Screen.POS, canSeeMenu("sales")),
+                        Triple("Pedidos", Screen.Orders, canSeeMenu("orders")),
+                        Triple("Inventario", Screen.Inventory, canSeeMenu("inventory")),
+                        Triple("Más", Screen.More, canSeeMenu("more"))
+                    ).filter { it.third }
+                    if (bottomItems.isNotEmpty()) {
+                        NavigationBar(containerColor = BSPOSTheme.colors.surface) {
+                            bottomItems.forEach { (label, screen, _) ->
+                                NavigationBarItem(
+                                    selected = currentRoute == screen.route,
+                                    onClick = { navigateTo(screen) },
+                                    icon = {
+                                        Icon(
+                                            imageVector = if (currentRoute == screen.route) screen.selectedIcon else screen.unselectedIcon,
+                                            contentDescription = label
+                                        )
+                                    },
+                                    label = { Text(label, maxLines = 1) },
+                                    colors = NavigationBarItemDefaults.colors(
+                                        selectedIconColor = BSPOSTheme.colors.primary,
+                                        selectedTextColor = BSPOSTheme.colors.primary,
+                                        indicatorColor = BSPOSTheme.colors.primaryLight,
+                                        unselectedIconColor = BSPOSTheme.colors.textSecondary,
+                                        unselectedTextColor = BSPOSTheme.colors.textSecondary
+                                    )
+                                )
+                            }
+                        }
+                    }
+                }
+            },
             topBar = {
                 TopAppBar(
                     title = {
                         Text(
-                            text = currentScreen?.title ?: "MiCatalogo",
+                            text = currentScreen?.title ?: if (currentRoute == Screen.Profile.route) Screen.Profile.title else "MiCatalogo",
                             fontWeight = FontWeight.Bold
                         )
                     },
@@ -377,7 +576,7 @@ fun BSPOSMainScreen(
                 showSettings = canSeeMenu("settings"),
                 showAdminShops = connection.isAdmin,
                 remoteShopAvailable = connectedShop != null,
-                presentation = connectedShop?.presentation ?: com.example.bspos.domain.model.MiCatalogoBusinessPresentation(),
+                presentation = connectedShop?.presentation ?: MiCatalogoBusinessPresentation(),
                 productFields = connectedShop?.productFields?.toSet().orEmpty(),
                 canSeeMenu = canSeeMenu,
                 modifier = Modifier.padding(paddingValues)
@@ -396,7 +595,7 @@ fun BSPOSNavHost(
     showSettings: Boolean = false,
     showAdminShops: Boolean = false,
     remoteShopAvailable: Boolean = false,
-    presentation: com.example.bspos.domain.model.MiCatalogoBusinessPresentation = com.example.bspos.domain.model.MiCatalogoBusinessPresentation(),
+    presentation: MiCatalogoBusinessPresentation = MiCatalogoBusinessPresentation(),
     productFields: Set<String> = emptySet(),
     canSeeMenu: (String) -> Boolean = { true },
     modifier: Modifier = Modifier
@@ -427,9 +626,43 @@ fun BSPOSNavHost(
         }
         composable(Screen.POS.route) {
             RestrictedMenuDestination(canSeeMenu("sales"), navController) {
-                PosScreen(presentation = presentation.copy(posShowCredit = presentation.posShowCredit && canSeeMenu("collections")), onOpenCash = { navController.navigate(Screen.Cash.route) })
+                PosScreen(
+                    presentation = presentation.copy(posShowCredit = presentation.posShowCredit && canSeeMenu("collections")),
+                    onOpenCash = { navController.navigate(Screen.Cash.route) }
+                )
             }
         }
+        composable(Screen.Quotes.route) {
+            RestrictedMenuDestination(canSeeMenu("quotes"), navController) { QuoteScreen() }
+        }
+        composable(Screen.Orders.route) { FeatureDestination("orders", canSeeMenu("orders"), navController) }
+        composable(Screen.Encargos.route) { FeatureDestination("encargos", canSeeMenu("encargos"), navController) }
+        composable(Screen.Shipments.route) { FeatureDestination("shipments", canSeeMenu("shipments"), navController) }
+        composable(Screen.DayClose.route) { FeatureDestination("day_close", canSeeMenu("day_close"), navController) }
+        composable(Screen.Containers.route) { FeatureDestination("containers", canSeeMenu("containers"), navController) }
+        composable(Screen.PurchaseInvoices.route) { FeatureDestination("purchase_invoices", canSeeMenu("purchase_invoices"), navController) }
+        composable(Screen.Photos.route) { FeatureDestination("photos", canSeeMenu("photos"), navController) }
+        composable(Screen.Storefront.route) { FeatureDestination("storefront", canSeeMenu("storefront"), navController) }
+        composable(Screen.Services.route) { FeatureDestination("services", canSeeMenu("services"), navController) }
+        composable(Screen.PriceHealth.route) { FeatureDestination("price_health", canSeeMenu("price_health"), navController) }
+        composable(Screen.AutomaticPrices.route) { FeatureDestination("pricing", canSeeMenu("pricing"), navController) }
+        composable(Screen.Decants.route) { FeatureDestination("decants", canSeeMenu("decants"), navController) }
+        composable(Screen.Attributes.route) { FeatureDestination("attributes", canSeeMenu("attributes"), navController) }
+        composable(Screen.Import.route) { FeatureDestination("import", canSeeMenu("import"), navController) }
+        composable(Screen.InventoryAdjustments.route) { FeatureDestination("inventory_adjustments", canSeeMenu("inventory_adjustments"), navController) }
+        composable(Screen.Partners.route) { FeatureDestination("partners", canSeeMenu("partners"), navController) }
+        composable(Screen.Reports.route) { FeatureDestination("reports", canSeeMenu("reports"), navController) }
+        composable(Screen.Commissions.route) { FeatureDestination("commissions", canSeeMenu("commissions"), navController) }
+        composable(Screen.Authorizations.route) { FeatureDestination("authorizations", canSeeMenu("authorizations"), navController) }
+        composable(Screen.Accountant.route) { FeatureDestination("accountant", canSeeMenu("accountant"), navController) }
+        composable(Screen.Updates.route) { FeatureDestination("updates", canSeeMenu("updates"), navController) }
+        composable(Screen.Help.route) { FeatureDestination("help", canSeeMenu("help"), navController) }
+        composable(Screen.Practice.route) { FeatureDestination("practice", canSeeMenu("practice"), navController) }
+        composable(Screen.Support.route) { FeatureDestination("support", canSeeMenu("support"), navController) }
+        composable(Screen.Metrics.route) { FeatureDestination("metrics", canSeeMenu("metrics"), navController) }
+        composable(Screen.PublicCatalog.route) { FeatureDestination("public_catalog", canSeeMenu("public_catalog"), navController) }
+        composable(Screen.ShopSettings.route) { FeatureDestination("shop_settings", canSeeMenu("shop_settings"), navController) }
+        composable(Screen.Team.route) { FeatureDestination("sellers", canSeeMenu("sellers"), navController) }
         composable(Screen.Catalog.route) {
             RestrictedMenuDestination(canSeeMenu("products"), navController) {
                 CatalogHomeScreen(
@@ -441,7 +674,9 @@ fun BSPOSNavHost(
             }
         }
         composable(Screen.Customers.route) {
-            RestrictedMenuDestination(canSeeMenu("customers"), navController) { CustomerScreen(presentation = presentation.copy(customersShowCredit = presentation.customersShowCredit && canSeeMenu("collections"))) }
+            RestrictedMenuDestination(canSeeMenu("customers"), navController) {
+                CustomerScreen(presentation = presentation.copy(customersShowCredit = presentation.customersShowCredit && canSeeMenu("collections")))
+            }
         }
         composable(Screen.Routes.route) {
             if (routesEnabled && canSeeMenu("routes")) {
@@ -470,7 +705,7 @@ fun BSPOSNavHost(
                     showSuppliers = canSeeMenu("more"),
                     showInventory = canSeeMenu("inventory"),
                     showCollections = canSeeMenu("collections"),
-                    showCredit = canSeeMenu("collections"),
+                    showCredit = canSeeMenu("sales"),
                     showCash = canSeeMenu("cash"),
                     showReturns = canSeeMenu("returns"),
                     showRouteLoads = routesEnabled && canSeeMenu("routes"),
@@ -481,7 +716,7 @@ fun BSPOSNavHost(
             }
         }
         composable(Screen.Suppliers.route) {
-            RestrictedMenuDestination(canSeeMenu("more"), navController) { SupplierScreen() }
+            RestrictedMenuDestination(canSeeMenu("suppliers") || canSeeMenu("more"), navController) { SupplierScreen() }
         }
         composable(Screen.Inventory.route) {
             RestrictedMenuDestination(canSeeMenu("inventory"), navController) { InventoryScreen() }
@@ -490,7 +725,9 @@ fun BSPOSNavHost(
             RestrictedMenuDestination(canSeeMenu("collections"), navController) { CollectionScreen() }
         }
         composable(Screen.Credit.route) {
-            RestrictedMenuDestination(canSeeMenu("sales") && canSeeMenu("collections"), navController) { PosScreen(creditOnly = true, presentation = presentation.copy(posShowCredit = true)) }
+            RestrictedMenuDestination(canSeeMenu("sales") && canSeeMenu("collections"), navController) {
+                PosScreen(creditOnly = true, presentation = presentation.copy(posShowCredit = true))
+            }
         }
         composable(Screen.Cash.route) {
             RestrictedMenuDestination(canSeeMenu("cash"), navController) {
@@ -504,15 +741,25 @@ fun BSPOSNavHost(
                 var remoteCash by remember { mutableStateOf(onCashOpened == null && remoteShopAvailable) }
                 Column {
                     Row {
-                        FilterChip(selected = remoteCash, onClick = { remoteCash = true },
-                            label = { Text("Caja del servidor") }, enabled = remoteShopAvailable)
-                        FilterChip(selected = !remoteCash, onClick = { remoteCash = false },
-                            label = { Text("Caja local POS") })
+                        FilterChip(
+                            selected = remoteCash,
+                            onClick = { remoteCash = true },
+                            label = { Text("Caja del servidor") },
+                            enabled = remoteShopAvailable
+                        )
+                        FilterChip(
+                            selected = !remoteCash,
+                            onClick = { remoteCash = false },
+                            label = { Text("Caja local POS") }
+                        )
                     }
-                    Text("Son sesiones distintas. La caja del servidor requiere conexión para abrir y cerrar.",
-                        style = MaterialTheme.typography.bodySmall)
+                    Text(
+                        if (remoteCash) "La caja del servidor consolida las ventas sincronizadas."
+                        else "La caja local se usa cuando trabajas sin conexión.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
                     Box(Modifier.weight(1f)) {
-                        if (remoteCash) FinanceScreen(cashOnly = true)
+                        if (remoteCash) FinanceScreen(initialTab = 4)
                         else CashScreen(onCashOpened = onCashOpened)
                     }
                 }
@@ -522,7 +769,7 @@ fun BSPOSNavHost(
             RestrictedMenuDestination(canSeeMenu("returns"), navController) { ReturnScreen() }
         }
         composable(Screen.RouteLoads.route) {
-            if (routesEnabled && canSeeMenu("routes")) {
+            if (canSeeMenu("loads") || (routesEnabled && canSeeMenu("routes"))) {
                 RouteLoadScreen()
             } else {
                 LaunchedEffect(Unit) {
@@ -550,11 +797,11 @@ fun BSPOSNavHost(
             }
         }
         composable(Screen.Expenses.route) {
-            RestrictedMenuDestination(canSeeMenu("expenses"), navController) {
+            RestrictedMenuDestination(canSeeMenu("finance") || !sellerMode, navController) {
                 FinanceScreen(
-                    expensesOnly = true,
                     onNavigateBack = { navController.popBackStack() },
-                    onNavigateToCash = { navController.navigate(Screen.Cash.route) }
+                    onNavigateToCash = { navController.navigate(Screen.Cash.route) },
+                    initialTab = 3
                 )
             }
         }
@@ -578,6 +825,42 @@ private fun RestrictedMenuDestination(
             navController.popBackStack(Screen.Dashboard.route, false)
         }
     }
+}
+
+@Composable
+private fun FeatureDestination(
+    feature: String,
+    isAllowed: Boolean,
+    navController: androidx.navigation.NavHostController
+) {
+    RestrictedMenuDestination(isAllowed, navController) {
+        FeatureModuleScreen(
+            feature = feature,
+            onAction = { label -> navigateFeatureAction(label, navController) }
+        )
+    }
+}
+
+private fun navigateFeatureAction(
+    label: String,
+    navController: androidx.navigation.NavHostController
+): Boolean {
+    val target = when (label.lowercase()) {
+        "ir a terminal", "explorar terminal", "ver terminal" -> Screen.POS
+        "ver pedidos" -> Screen.Orders
+        "ver inventario", "abrir inventario", "explorar inventario" -> Screen.Inventory
+        "ver caja" -> Screen.Cash
+        "ver ganancias" -> Screen.Finance
+        "ver reportes" -> Screen.Reports
+        "crear producto o servicio" -> Screen.Catalog
+        "administrar equipo" -> Screen.Team
+        else -> null
+    } ?: return false
+    navController.navigate(target.route) {
+        launchSingleTop = true
+        restoreState = true
+    }
+    return true
 }
 
 @Composable

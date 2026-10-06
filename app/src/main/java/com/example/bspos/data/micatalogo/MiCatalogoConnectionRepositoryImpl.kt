@@ -7,7 +7,9 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import com.example.bspos.core.network.MiCatalogoBaseUrl
 import com.example.bspos.data.micatalogo.api.MiCatalogoApi
 import com.example.bspos.data.micatalogo.dto.LoginRequestDto
+import com.example.bspos.data.micatalogo.dto.InventoryImportAttributeDto
 import com.example.bspos.data.micatalogo.dto.InventoryImportRequestDto
+import com.example.bspos.data.micatalogo.dto.InventoryImportRowDto
 import com.example.bspos.data.micatalogo.dto.MenuPermissionsUpdateDto
 import com.example.bspos.data.micatalogo.dto.MeDto
 import com.example.bspos.data.micatalogo.dto.ProfileUpdateDto
@@ -64,7 +66,8 @@ class MiCatalogoConnectionRepositoryImpl @Inject constructor(
             },
             accountEmail = values[ACCOUNT_EMAIL].orEmpty().ifBlank { values[REMEMBERED_EMAIL].orEmpty() },
             accountName = values[ACCOUNT_NAME].orEmpty(),
-            role = values[ACCOUNT_ROLE].orEmpty().ifBlank { "seller" }
+            role = values[ACCOUNT_ROLE].orEmpty().ifBlank { "seller" },
+            activeShopId = values[ACTIVE_SHOP_ID]?.takeIf { it.isNotBlank() }
         )
     }.distinctUntilChanged()
 
@@ -170,6 +173,23 @@ class MiCatalogoConnectionRepositoryImpl @Inject constructor(
         onFailure = { MiCatalogoResult.Failure(it.message ?: "No se pudieron cargar las tiendas.") }
     )
 
+    override suspend fun activeShopId(): String? = dataStore.data.first()[ACTIVE_SHOP_ID]?.takeIf { it.isNotBlank() }
+
+    override suspend fun selectShop(shopId: String): MiCatalogoResult<Unit> = runCatching {
+        require(shopId.isNotBlank()) { "La tienda seleccionada no es válida." }
+        val available = shops().let { result ->
+            when (result) {
+                is MiCatalogoResult.Success -> result.value.any { it.id == shopId }
+                is MiCatalogoResult.Failure -> throw IllegalStateException(result.message)
+            }
+        }
+        check(available) { "La tienda seleccionada no pertenece a esta cuenta." }
+        dataStore.edit { it[ACTIVE_SHOP_ID] = shopId }
+    }.fold(
+        onSuccess = { MiCatalogoResult.Success(Unit) },
+        onFailure = { MiCatalogoResult.Failure(it.message ?: "No se pudo seleccionar la tienda.") }
+    )
+
     override suspend fun managedShops(): MiCatalogoResult<List<MiCatalogoManagedShop>> = runCatching {
         val response = api.get().adminShops()
         if (!response.isSuccessful) error(response.apiErrorMessage("No se pudieron cargar todas las tiendas."))
@@ -196,15 +216,14 @@ class MiCatalogoConnectionRepositoryImpl @Inject constructor(
         fileName: String,
         mimeType: String?,
         bytes: ByteArray,
-        mapping: Map<String, String>,
-        options: Map<String, String>
+        mapping: Map<String, String>
     ): MiCatalogoResult<MiCatalogoInventoryImportPreview> = runCatching {
         require(bytes.size <= 10 * 1024 * 1024) { "El archivo no puede superar 10 MB." }
         val body = bytes.toRequestBody(mimeType?.toMediaTypeOrNull())
         val part = MultipartBody.Part.createFormData("file", fileName, body)
         val mappingParts = mapping.mapValues { (_, value) ->
             value.toRequestBody("text/plain".toMediaTypeOrNull())
-        }.mapKeys { (key, _) -> "mapping[$key]" } + options.mapValues { (_, value) -> value.toRequestBody("text/plain".toMediaTypeOrNull()) }
+        }.mapKeys { (key, _) -> "mapping[$key]" }
         val response = api.get().previewInventoryImport(shopId, part, mappingParts)
         if (!response.isSuccessful) error(response.apiErrorMessage("No se pudo leer el inventario."))
         val preview = response.body() ?: error("MiCatalogo devolvió una vista previa vacía.")
@@ -234,20 +253,7 @@ class MiCatalogoConnectionRepositoryImpl @Inject constructor(
                 )
             },
             validRows = preview.validRows,
-            invalidRows = preview.invalidRows,
-            sessionId = preview.sessionId,
-            headerRow = preview.headerRow,
-            sheetIndex = preview.sheet?.index ?: 0,
-            sheetName = preview.sheet?.name.orEmpty(),
-            sheets = preview.sheets.map { com.example.bspos.domain.model.ImportSheet(it.name, it.index, it.headerRow, it.dataRows) },
-            needsHeaderSelection = preview.needsHeaderSelection,
-            originalHeaders = preview.originalHeaders,
-            mappingDetails = preview.mappingConfidence.mapValues { (_, d) -> com.example.bspos.domain.model.ImportMappingDetail(d.source, d.header, d.confidence, d.reason, d.examples) },
-            ignoredColumns = preview.ignoredColumns.map { d -> com.example.bspos.domain.model.ImportMappingDetail(d.source, d.header, d.confidence, d.reason, d.examples) },
-            warnings = preview.warnings,
-            newRows = preview.newRows,
-            existingRows = preview.existingRows,
-            duplicateRows = preview.duplicateRows
+            invalidRows = preview.invalidRows
         )
     }.fold(
         onSuccess = { MiCatalogoResult.Success(it) },
@@ -256,14 +262,28 @@ class MiCatalogoConnectionRepositoryImpl @Inject constructor(
 
     override suspend fun importInventory(
         shopId: String,
-        sessionId: String,
-        duplicateStrategy: String,
-        createMissingCategories: Boolean
+        rows: List<MiCatalogoInventoryImportRow>
     ): MiCatalogoResult<MiCatalogoInventoryImportResult> = runCatching {
-        require(sessionId.isNotBlank()) { "No existe una sesión válida. Vuelve a analizar el archivo." }
         val response = api.get().importInventory(
             shopId,
-            InventoryImportRequestDto(sessionId = sessionId, duplicateStrategy = duplicateStrategy, createMissingCategories = createMissingCategories)
+            InventoryImportRequestDto(rows.map { row ->
+                InventoryImportRowDto(
+                    line = row.line,
+                    name = row.name,
+                    productCode = row.productCode,
+                    barcode = row.barcode,
+                    brand = row.brand,
+                    category = row.category,
+                    description = row.description,
+                    notes = row.notes,
+                    price = row.price,
+                    costPrice = row.costPrice,
+                    stock = row.stock,
+                    attributes = row.attributes.map { attribute -> InventoryImportAttributeDto(attribute.name, attribute.value) },
+                    errors = row.errors,
+                    valid = row.valid
+                )
+            })
         )
         if (!response.isSuccessful) error(response.apiErrorMessage("No se pudo importar el inventario."))
         val result = response.body() ?: error("MiCatalogo no devolvió el resultado de la importación.")
@@ -358,6 +378,7 @@ class MiCatalogoConnectionRepositoryImpl @Inject constructor(
             it.remove(ACCOUNT_EMAIL)
             it.remove(ACCOUNT_NAME)
             it.remove(ACCOUNT_ROLE)
+            it.remove(ACTIVE_SHOP_ID)
             it.remove(SHOP_CACHE)
         }
     }
@@ -369,6 +390,7 @@ class MiCatalogoConnectionRepositoryImpl @Inject constructor(
         val ACCOUNT_EMAIL = stringPreferencesKey("micatalogo_account_email")
         val ACCOUNT_NAME = stringPreferencesKey("micatalogo_account_name")
         val ACCOUNT_ROLE = stringPreferencesKey("micatalogo_account_role")
+        val ACTIVE_SHOP_ID = stringPreferencesKey("micatalogo_active_shop_id")
         val SHOP_CACHE = stringPreferencesKey("micatalogo_shop_cache")
     }
 }

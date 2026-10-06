@@ -17,8 +17,7 @@ fun AppUpdateDialog(
     state: AppUpdateState,
     onDownload: (AvailableAppUpdate) -> Unit,
     onRetryCheck: () -> Unit,
-    onDismissCheckFailure: () -> Unit,
-    onSkip: (AvailableAppUpdate) -> Unit = {}
+    onDismissCheckFailure: () -> Unit
 ) {
     if (state is AppUpdateState.CheckFailed) {
         AlertDialog(
@@ -40,25 +39,27 @@ fun AppUpdateDialog(
         is AppUpdateState.Available -> state.update
         is AppUpdateState.Downloading -> state.update
         is AppUpdateState.Failed -> state.update
-        is AppUpdateState.ReadyToInstall -> state.update
-        is AppUpdateState.InstallationPending -> state.update
         else -> return
     }
     val isDownloading = state is AppUpdateState.Downloading
     val error = (state as? AppUpdateState.Failed)?.message
-    val canSkip = !update.isRequired && state is AppUpdateState.Available
 
     AlertDialog(
-        onDismissRequest = { if (canSkip) onSkip(update) },
-        properties = DialogProperties(dismissOnBackPress = canSkip, dismissOnClickOutside = canSkip),
-        title = { Text(if (update.isRequired) "Actualización requerida" else "Nueva versión disponible") },
+        // Once the server has announced a newer APK the user must not be able
+        // to dismiss the update by tapping outside, pressing Back, or swiping
+        // the dialog away. If the download/installer is interrupted, the
+        // ViewModel returns to this same state on resume and the dialog is
+        // presented again.
+        onDismissRequest = {},
+        properties = DialogProperties(
+            dismissOnBackPress = false,
+            dismissOnClickOutside = false
+        ),
+        title = { Text(if (update.isRequired) "Actualizacion requerida" else "Actualizacion disponible") },
         text = {
             Column {
                 Text("MiCatalogo ${update.versionName} está disponible.")
                 if (update.releaseNotes.isNotBlank()) Text(update.releaseNotes, style = MaterialTheme.typography.bodySmall)
-                if (state is AppUpdateState.InstallationPending || state is AppUpdateState.ReadyToInstall) {
-                    Text("Completa la instalación para continuar. Si se interrumpió, pulsa Instalar de nuevo.")
-                }
                 if (isDownloading) {
                     val progress = (state as AppUpdateState.Downloading).progress
                     LinearProgressIndicator(progress = { progress / 100f }, modifier = Modifier.fillMaxWidth())
@@ -67,15 +68,15 @@ fun AppUpdateDialog(
                 if (error != null) Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
             }
         },
-        dismissButton = if (canSkip) { { TextButton(onClick = { onSkip(update) }) { Text("Ahora no") } } } else null,
         confirmButton = {
             Button(onClick = { onDownload(update) }, enabled = !isDownloading) {
-                Text(when {
-                    isDownloading -> "Descargando"
-                    state is AppUpdateState.InstallationPending || state is AppUpdateState.ReadyToInstall -> "Instalar de nuevo"
-                    error != null -> "Reintentar"
-                    else -> "Actualizar"
-                })
+                Text(
+                    when {
+                        isDownloading -> "Descargando"
+                        error != null -> "Reintentar"
+                        else -> "Actualizar"
+                    }
+                )
             }
         }
     )

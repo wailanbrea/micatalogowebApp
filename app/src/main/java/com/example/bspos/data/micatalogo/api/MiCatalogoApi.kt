@@ -11,6 +11,8 @@ import com.example.bspos.data.micatalogo.dto.MeDto
 import com.example.bspos.data.micatalogo.dto.ShopDto
 import com.example.bspos.data.micatalogo.dto.PosSaleUploadRequestDto
 import com.example.bspos.data.micatalogo.dto.PosSaleUploadResponseDto
+import com.example.bspos.data.micatalogo.dto.QuoteCreateRequestDto
+import com.example.bspos.data.micatalogo.dto.QuoteResponseDto
 import com.example.bspos.data.micatalogo.dto.ProfileUpdateDto
 import com.example.bspos.data.micatalogo.dto.SellerCreateRequestDto
 import com.example.bspos.data.micatalogo.dto.SellerCreateResponseDto
@@ -27,6 +29,7 @@ import com.example.bspos.data.micatalogo.dto.ExpenseActionResponseDto
 import com.example.bspos.data.micatalogo.dto.ExpenseCategoryDto
 import com.example.bspos.data.micatalogo.dto.ExpenseCreateRequestDto
 import com.example.bspos.data.micatalogo.dto.ExpensePaginatedResponseDto
+import com.example.bspos.data.micatalogo.dto.FeatureResponseDto
 import com.example.bspos.data.micatalogo.dto.FinanceCashFlowDto
 import com.example.bspos.data.micatalogo.dto.FinanceIncomeStatementDto
 import com.example.bspos.data.micatalogo.dto.FinanceSummaryDto
@@ -71,6 +74,12 @@ interface MiCatalogoApi {
     @GET("api/v1/shops/{shopId}/catalog")
     suspend fun catalog(@Path("shopId") shopId: String): Response<CatalogSnapshotDto>
 
+    @GET("api/v1/shops/{shopId}/features/{feature}")
+    suspend fun feature(
+        @Path("shopId") shopId: String,
+        @Path("feature") feature: String
+    ): Response<FeatureResponseDto>
+
     @Multipart
     @POST("api/v1/shops/{shopId}/inventory-import/preview")
     suspend fun previewInventoryImport(
@@ -103,6 +112,18 @@ interface MiCatalogoApi {
         @Path("shopId") shopId: String,
         @Body request: PosSaleUploadRequestDto
     ): Response<PosSaleUploadResponseDto>
+
+    @POST("api/v1/shops/{shopId}/quotes")
+    suspend fun createQuote(
+        @Path("shopId") shopId: String,
+        @Body request: QuoteCreateRequestDto
+    ): Response<QuoteResponseDto>
+
+    @POST("api/v1/shops/{shopId}/quotes/{quoteId}/convert")
+    suspend fun convertQuote(
+        @Path("shopId") shopId: String,
+        @Path("quoteId") quoteId: String
+    ): Response<QuoteResponseDto>
 
     @GET("api/v1/shops/{shopId}/finance/summary")
     suspend fun financeSummary(
@@ -168,11 +189,4 @@ interface MiCatalogoApi {
         @Path("shopId") shopId: String,
         @Body request: ExpenseCreateRequestDto
     ): Response<ExpenseActionResponseDto>
-
-    @POST("api/v1/shops/{shopId}/expenses/{expenseId}/payments")
-    suspend fun payExpense(
-        @Path("shopId") shopId: String,
-        @Path("expenseId") expenseId: String,
-        @Body request: com.example.bspos.data.micatalogo.dto.ExpensePaymentRequestDto
-    ): Response<com.example.bspos.data.micatalogo.dto.ExpensePaymentResponseDto>
 }

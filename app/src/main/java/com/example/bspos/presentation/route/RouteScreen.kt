@@ -72,6 +72,7 @@ fun RouteScreen(viewModel: RouteViewModel = hiltViewModel()) {
         item {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
+                    Text("Rutas", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.ExtraBold)
                     Text("Distribución y orden de visita", color = BSPOSTheme.colors.textSecondary)
                 }
                 Button({ creating = true }, shape = RoundedCornerShape(14.dp)) { Text("Nueva ruta") }

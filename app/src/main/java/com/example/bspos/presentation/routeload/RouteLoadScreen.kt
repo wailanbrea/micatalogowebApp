@@ -74,6 +74,7 @@ fun RouteLoadScreen(viewModel: RouteLoadViewModel = hiltViewModel()) {
                 Icon(Icons.Default.LocalShipping, null, tint = BSPOSTheme.colors.primary)
                 Spacer(Modifier.width(12.dp))
                 Column {
+                    Text("Carga de ruta", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.ExtraBold)
                     Text("Traslado de inventario a una ruta", color = BSPOSTheme.colors.textSecondary)
                 }
             }

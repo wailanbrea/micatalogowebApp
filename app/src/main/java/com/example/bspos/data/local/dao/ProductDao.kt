@@ -14,6 +14,9 @@ interface ProductDao {
     @Query("SELECT * FROM products WHERE deleted_at IS NULL ORDER BY name, id")
     fun observeAll(): Flow<List<ProductEntity>>
 
+    @Query("SELECT * FROM products WHERE deleted_at IS NULL AND (micatalogo_shop_id = :shopId OR micatalogo_shop_id IS NULL) ORDER BY name, id")
+    fun observeForShop(shopId: String): Flow<List<ProductEntity>>
+
     @Query("SELECT * FROM products WHERE id = :id")
     suspend fun findById(id: UUID): ProductEntity?
 

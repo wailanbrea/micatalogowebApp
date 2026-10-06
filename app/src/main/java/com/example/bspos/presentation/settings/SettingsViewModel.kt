@@ -128,10 +128,21 @@ class SettingsViewModel @Inject constructor(
         when (val result = connectionRepository.shops()) {
             is MiCatalogoResult.Success -> {
                 miCatalogoUi.value = miCatalogoUi.value.copy(isLoadingShops = false, shops = result.value)
+                val active = connectionRepository.activeShopId()
+                if (result.value.isNotEmpty() && result.value.none { it.id == active }) {
+                    connectionRepository.selectShop(result.value.first().id)
+                }
             }
             is MiCatalogoResult.Failure -> {
                 miCatalogoUi.value = miCatalogoUi.value.copy(isLoadingShops = false, errorMessage = result.message)
             }
+        }
+    }
+
+    fun selectShop(shop: MiCatalogoShop) = viewModelScope.launch {
+        when (val result = connectionRepository.selectShop(shop.id)) {
+            is MiCatalogoResult.Success -> miCatalogoUi.value = miCatalogoUi.value.copy(successMessage = "Tienda activa: ${shop.name}")
+            is MiCatalogoResult.Failure -> miCatalogoUi.value = miCatalogoUi.value.copy(errorMessage = result.message)
         }
     }
 

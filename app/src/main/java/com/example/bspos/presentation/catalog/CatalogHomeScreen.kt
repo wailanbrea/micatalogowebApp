@@ -73,7 +73,7 @@ fun CatalogHomeScreen(
     Column(Modifier.fillMaxSize().background(BSPOSTheme.colors.background).padding(if (isTablet) 28.dp else 20.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text(presentation.term("catalog", "Catálogo comercial"), color = BSPOSTheme.colors.textSecondary)
+                Text(presentation.term("products", "Catalogo comercial"), color = BSPOSTheme.colors.textSecondary)
             }
             TextButton({ baseCatalog = true }) { Text("Categorias") }
         }
@@ -86,15 +86,15 @@ fun CatalogHomeScreen(
         }
         Spacer(Modifier.height(12.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Text("${filtered.size} ${presentation.term("products", "productos").lowercase()}", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelLarge)
-            Button({ showForm = true }, enabled = categories.any { it.isActive } && units.any { it.isActive }, shape = RoundedCornerShape(14.dp)) { Icon(Icons.Default.Add, null); Spacer(Modifier.width(5.dp)); Text(presentation.term("new_product", "Nuevo producto")) }
+            Text("${filtered.size} productos", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelLarge)
+            Button({ showForm = true }, enabled = categories.any { it.isActive } && units.any { it.isActive }, shape = RoundedCornerShape(14.dp)) { Icon(Icons.Default.Add, null); Spacer(Modifier.width(5.dp)); Text("Nuevo producto") }
         }
         Spacer(Modifier.height(12.dp))
         if (filtered.isEmpty()) {
             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) { Text(if (query.isBlank()) presentation.catalogEmptyMessage else "Sin coincidencias", color = BSPOSTheme.colors.textSecondary) }
         } else {
             LazyVerticalGrid(GridCells.Fixed(if (isTablet) 4 else 2), Modifier.weight(1f), contentPadding = PaddingValues(bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                items(filtered, key = { it.id }) { product -> ProductCard(product, quantities[product.id] ?: 0L, categoryNames[product.categoryId], presentation.catalogShowStock, showCost,
+                items(filtered, key = { it.id }) { product -> ProductCard(product, quantities[product.id] ?: 0L, categoryNames[product.categoryId], presentation.catalogShowStock, showCost, showProductCode,
                     { if (viewModel.canEdit(product)) editingProduct = product else viewModel.reportReadOnly() },
                     { if (viewModel.canEdit(product)) deleteTarget = product else viewModel.reportReadOnly() }) }
             }
@@ -108,7 +108,7 @@ fun CatalogHomeScreen(
 }
 
 @Composable
-private fun ProductCard(product: Product, quantity: Long, category: String?, showStock: Boolean, showCost: Boolean, onClick: () -> Unit, onLongClick: () -> Unit) {
+private fun ProductCard(product: Product, quantity: Long, category: String?, showStock: Boolean, showCost: Boolean, showProductCode: Boolean, onClick: () -> Unit, onLongClick: () -> Unit) {
     val statusColor = when {
         quantity <= 0 -> BSPOSTheme.colors.error
         product.minimumStock > 0 && quantity <= product.minimumStock -> BSPOSTheme.colors.warning
@@ -124,14 +124,11 @@ private fun ProductCard(product: Product, quantity: Long, category: String?, sho
             Box(Modifier.fillMaxWidth().height(92.dp).clip(RoundedCornerShape(16.dp)).background(BSPOSTheme.colors.primaryLight), contentAlignment = Alignment.Center) { if (product.imagePath != null) AsyncImage(product.imagePath, product.name, Modifier.fillMaxSize(), contentScale = ContentScale.Crop) else Icon(Icons.Default.Inventory2, null, modifier = Modifier.size(42.dp), tint = BSPOSTheme.colors.primary) }
             Spacer(Modifier.height(12.dp))
             Text(product.name, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis, minLines = 2)
-            Text(category ?: product.internalCode, color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (showProductCode) Text(category ?: product.internalCode, color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Spacer(Modifier.height(7.dp))
             Text("Venta: ${money(product.salePrice)}", color = BSPOSTheme.colors.textPrimary, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold)
             if (showCost) Text("Compra: ${money(product.lastPurchaseCost)}", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelSmall)
-            if (showStock) {
-                Spacer(Modifier.height(9.dp))
-                Surface(shape = RoundedCornerShape(50), color = statusColor.copy(alpha = .12f)) { Text("$statusText ($quantity)", modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp), color = statusColor, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold) }
-            }
+            if (showStock) { Spacer(Modifier.height(9.dp)); Surface(shape = RoundedCornerShape(50), color = statusColor.copy(alpha = .12f)) { Text("$statusText ($quantity)", modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp), color = statusColor, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold) } }
         }
     }
 }
@@ -143,9 +140,11 @@ private fun ProductForm(current: Product?, currentQuantity: Long, categories: Li
     var code by remember(current?.id) { mutableStateOf(current?.internalCode.orEmpty()) }
     var price by remember(current?.id) { mutableStateOf(current?.salePrice?.let { java.math.BigDecimal(it).movePointLeft(2).toPlainString() }.orEmpty()) }
     var priceChanged by remember(current?.id) { mutableStateOf(false) }
+    var wholesalePrice by remember(current?.id) { mutableStateOf(current?.wholesalePrice?.let { java.math.BigDecimal(it).movePointLeft(2).toPlainString() }.orEmpty()) }
     var purchasePrice by remember(current?.id) { mutableStateOf(current?.lastPurchaseCost?.let { java.math.BigDecimal(it).movePointLeft(2).toPlainString() }.orEmpty()) }
     var purchaseChanged by remember(current?.id) { mutableStateOf(false) }
     var initialQuantity by remember(current?.id) { mutableStateOf(if (current == null) "0" else currentQuantity.toString()) }
+    var minimumStock by remember(current?.id) { mutableStateOf((current?.minimumStock ?: 0L).toString()) }
     var priceError by remember { mutableStateOf(false) }
     var category by remember(current?.id) { mutableStateOf(categories.firstOrNull { it.id == current?.categoryId } ?: categories.first()) }
     var unit by remember(current?.id) { mutableStateOf(units.firstOrNull { it.id == current?.unitId } ?: units.first()) }
@@ -179,11 +178,29 @@ private fun ProductForm(current: Product?, currentQuantity: Long, categories: Li
             if (showProductCode) OutlinedTextField(code, { code = it }, label = { Text("Código interno") })
             if (showCost) OutlinedTextField(purchasePrice, { value -> if (current == null) purchasePrice = value; purchaseChanged = true; priceError = false }, label = { Text("Precio de compra (${LocalCurrency.current.symbol})") }, enabled = current == null, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), isError = priceError, supportingText = { if (current != null) Text("Se actualiza desde una entrada de inventario") })
             OutlinedTextField(price, { value -> price = value; priceChanged = true; priceError = false }, label = { Text("Precio de venta (${LocalCurrency.current.symbol})") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), isError = priceError, supportingText = { if (priceError) Text("Indica un precio válido, con hasta dos decimales") })
+            OutlinedTextField(wholesalePrice, { wholesalePrice = it; priceError = false }, label = { Text("Precio por mayor (${LocalCurrency.current.symbol})") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), supportingText = { Text("Opcional; habilita el modo mayorista en el POS") })
             if (showInventoryFields) OutlinedTextField(initialQuantity, { value -> if (current == null) initialQuantity = value.filter(Char::isDigit) }, label = { Text("Stock inicial") }, enabled = current == null, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), supportingText = { Text(if (current == null) "Se registra en 0 si lo dejas así" else "Edita existencias desde Inventario") })
+            OutlinedTextField(minimumStock, { minimumStock = it.filter(Char::isDigit) }, label = { Text("Aviso de mínimo") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), supportingText = { Text("Te avisaremos al llegar a esta cantidad") })
             Box { TextButton({ categoryOpen = true }) { Text("Categoria: ${category.name}") }; DropdownMenu(categoryOpen, { categoryOpen = false }) { categories.forEach { item -> DropdownMenuItem({ Text(item.name) }, { category = item; categoryOpen = false }) } } }
             Box { TextButton({ unitOpen = true }) { Text("Unidad: ${unit.name}") }; DropdownMenu(unitOpen, { unitOpen = false }) { units.forEach { item -> DropdownMenuItem({ Text(item.name) }, { unit = item; unitOpen = false }) } } }
         }
-    }, confirmButton = { TextButton({ val sale = if (!priceChanged && current != null) current.salePrice else price.toPesosCents(); val purchase = if (!showCost) (current?.lastPurchaseCost ?: 0L) else if (!purchaseChanged && current != null) current.lastPurchaseCost else purchasePrice.toPesosCents(); val quantity = if (showInventoryFields) initialQuantity.toLongOrNull() else 0L; val effectiveCode = code.ifBlank { "AUTO-" + name.trim().uppercase(Locale.ROOT).replace(Regex("[^A-Z0-9]+"), "-").take(24) }; if (name.isBlank() || effectiveCode.isBlank() || sale == null || sale < 0 || purchase == null || purchase < 0 || quantity == null || quantity < 0) priceError = true else onSave(ProductInput(name, effectiveCode, category.id, unit.id, sale, purchasePrice = purchase, imagePath = imagePath, thumbnailPath = imagePath, minimumStock = current?.minimumStock ?: 0, tracksExpiration = current?.tracksExpiration ?: false, remoteShopId = shopId), if (current == null) quantity else 0L) }) { Text("Guardar") } }, dismissButton = { TextButton(onDismiss) { Text("Cancelar") } })
+    }, confirmButton = {
+        TextButton({
+            val sale = if (!priceChanged && current != null) current.salePrice else price.toPesosCents()
+            val purchase = if (!purchaseChanged && current != null) current.lastPurchaseCost else purchasePrice.toPesosCents()
+            val wholesale = wholesalePrice.toPesosCents()
+            val quantity = initialQuantity.toLongOrNull()
+            val minimum = minimumStock.toLongOrNull()
+            val effectiveCode = code.ifBlank { "AUTO-" + name.trim().uppercase(Locale.ROOT).replace(Regex("[^A-Z0-9]+"), "-").take(24) }
+            val effectivePurchase = if (showCost) purchase else (current?.lastPurchaseCost ?: 0L)
+            val effectiveQuantity = if (showInventoryFields) quantity else 0L
+            if (name.isBlank() || (showProductCode && effectiveCode.isBlank()) || sale == null || sale < 0 || effectivePurchase == null || effectivePurchase < 0 || wholesale?.let { it < 0 } == true || effectiveQuantity == null || effectiveQuantity < 0 || minimum == null || minimum < 0) {
+                priceError = true
+            } else {
+                onSave(ProductInput(name, effectiveCode, category.id, unit.id, sale, purchasePrice = effectivePurchase, wholesalePrice = wholesale, imagePath = imagePath, thumbnailPath = imagePath, minimumStock = minimum, tracksExpiration = current?.tracksExpiration ?: false, remoteShopId = shopId), if (current == null) effectiveQuantity else 0L)
+            }
+        }) { Text("Guardar") }
+    }, dismissButton = { TextButton(onDismiss) { Text("Cancelar") } })
 }
 
 @Composable

@@ -42,6 +42,7 @@ class ProductRepositoryImpl @Inject constructor(
     private val sync: com.example.bspos.data.micatalogo.RemoteMutationRecorder
 ) : ProductRepository {
     override fun observeAll() = local.observeProducts().map { rows -> rows.map { it.toDomain() } }
+    override fun observeForShop(shopId: String) = local.observeProductsForShop(shopId).map { rows -> rows.map { it.toDomain() } }
     override suspend fun findById(id: UUID) = local.findProduct(id)?.toDomain()
     override suspend fun insert(record: Product) {
         sync.transaction { val entity = record.toEntity(); local.insert(entity); sync.product(entity) }

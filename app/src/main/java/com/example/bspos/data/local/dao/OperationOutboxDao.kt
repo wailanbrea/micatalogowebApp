@@ -11,16 +11,12 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface OperationOutboxDao {
-    @Query("SELECT * FROM operation_outbox WHERE id=:id") suspend fun find(id: String): OperationOutboxEntity?
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun requestRefresh(row: CatalogRefreshEntity)
     @Query("SELECT * FROM catalog_refresh ORDER BY shopId") suspend fun pendingRefreshes(): List<CatalogRefreshEntity>
     @Query("SELECT * FROM catalog_refresh ORDER BY shopId") fun observeRefreshes(): Flow<List<CatalogRefreshEntity>>
     @Query("DELETE FROM catalog_refresh WHERE shopId=:shop AND revision=:revision") suspend fun clearRefresh(shop: String, revision: String): Int
     @Query("UPDATE catalog_refresh SET error=:error WHERE shopId=:shop AND revision=:revision") suspend fun refreshError(shop: String, revision: String, error: String): Int
-    @Query("UPDATE operation_outbox SET server_response=:response WHERE id=:id AND state='PENDING'")
-    suspend fun storeReceipt(id: String, response: String): Int
-    @Transaction suspend fun confirmSent(id: String, shop: String, response: String? = null): Int {
-        if (response != null) storeReceipt(id, response)
+    @Transaction suspend fun confirmSent(id: String, shop: String): Int {
         val changed = mark(id, "SENT")
         if (changed == 1) requestRefresh(CatalogRefreshEntity(shop, java.util.UUID.randomUUID().toString()))
         return changed

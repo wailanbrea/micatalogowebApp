@@ -106,7 +106,6 @@ fun DashboardScreen(
         if ("active_customers" in visibleWidgets) add(Kpi("Clientes activos", customers.count { it.isActive }.toString(), "Directorio comercial", Icons.Default.People, BSPOSTheme.colors.primary, BSPOSTheme.colors.primaryLight))
         if (routesEnabled) add(Kpi("Rutas activas", routes.count { it.isActive }.toString(), "Disponibles hoy", Icons.Default.LocationOn, BSPOSTheme.colors.primary, BSPOSTheme.colors.primaryLight))
     }
-
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val compact = !isExpanded || maxWidth < 840.dp
         val kpiColumns = if (!compact) 3 else if (maxWidth >= 400.dp) 2 else 1
@@ -115,7 +114,7 @@ fun DashboardScreen(
             contentPadding = PaddingValues(if (compact) 16.dp else 28.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            item { DashboardHeading(compact, sellerMode, presentation.dashboardTitle) }
+            item { DashboardHeading(compact, sellerMode, presentation) }
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     kpis.chunked(kpiColumns).forEach { row ->
@@ -182,9 +181,19 @@ fun DashboardScreen(
 private data class Kpi(val title: String, val value: String, val helper: String, val icon: androidx.compose.ui.graphics.vector.ImageVector, val accent: Color, val soft: Color)
 
 @Composable
-private fun DashboardHeading(compact: Boolean, sellerMode: Boolean, title: String) {
+private fun DashboardHeading(compact: Boolean, sellerMode: Boolean, presentation: MiCatalogoBusinessPresentation) {
     Column {
-        Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
+        Text(
+            when {
+                sellerMode -> "Mis ventas"
+                presentation.dashboardTitle.isNotBlank() -> presentation.dashboardTitle
+                compact -> "Ventas y cobros"
+                else -> "Resumen de ventas"
+            },
+            color = BSPOSTheme.colors.secondaryNavy,
+            style = MaterialTheme.typography.headlineLarge,
+            fontWeight = FontWeight.ExtraBold
+        )
         Text(
             if (sellerMode) "Resumen de tus ventas, cobros y clientes pendientes."
             else "Controla tus ventas, cobros y clientes pendientes desde un solo lugar.",

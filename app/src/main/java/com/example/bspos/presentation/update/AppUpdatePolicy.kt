@@ -6,11 +6,11 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 data class AvailableAppUpdate(
     val versionCode: Int,
     val versionName: String,
+    val minimumSupportedVersionCode: Int,
     val apkUrl: String,
     val apkSha256: String,
     val releaseNotes: String,
-    val isRequired: Boolean,
-    val minimumSupportedVersionCode: Int = 0
+    val isRequired: Boolean
 )
 
 object AppUpdatePolicy {
@@ -24,11 +24,11 @@ object AppUpdatePolicy {
         return AvailableAppUpdate(
             versionCode = update.versionCode,
             versionName = update.versionName.ifBlank { update.versionCode.toString() },
+            minimumSupportedVersionCode = update.minimumSupportedVersionCode,
             apkUrl = apkUrl.toString(),
             apkSha256 = update.apkSha256.lowercase(),
             releaseNotes = update.releaseNotes,
-            isRequired = installedVersionCode < update.minimumSupportedVersionCode,
-            minimumSupportedVersionCode = update.minimumSupportedVersionCode
+            isRequired = installedVersionCode < update.minimumSupportedVersionCode
         )
     }
 }

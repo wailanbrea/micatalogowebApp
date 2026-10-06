@@ -15,6 +15,5 @@ data class OperationOutboxEntity(
     val createdAt: Instant,
     val state: String = "PENDING",
     val error: String? = null,
-    @ColumnInfo(name = "queue_sequence", defaultValue = "0") val queueSequence: Long = 0,
-    @ColumnInfo(name = "server_response", defaultValue = "NULL") val serverResponse: String? = null
+    @ColumnInfo(name = "queue_sequence", defaultValue = "0") val queueSequence: Long = 0
 )

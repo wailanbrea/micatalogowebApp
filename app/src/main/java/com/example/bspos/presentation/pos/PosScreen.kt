@@ -117,9 +117,14 @@ fun PosScreen(
         val tablet = maxWidth >= 700.dp
         if (tablet) {
             Column(Modifier.fillMaxSize().padding(28.dp)) {
-                Text(if (creditOnly) "Venta a crédito" else "Nueva venta", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.ExtraBold)
+                Text(if (creditOnly) "Venta a credito" else "Nueva venta", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.ExtraBold)
                 Text(if (creditOnly) "Asigna un cliente y los productos para registrar el saldo" else "Selecciona los productos para agregarlos al carrito", color = BSPOSTheme.colors.textSecondary)
-                if (presentation.posShowWholesale) FilterChip(selected = wholesaleMode, onClick = { viewModel.setWholesaleMode(!wholesaleMode) }, label = { Text(if (wholesaleMode) "Venta por mayor activa" else "Cambiar a precio por mayor") }, enabled = !isProcessing)
+                if (presentation.posShowWholesale) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(selected = !wholesaleMode, onClick = { viewModel.setWholesaleMode(false) }, label = { Text("Detalle") }, enabled = !isProcessing)
+                        FilterChip(selected = wholesaleMode, onClick = { viewModel.setWholesaleMode(true) }, label = { Text("Mayoreo") }, enabled = !isProcessing)
+                    }
+                }
                 Spacer(Modifier.height(14.dp))
                 SearchField(query, { query = it }, presentation.posSearchPlaceholder)
                 Spacer(Modifier.height(14.dp))
@@ -146,9 +151,14 @@ fun PosScreen(
                     }
                 ) { contentPadding ->
                     Column(Modifier.fillMaxSize().padding(contentPadding).padding(horizontal = 18.dp)) {
-                        Text(if (creditOnly) "Venta a crédito" else "Nueva venta", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.ExtraBold)
+                        Text(if (creditOnly) "Venta a credito" else "Nueva venta", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.ExtraBold)
                         Text(if (creditOnly) "Asigna un cliente y los productos para registrar el saldo" else "Selecciona los productos para agregarlos al carrito", color = BSPOSTheme.colors.textSecondary)
-                        if (presentation.posShowWholesale) FilterChip(selected = wholesaleMode, onClick = { viewModel.setWholesaleMode(!wholesaleMode) }, label = { Text(if (wholesaleMode) "Venta por mayor activa" else "Cambiar a precio por mayor") }, enabled = !isProcessing)
+                        if (presentation.posShowWholesale) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                FilterChip(selected = !wholesaleMode, onClick = { viewModel.setWholesaleMode(false) }, label = { Text("Detalle") }, enabled = !isProcessing)
+                                FilterChip(selected = wholesaleMode, onClick = { viewModel.setWholesaleMode(true) }, label = { Text("Mayoreo") }, enabled = !isProcessing)
+                            }
+                        }
                         Spacer(Modifier.height(14.dp))
                         SearchField(query, { query = it }, presentation.posSearchPlaceholder)
                         Spacer(Modifier.height(14.dp))
@@ -165,13 +175,13 @@ fun PosScreen(
         ) {
             CartPanel(
                 cart = cart,
-                 total = cartTotal,
                  customer = customer,
-                onCustomer = { choosingCustomer = true },
-                onMinus = { viewModel.change(it.product.id, it.quantity - 1) },
-                onPlus = { viewModel.change(it.product.id, it.quantity + 1) },
-                onRemove = { viewModel.change(it.product.id, 0) },
-                onClear = viewModel::clearCart,
+                 total = cartTotal,
+                 onCustomer = { choosingCustomer = true },
+                 onMinus = { viewModel.change(it.product.id, it.quantity - 1) },
+                 onPlus = { viewModel.change(it.product.id, it.quantity + 1) },
+                 onRemove = { viewModel.change(it.product.id, 0) },
+                 onClear = viewModel::clearCart,
                 onCash = cashAction,
                 onCard = viewModel::completeCard,
                 onTransfer = viewModel::completeTransfer,
@@ -179,9 +189,9 @@ fun PosScreen(
                 onSplit = { showingSplitDialog = true },
                 isProcessing = isProcessing,
                 creditOnly = creditOnly,
-                cashSessionOpen = cashSession != null,
                 creditEnabled = presentation.posShowCredit || creditOnly,
-                modifier = Modifier.fillMaxWidth().heightIn(max = 720.dp).padding(horizontal = 12.dp).imePadding().navigationBarsPadding()
+                cashSessionOpen = cashSession != null,
+                 modifier = Modifier.fillMaxWidth().heightIn(max = 720.dp).padding(horizontal = 12.dp).imePadding().navigationBarsPadding()
             )
         }
     }
@@ -286,7 +296,7 @@ private fun lerp(from: Offset, to: Offset, fraction: Float): Offset = Offset(
 )
 
 @Composable
-private fun SearchField(value: String, onChange: (String) -> Unit, placeholder: String) {
+private fun SearchField(value: String, onChange: (String) -> Unit, placeholder: String = "Buscar producto") {
     Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), color = BSPOSTheme.colors.surface, border = androidx.compose.foundation.BorderStroke(1.dp, BSPOSTheme.colors.outline)) {
         Row(Modifier.padding(horizontal = 14.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Default.Search, null, tint = BSPOSTheme.colors.primary)
@@ -352,7 +362,19 @@ private fun CartPanel(
             }
             CartSummary(total)
             if (creditEnabled && !creditOnly) PaymentTypeSelector(creditSelected) { creditSelected = it }
-            CartActions(cart.isEmpty(), isProcessing, creditSelected, customer != null, cashSessionOpen, onCash, onCredit, onCard, onTransfer, onSplit, creditOnly)
+            CartActions(
+                cartIsEmpty = cart.isEmpty(),
+                isProcessing = isProcessing,
+                creditSelected = creditSelected,
+                hasCustomer = customer != null,
+                cashSessionOpen = cashSessionOpen,
+                onCash = onCash,
+                onCredit = onCredit,
+                onCard = onCard,
+                onTransfer = onTransfer,
+                onSplit = onSplit,
+                creditOnly = creditOnly
+            )
         }
     }
     if (confirmClear) AlertDialog(

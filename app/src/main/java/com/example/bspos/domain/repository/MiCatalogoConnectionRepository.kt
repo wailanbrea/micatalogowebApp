@@ -18,9 +18,11 @@ interface MiCatalogoConnectionRepository {
     suspend fun updateSellerMenus(shopId: String, sellerId: String, permissions: List<String>): MiCatalogoResult<Unit>
     suspend fun createSeller(shopId: String, email: String, commissionType: String, commissionValue: String): MiCatalogoResult<String>
     suspend fun shops(): MiCatalogoResult<List<MiCatalogoShop>>
+    suspend fun activeShopId(): String?
+    suspend fun selectShop(shopId: String): MiCatalogoResult<Unit>
     suspend fun managedShops(): MiCatalogoResult<List<MiCatalogoManagedShop>>
     suspend fun updateManagedShop(shop: MiCatalogoManagedShop): MiCatalogoResult<MiCatalogoManagedShop>
-    suspend fun previewInventoryImport(shopId: String, fileName: String, mimeType: String?, bytes: ByteArray, mapping: Map<String, String> = emptyMap(), options: Map<String, String> = emptyMap()): MiCatalogoResult<MiCatalogoInventoryImportPreview>
-    suspend fun importInventory(shopId: String, sessionId: String, duplicateStrategy: String = "skip", createMissingCategories: Boolean = false): MiCatalogoResult<MiCatalogoInventoryImportResult>
+    suspend fun previewInventoryImport(shopId: String, fileName: String, mimeType: String?, bytes: ByteArray, mapping: Map<String, String> = emptyMap()): MiCatalogoResult<MiCatalogoInventoryImportPreview>
+    suspend fun importInventory(shopId: String, rows: List<MiCatalogoInventoryImportRow>): MiCatalogoResult<MiCatalogoInventoryImportResult>
     suspend fun clearConnection()
 }

@@ -42,22 +42,12 @@ import java.util.Locale
 fun FinanceScreen(
     onNavigateBack: (() -> Unit)? = null,
     onNavigateToCash: (() -> Unit)? = null,
-    viewModel: FinanceViewModel = hiltViewModel(),
-    expensesOnly: Boolean = false,
-    cashOnly: Boolean = false
+    initialTab: Int = 0,
+    viewModel: FinanceViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    var selectedTab by remember { mutableIntStateOf(if (cashOnly) 4 else if (expensesOnly) 3 else 0) }
+    var selectedTab by remember { mutableIntStateOf(initialTab.coerceIn(0, 4)) }
     var showExpenseDialog by remember { mutableStateOf(false) }
-    var payingExpense by remember { mutableStateOf<ExpenseDto?>(null) }
-    val visibleTabs = buildList {
-        if (!expensesOnly && !cashOnly && uiState.canFinance) addAll(listOf(0, 1, 2))
-        if (!cashOnly && uiState.canExpenses) add(3)
-        if (!expensesOnly && uiState.canCash) add(4)
-    }
-    LaunchedEffect(visibleTabs) {
-        if (visibleTabs.isNotEmpty() && selectedTab !in visibleTabs) selectedTab = visibleTabs.first()
-    }
 
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -77,31 +67,12 @@ fun FinanceScreen(
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
-        topBar = {
-            Row(
-                modifier = Modifier.fillMaxWidth().background(BSPOSTheme.colors.surface).padding(horizontal = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                if (onNavigateBack != null) {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Regresar")
-                    }
-                }
-                Text(
-                    text = uiState.shopName,
-                    modifier = Modifier.weight(1f),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = BSPOSTheme.colors.textSecondary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                IconButton(onClick = { viewModel.refresh() }) {
-                    Icon(Icons.Default.Refresh, contentDescription = "Actualizar")
-                }
-            }
-        },
+        // The parent app shell already owns the only screen title and drawer.
+        // Keeping another TopAppBar here produced the duplicate “Finanzas /
+        // Control Financiero” labels and wasted vertical space on mobile.
+        topBar = {},
         floatingActionButton = {
-            if (selectedTab == 3 && uiState.canExpenses) {
+            if (selectedTab == 3) {
                 FloatingActionButton(
                     onClick = { showExpenseDialog = true },
                     containerColor = BSPOSTheme.colors.primary,
@@ -124,9 +95,6 @@ fun FinanceScreen(
                 }
             } else {
                 Column(modifier = Modifier.fillMaxSize()) {
-                    uiState.pendingFinancialOperations.forEach { pending ->
-                        Text(pending, modifier = Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.bodySmall)
-                    }
                     // Selector de Períodos
                     PeriodSelectorRow(
                         currentFilter = uiState.periodFilter,
@@ -134,32 +102,32 @@ fun FinanceScreen(
                     )
 
                     // Pestañas Principales
-                    if (visibleTabs.isNotEmpty()) PrimaryScrollableTabRow(
-                        selectedTabIndex = visibleTabs.indexOf(selectedTab).coerceAtLeast(0),
+                    PrimaryScrollableTabRow(
+                        selectedTabIndex = selectedTab,
                         edgePadding = 16.dp,
                         containerColor = BSPOSTheme.colors.surface
                     ) {
-                        if (0 in visibleTabs) Tab(
+                        Tab(
                             selected = selectedTab == 0,
                             onClick = { selectedTab = 0 },
                             text = { Text("Resumen y KPIs", fontWeight = FontWeight.Bold) }
                         )
-                        if (1 in visibleTabs) Tab(
+                        Tab(
                             selected = selectedTab == 1,
                             onClick = { selectedTab = 1 },
                             text = { Text("Estado de Resultados", fontWeight = FontWeight.Bold) }
                         )
-                        if (2 in visibleTabs) Tab(
+                        Tab(
                             selected = selectedTab == 2,
                             onClick = { selectedTab = 2 },
                             text = { Text("Flujo de Efectivo", fontWeight = FontWeight.Bold) }
                         )
-                        if (3 in visibleTabs) Tab(
+                        Tab(
                             selected = selectedTab == 3,
                             onClick = { selectedTab = 3 },
                             text = { Text("Gastos", fontWeight = FontWeight.Bold) }
                         )
-                        if (4 in visibleTabs) Tab(
+                        Tab(
                             selected = selectedTab == 4,
                             onClick = { selectedTab = 4 },
                             text = { Text("Caja en línea", fontWeight = FontWeight.Bold) }
@@ -181,8 +149,7 @@ fun FinanceScreen(
                             )
                             3 -> ExpensesTab(
                                 expenses = uiState.expenses,
-                                onAddExpense = { showExpenseDialog = true },
-                                onPayExpense = { payingExpense = it }
+                                onAddExpense = { showExpenseDialog = true }
                             )
                             4 -> RemoteCashTab(
                                 cash = uiState.cashSession,
@@ -203,17 +170,11 @@ fun FinanceScreen(
             categories = uiState.expenseCategories,
             isSaving = uiState.isRegisteringExpense,
             onDismiss = { showExpenseDialog = false },
-            onConfirm = { desc, amt, catId, method, notes, paid ->
-                viewModel.registerExpense(desc, amt, catId, method, notes, paid)
+            onConfirm = { desc, amt, catId, method, notes ->
+                viewModel.registerExpense(desc, amt, catId, method, notes)
                 showExpenseDialog = false
             }
         )
-    }
-    payingExpense?.let { expense ->
-        ExpensePaymentDialog(expense, uiState.isRegisteringExpense, { payingExpense = null }) { amount, method, notes ->
-            viewModel.payExpense(expense, amount, method, notes)
-            payingExpense = null
-        }
     }
 }
 
@@ -266,10 +227,6 @@ private fun FinanceSummaryTab(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Text("Cobertura de costos: ${String.format(Locale.US, "%.1f", period.revenueCostCoverage)}%")
-        if (period.revenueCostCoverage < 100.0) Text(
-            "Ganancia parcial: ${String.format(Locale.US, "%.1f", 100.0 - period.revenueCostCoverage)}% de las ventas no tiene costo histórico.",
-            color = BSPOSTheme.colors.warning)
         // Bloque 1: KPIs de Ganancia y Resultado Operativo
         Text(
             text = "Resultado del período",
@@ -616,14 +573,13 @@ private fun IncomeStatementTab(
 
                 HorizontalDivider()
 
-                PAndLRow("Ventas Brutas", formatPesos(incomeStatement.grossSales))
-                PAndLRow("(-) Descuentos", "- ${formatPesos(incomeStatement.discounts)}", textColor = Color(0xFFD32F2F))
-                PAndLRow("(-) Devoluciones", "- ${formatPesos(incomeStatement.returns)}", textColor = Color(0xFFD32F2F))
+                PAndLRow("Ventas Brutas", period?.grossSales?.let { formatPesos(it) } ?: "0.00", isHeader = false)
+                PAndLRow("(-) Descuentos", period?.discounts?.let { "- ${formatPesos(it)}" } ?: "0.00", isHeader = false, textColor = Color(0xFFD32F2F))
+                PAndLRow("(-) Devoluciones", period?.returns?.let { "- ${formatPesos(it)}" } ?: "0.00", isHeader = false, textColor = Color(0xFFD32F2F))
 
                 HorizontalDivider()
 
                 PAndLRow("(=) Ventas Netas", formatPesos(incomeStatement.netSales), isHeader = true)
-                PAndLRow("Impuestos cobrados (informativo)", formatPesos(incomeStatement.taxCollected))
                 PAndLRow("(-) Costo de Ventas (FIFO)", incomeStatement.fifoCogs?.let { "- ${formatPesos(it)}" } ?: "N/D", isHeader = false, textColor = Color(0xFFD32F2F))
 
                 HorizontalDivider()
@@ -767,8 +723,7 @@ private fun CashFlowTab(
 @Composable
 private fun ExpensesTab(
     expenses: List<ExpenseDto>,
-    onAddExpense: () -> Unit,
-    onPayExpense: (ExpenseDto) -> Unit
+    onAddExpense: () -> Unit
 ) {
     if (expenses.isEmpty()) {
         Box(
@@ -808,9 +763,6 @@ private fun ExpensesTab(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
-                        Text("Pagado: ${formatPesos(expense.amountPaid)} · Pendiente: ${formatPesos(expense.unpaidAmount)}")
-                        Text(when (expense.paymentStatus) { "partial" -> "Pago parcial"; "pending" -> "Pendiente"; "paid" -> "Pagado"; else -> "Estado no disponible" })
-                        if (expense.unpaidAmount > 0) TextButton(onClick = { onPayExpense(expense) }) { Text("Registrar abono") }
                         Text(
                             text = expense.description,
                             fontWeight = FontWeight.Bold,
@@ -914,18 +866,13 @@ private fun FinanceValueRow(label: String, value: String, color: Color = BSPOSTh
 }
 
 @Composable
-internal fun RemoteCashTab(
+private fun RemoteCashTab(
     cash: CashCurrentSessionResponseDto?,
     busy: Boolean,
     onOpen: (String, String?) -> Unit,
     onClose: (String, String?) -> Unit,
     onMovement: (String, String, String) -> Unit
 ) {
-    if (cash == null) {
-        Text("Caja del servidor no disponible. Comprueba la conexión y actualiza antes de operar.",
-            modifier = Modifier.padding(16.dp))
-        return
-    }
     var openingAmount by remember { mutableStateOf("") }
     var openingNotes by remember { mutableStateOf("") }
     var countedAmount by remember { mutableStateOf("") }
@@ -935,7 +882,9 @@ internal fun RemoteCashTab(
     var movementType by remember { mutableStateOf("cash_in") }
     val session = cash?.session
 
-    LaunchedEffect(session?.id) { countedAmount = "" }
+    LaunchedEffect(session?.id, session?.summary?.expectedClosingAmount) {
+        session?.summary?.expectedClosingAmount?.let { countedAmount = String.format(Locale.US, "%.2f", it) }
+    }
 
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
@@ -967,20 +916,15 @@ internal fun RemoteCashTab(
                     Text("Desde ${session.openedAt}", style = MaterialTheme.typography.bodySmall, color = BSPOSTheme.colors.textSecondary)
                     HorizontalDivider()
                     FinanceValueRow("Fondo inicial", formatPesos(summary?.openingAmount ?: session.openingAmount))
-                    FinanceValueRow("Ventas en efectivo", formatOptional(summary?.salesCash))
-                    FinanceValueRow("Cobros de deuda en efectivo", formatOptional(summary?.debtCollectionsCash))
-                    FinanceValueRow("Entradas de efectivo", formatOptional(summary?.cashIn))
-                    FinanceValueRow("Aportes del propietario", formatOptional(summary?.ownerContribution))
-                    FinanceValueRow("Salidas de efectivo", formatOptional(summary?.cashOut))
-                    FinanceValueRow("Retiros del propietario", formatOptional(summary?.ownerWithdrawal))
-                    FinanceValueRow("Gastos en efectivo", formatOptional(summary?.expensesCash))
-                    FinanceValueRow("Pagos a proveedores", formatOptional(summary?.supplierPayments))
-                    FinanceValueRow("Ajustes", formatOptional(summary?.adjustments))
-                    FinanceValueRow("Entradas totales", formatOptional(summary?.totalIn))
-                    FinanceValueRow("Salidas totales", formatOptional(summary?.totalOut))
+                    FinanceValueRow("Ventas en efectivo", formatPesos(summary?.salesCash ?: 0.0))
+                    FinanceValueRow("Cobros de deuda en efectivo", formatPesos(summary?.debtCollectionsCash ?: 0.0))
+                    FinanceValueRow("Entradas de efectivo", formatPesos(summary?.cashIn ?: 0.0))
+                    FinanceValueRow("Aportes del propietario", formatPesos(summary?.ownerContribution ?: 0.0))
+                    FinanceValueRow("Salidas de efectivo", formatPesos(summary?.cashOut ?: 0.0))
+                    FinanceValueRow("Retiros del propietario", formatPesos(summary?.ownerWithdrawal ?: 0.0))
                     HorizontalDivider()
-                    FinanceValueRow("Esperado en caja", formatOptional(summary?.expectedClosingAmount), BSPOSTheme.colors.primary)
-                    FinanceValueRow("Movimientos", summary?.movementsCount?.toString() ?: "No disponible")
+                    FinanceValueRow("Esperado en caja", formatPesos(summary?.expectedClosingAmount ?: 0.0), BSPOSTheme.colors.primary)
+                    FinanceValueRow("Movimientos", (summary?.movementsCount ?: 0).toString())
                 }
             }
 
@@ -1007,14 +951,13 @@ internal fun RemoteCashTab(
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text("Arqueo y cierre", fontWeight = FontWeight.Bold)
-                    Text("Esperado: ${formatOptional(session.summary?.expectedClosingAmount)}")
                     OutlinedTextField(countedAmount, { countedAmount = it }, Modifier.fillMaxWidth(),
                         label = { Text("Efectivo contado") }, prefix = { Text("RD$ ") },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true)
                     OutlinedTextField(closingNotes, { closingNotes = it }, Modifier.fillMaxWidth(),
                         label = { Text("Nota de cierre (opcional)") }, singleLine = true)
                     Button(onClick = { onClose(countedAmount, closingNotes) },
-                        enabled = !busy && countedAmount.isNotBlank() && session.summary != null, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD32F2F))) {
+                        enabled = !busy && countedAmount.isNotBlank(), modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD32F2F))) {
                         Text(if (busy) "Procesando…" else "Cerrar caja")
                     }
                 }
@@ -1146,11 +1089,10 @@ private fun ExpenseCreateDialog(
     categories: List<ExpenseCategoryDto>,
     isSaving: Boolean,
     onDismiss: () -> Unit,
-    onConfirm: (String, String, Int?, String, String?, String) -> Unit
+    onConfirm: (String, String, Int?, String, String?) -> Unit
 ) {
     var description by remember { mutableStateOf("") }
     var amount by remember { mutableStateOf("") }
-    var paidAmount by remember { mutableStateOf("") }
     var selectedCategoryId by remember { mutableStateOf<Int?>(categories.firstOrNull()?.id) }
     var paymentMethod by remember { mutableStateOf("cash") }
     var notes by remember { mutableStateOf("") }
@@ -1190,8 +1132,6 @@ private fun ExpenseCreateDialog(
                     modifier = Modifier.fillMaxWidth()
                 )
 
-                OutlinedTextField(paidAmount, { paidAmount = it }, label = { Text("Pagado ahora (vacío: total)") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true)
                 if (categories.isNotEmpty()) {
                     Text("Categoría:", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
                     Row(
@@ -1239,13 +1179,11 @@ private fun ExpenseCreateDialog(
             Button(
                 onClick = {
                     val cleanAmount = amount.trim().replace(',', '.')
-                    val parsed = decimalCents(cleanAmount)
-                    val paid = decimalCents(paidAmount.ifBlank { cleanAmount })
-                    if (description.isBlank() || parsed == null || parsed <= 0 || paid == null || paid < 0 || paid > parsed) {
+                    val parsed = cleanAmount.toDoubleOrNull()
+                    if (description.isBlank() || parsed == null || parsed <= 0.0) {
                         amountError = true
                     } else {
-                        onConfirm(description, BigDecimal.valueOf(parsed, 2).toPlainString(), selectedCategoryId, paymentMethod, notes,
-                            BigDecimal.valueOf(paid, 2).toPlainString())
+                        onConfirm(description, cleanAmount, selectedCategoryId, paymentMethod, notes)
                     }
                 },
                 enabled = !isSaving
@@ -1263,40 +1201,6 @@ private fun ExpenseCreateDialog(
             }
         }
     )
-}
-
-@Composable
-private fun formatOptional(amount: Double?): String = if (amount == null) "No disponible" else formatPesos(amount)
-
-private fun decimalCents(value: String): Long? = runCatching {
-    BigDecimal(value.trim().replace(',', '.')).setScale(2, RoundingMode.UNNECESSARY).movePointRight(2).longValueExact()
-}.getOrNull()
-
-@Composable
-private fun ExpensePaymentDialog(expense: ExpenseDto, busy: Boolean, onDismiss: () -> Unit,
-    onConfirm: (String, String, String?) -> Unit) {
-    var amount by remember { mutableStateOf("") }
-    var method by remember { mutableStateOf("cash") }
-    var notes by remember { mutableStateOf("") }
-    val cents = decimalCents(amount)
-    val outstanding = BigDecimal.valueOf(expense.unpaidAmount).movePointRight(2).longValueExact()
-    AlertDialog(onDismissRequest = { if (!busy) onDismiss() }, title = { Text("Registrar abono") }, text = {
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(expense.description)
-            Text("Pendiente: ${formatPesos(expense.unpaidAmount)}")
-            OutlinedTextField(amount, { amount = it }, label = { Text("Monto") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
-            Row(Modifier.horizontalScroll(rememberScrollState())) {
-                listOf("cash" to "Efectivo", "card" to "Tarjeta", "bank_transfer" to "Transferencia", "other" to "Otro").forEach { (key, label) ->
-                    FilterChip(method == key, { method = key }, label = { Text(label) })
-                }
-            }
-            OutlinedTextField(notes, { notes = it }, label = { Text("Notas") })
-            Text("Se guardará para sincronizar. El servidor confirma el saldo y el efecto en caja.", style = MaterialTheme.typography.bodySmall)
-        }
-    }, confirmButton = {
-        Button(onClick = { onConfirm(BigDecimal.valueOf(checkNotNull(cents), 2).toPlainString(), method, notes.ifBlank { null }) },
-            enabled = !busy && cents != null && cents > 0 && cents <= outstanding) { Text("Guardar abono") }
-    }, dismissButton = { TextButton(onClick = onDismiss, enabled = !busy) { Text("Cancelar") } })
 }
 
 @Composable

@@ -4,9 +4,6 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.performTouchInput
-import androidx.compose.ui.test.swipeDown
-import androidx.test.espresso.Espresso
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.example.bspos.core.ui.theme.BSPOSTheme
 import org.junit.Rule
@@ -32,13 +29,13 @@ class AppUpdateDialogTest {
             }
         }
 
-        composeRule.onNodeWithText("Actualización requerida").assertIsDisplayed()
+        composeRule.onNodeWithText("Actualizacion requerida").assertIsDisplayed()
         composeRule.onNodeWithText("Actualizar").assertIsDisplayed()
         assertTrue(composeRule.onAllNodesWithText("Mas tarde").fetchSemanticsNodes().isEmpty())
     }
 
     @Test
-    fun supportedVersionOffersSkipBeforeDownload() {
+    fun optionalUpdateIsAlsoBlocking() {
         composeRule.setContent {
             BSPOSTheme {
                 AppUpdateDialog(
@@ -50,25 +47,8 @@ class AppUpdateDialogTest {
             }
         }
 
-        composeRule.onNodeWithText("Nueva versión disponible").assertIsDisplayed()
-        composeRule.onNodeWithText("Actualizar").assertIsDisplayed()
-        composeRule.onNodeWithText("Ahora no").assertIsDisplayed()
-    }
-
-    @Test
-    fun cancelledInstallerKeepsBlockingDialog() {
-        composeRule.setContent {
-            BSPOSTheme {
-                AppUpdateDialog(
-                    state = AppUpdateState.InstallationPending(update(isRequired = false)),
-                    onDownload = {},
-                    onRetryCheck = {},
-                    onDismissCheckFailure = {}
-                )
-            }
-        }
-        Espresso.pressBackUnconditionally()
-        composeRule.onNodeWithText("Instalar de nuevo").assertIsDisplayed()
+        composeRule.onNodeWithText("Actualizacion disponible").assertIsDisplayed()
+        assertTrue(composeRule.onAllNodesWithText("Mas tarde").fetchSemanticsNodes().isEmpty())
     }
 
     private fun update(isRequired: Boolean) = AvailableAppUpdate(

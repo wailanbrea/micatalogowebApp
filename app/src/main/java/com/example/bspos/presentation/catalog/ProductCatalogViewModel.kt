@@ -12,6 +12,7 @@ import com.example.bspos.domain.usecase.UnitOfMeasureUseCases
 import com.example.bspos.presentation.common.UiErrorBus
 import com.example.bspos.presentation.common.toUiMessage
 import com.example.bspos.domain.repository.MiCatalogoConnectionRepository
+import com.example.bspos.domain.repository.ProductRepository
 import com.example.bspos.domain.model.MiCatalogoShop
 import com.example.bspos.domain.model.MiCatalogoResult
 import com.example.bspos.core.database.AppDatabaseTransactor
@@ -20,6 +21,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -31,9 +33,14 @@ class ProductCatalogViewModel @Inject constructor(
     inventory: InventoryRepository,
     private val initialInventory: RegisterInitialInventoryUseCase,
     private val connection: MiCatalogoConnectionRepository,
+    productRepository: ProductRepository,
     private val transactor: AppDatabaseTransactor
 ) : ViewModel() {
-    val products = productUseCases.observe().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    val products = connection.observeConnection()
+        .flatMapLatest { state ->
+            state.activeShopId?.let(productRepository::observeForShop) ?: productRepository.observeAll()
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val categories = categoryUseCases.observe().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val units = unitUseCases.observe().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val stock = inventory.observeStock(InventoryLocation.MAIN).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())

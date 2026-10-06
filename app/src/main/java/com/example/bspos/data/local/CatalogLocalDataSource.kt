@@ -32,6 +32,7 @@ class CatalogLocalDataSource @Inject constructor(
     suspend fun deleteUnit(id: UUID, at: Instant) = units.softDelete(id, at) == 1
 
     fun observeProducts() = products.observeAll()
+    fun observeProductsForShop(shopId: String) = products.observeForShop(shopId)
     suspend fun findProduct(id: UUID) = products.findById(id)
     suspend fun insert(product: ProductEntity) = products.insert(product)
     suspend fun update(product: ProductEntity): Boolean {

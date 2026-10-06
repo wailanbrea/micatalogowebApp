@@ -94,7 +94,11 @@ class CatalogSyncIntegrationTest {
             saleId, "TEST-PENDING", date = saleAt, subtotal = 560000, total = 560000,
             paymentType = SalePaymentType.CASH, paidAmount = 560000, createdAt = saleAt, updatedAt = saleAt
         ), listOf(SaleItemEntity(UUID.randomUUID(), saleId, id, 2, 280000, 100000, subtotal = 560000)))
-        val request = PosSaleUploadRequestDto(saleId.toString(), "paid", items = listOf(PosSaleUploadItemDto("product-a", 2, "2800.00")))
+        val request = PosSaleUploadRequestDto(
+            clientSaleUuid = saleId.toString(),
+            paymentStatus = "paid",
+            items = listOf(PosSaleUploadItemDto("product-a", 2, "2800.00"))
+        )
         db.posSaleOutboxDao().insert(PosSaleOutboxEntity(
             saleId, shopId, json.encodeToString(request), nextAttemptAt = saleAt, createdAt = saleAt, updatedAt = saleAt
         ))
@@ -208,7 +212,7 @@ class CatalogSyncIntegrationTest {
         assertTrue(repository.syncCatalog(shopId) is MiCatalogoResult.Success)
         val calls = mutableListOf<String>()
         api.saleCalls = calls
-        val operationApi = object : CatalogTestOperationApi() {
+        val operationApi = object : com.example.bspos.data.micatalogo.api.MiCatalogoOperationApi {
             override suspend fun submit(shopId: String, payload: kotlinx.serialization.json.JsonObject): Response<kotlinx.serialization.json.JsonObject> {
                 calls.add("operation")
                 return Response.success(payload)
@@ -238,7 +242,7 @@ class CatalogSyncIntegrationTest {
             "operation-1", shopId, "product-a", "{\"client_operation_uuid\":\"operation-1\"}", at.plusSeconds(1)
         ))
         queueSale(at.plusSeconds(2), "second")
-        val operationApi = object : CatalogTestOperationApi() {
+        val operationApi = object : com.example.bspos.data.micatalogo.api.MiCatalogoOperationApi {
             override suspend fun submit(shopId: String, payload: kotlinx.serialization.json.JsonObject): Response<kotlinx.serialization.json.JsonObject> {
                 calls.add("operation")
                 return Response.success(payload)
@@ -266,7 +270,7 @@ class CatalogSyncIntegrationTest {
         assertEquals(1L, active[first]!!.queueSequence)
         assertEquals(2L, db.operationOutboxDao().oldestActive(shopId)!!.queueSequence)
         assertEquals(3L, active[second]!!.queueSequence)
-        val operationApi = object : CatalogTestOperationApi() {
+        val operationApi = object : com.example.bspos.data.micatalogo.api.MiCatalogoOperationApi {
             override suspend fun submit(shopId: String, payload: kotlinx.serialization.json.JsonObject): Response<kotlinx.serialization.json.JsonObject> {
                 calls.add("operation")
                 return Response.success(payload)
@@ -286,7 +290,7 @@ class CatalogSyncIntegrationTest {
         api.saleCalls = calls
         val first = queueSale(at, "future")
         db.posSaleOutboxDao().markRetry(first, "Sin conexión", at, Instant.now().plusSeconds(3600))
-        val operationApi = object : CatalogTestOperationApi() {
+        val operationApi = object : com.example.bspos.data.micatalogo.api.MiCatalogoOperationApi {
             override suspend fun submit(shopId: String, payload: kotlinx.serialization.json.JsonObject): Response<kotlinx.serialization.json.JsonObject> = error("No operation expected")
         }
         val sync = MiCatalogoPosSaleRepositoryImpl(api, EmptyCustomerApi(), db.posSaleOutboxDao(),
@@ -360,7 +364,11 @@ class CatalogSyncIntegrationTest {
             total = 100, paymentType = SalePaymentType.CASH, paidAmount = 100,
             createdAt = timestamp, updatedAt = timestamp), listOf(SaleItemEntity(UUID.randomUUID(), id,
                 MiCatalogoImportMapper.productId(shopId, "product-a"), 1, 100, 50, subtotal = 100)))
-        val body = PosSaleUploadRequestDto(id.toString(), "paid", items = listOf(PosSaleUploadItemDto(label, 1, "1.00")))
+        val body = PosSaleUploadRequestDto(
+            clientSaleUuid = id.toString(),
+            paymentStatus = "paid",
+            items = listOf(PosSaleUploadItemDto(label, 1, "1.00"))
+        )
         db.posSaleOutboxDao().insert(PosSaleOutboxEntity(id, shopId, json.encodeToString(body),
             nextAttemptAt = timestamp, createdAt = timestamp, updatedAt = timestamp))
         return id
@@ -378,8 +386,7 @@ class CatalogSyncIntegrationTest {
         override suspend fun createCustomer(shopId: String, request: CustomerUploadRequestDto): Response<RemoteCustomerDto> = error("Unused")
         override suspend fun payment(shopId: String, customerId: String, body: com.example.bspos.data.micatalogo.api.CustomerPaymentDto): Response<com.example.bspos.data.micatalogo.api.CustomerPaymentResponseDto> = error("Unused")
     }
-    private class SnapshotApi(var snapshot: CatalogSnapshotDto) : MiCatalogoApi by
-        retrofit2.Retrofit.Builder().baseUrl("https://example.test/").build().create(MiCatalogoApi::class.java) {
+    private class SnapshotApi(var snapshot: CatalogSnapshotDto) : MiCatalogoApi {
         var saleCalls: MutableList<String>? = null
         var catalogStatus = 200
         var beforeCatalog: (suspend () -> Unit)? = null
@@ -399,6 +406,16 @@ class CatalogSyncIntegrationTest {
         override suspend fun updateAdminShop(shopId: String, request: AdminShopUpdateDto): Response<AdminShopDto> = error("Unused")
         override suspend fun updateSellerMenus(shopId: String, sellerId: String, request: MenuPermissionsUpdateDto): Response<Map<String, List<String>>> = error("Unused")
         override suspend fun createSeller(shopId: String, request: SellerCreateRequestDto): Response<SellerCreateResponseDto> = error("Unused")
+        override suspend fun financeSummary(shopId: String, from: String?, to: String?, sort: String?, direction: String?): Response<FinanceSummaryDto> = error("Unused")
+        override suspend fun incomeStatement(shopId: String, from: String?, to: String?): Response<FinanceIncomeStatementDto> = error("Unused")
+        override suspend fun cashFlow(shopId: String, from: String?, to: String?): Response<FinanceCashFlowDto> = error("Unused")
+        override suspend fun currentCashSession(shopId: String): Response<CashCurrentSessionResponseDto> = error("Unused")
+        override suspend fun openCashSession(shopId: String, request: CashSessionOpenRequestDto): Response<CashSessionActionResponseDto> = error("Unused")
+        override suspend fun closeCashSession(shopId: String, sessionId: String, request: CashSessionCloseRequestDto): Response<CashSessionActionResponseDto> = error("Unused")
+        override suspend fun recordCashMovement(shopId: String, sessionId: String, request: CashMovementRequestDto): Response<CashMovementActionResponseDto> = error("Unused")
+        override suspend fun expenses(shopId: String, page: Int): Response<ExpensePaginatedResponseDto> = error("Unused")
+        override suspend fun expenseCategories(shopId: String): Response<List<ExpenseCategoryDto>> = error("Unused")
+        override suspend fun createExpense(shopId: String, request: ExpenseCreateRequestDto): Response<ExpenseActionResponseDto> = error("Unused")
         override suspend fun uploadPosSale(shopId: String, request: PosSaleUploadRequestDto): Response<PosSaleUploadResponseDto> {
             saleCalls?.add(request.items.first().productId)
             return Response.success(PosSaleUploadResponseDto(clientSaleUuid = request.clientSaleUuid))

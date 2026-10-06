@@ -115,6 +115,7 @@ fun BluetoothPrinterScreen(viewModel: BluetoothPrinterViewModel = hiltViewModel(
             }
             Spacer(Modifier.width(12.dp))
             Column {
+                Text("Impresoras", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.ExtraBold)
                 Text("Impresoras Bluetooth persistentes", color = BSPOSTheme.colors.textSecondary)
             }
         }

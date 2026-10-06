@@ -95,9 +95,8 @@ fun canAccessMiCatalogoMenu(
         else -> null
     }
     if (requiredCapability != null && capabilities.isNotEmpty() && capabilities[requiredCapability] != "enabled") return false
-
     return isPlatformOwner || canManageShop || (
-        menu !in ownerOnlyMenuKeys && menu in (menuPermissions + requiredSellerMenuKeys)
+    menu !in ownerOnlyMenuKeys && menu in (menuPermissions + requiredSellerMenuKeys)
     )
 }
 

@@ -25,5 +25,8 @@ interface CategoryRepository : CatalogRecordRepository<Category> {
 }
 
 interface UnitOfMeasureRepository : CatalogRecordRepository<UnitOfMeasure>
-interface ProductRepository : CatalogRecordRepository<Product>
+interface ProductRepository : CatalogRecordRepository<Product> {
+    /** Shows the active store catalog plus local-only products created on this device. */
+    fun observeForShop(shopId: String): Flow<List<Product>>
+}
 interface SupplierRepository : CatalogRecordRepository<Supplier>

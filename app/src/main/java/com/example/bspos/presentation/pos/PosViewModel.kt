@@ -12,6 +12,7 @@ import com.example.bspos.data.printer.BluetoothPrinterRepository
 import com.example.bspos.domain.repository.CustomerRepository
 import com.example.bspos.domain.repository.InventoryRepository
 import com.example.bspos.domain.repository.ProductRepository
+import com.example.bspos.domain.repository.MiCatalogoConnectionRepository
 import com.example.bspos.domain.repository.SettingsRepository
 import com.example.bspos.domain.model.AppSettings
 import com.example.bspos.domain.usecase.CompleteSaleRequest
@@ -24,6 +25,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.Instant
@@ -41,16 +43,21 @@ data class CheckoutResult(
 
 @HiltViewModel
 class PosViewModel @Inject constructor(
-    products: ProductRepository,
+    productsRepository: ProductRepository,
     customers: CustomerRepository,
     inventory: InventoryRepository,
     settingsRepository: SettingsRepository,
+    connectionRepository: MiCatalogoConnectionRepository,
     private val completeSale: CompleteSaleUseCase,
     cashSessions: CashSessionUseCases,
     private val printerRepository: BluetoothPrinterRepository,
     private val printerClient: BluetoothPrinterClient
 ) : ViewModel() {
-    val products = products.observeAll().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    val products = connectionRepository.observeConnection()
+        .flatMapLatest { state ->
+            state.activeShopId?.let(productsRepository::observeForShop) ?: productsRepository.observeAll()
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val customers = customers.observeAll().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val stock = inventory.observeStock(InventoryLocation.MAIN).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val settings = settingsRepository.observe().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AppSettings())
@@ -127,7 +134,7 @@ class PosViewModel @Inject constructor(
         val lines = _cart.value
         if (lines.isEmpty() || _isProcessing.value) return
         val total = try {
-            lines.sumOf { Math.multiplyExact(it.quantity, it.unitPrice) }
+            lines.sumOf { Math.multiplyExact(it.quantity, price(it.product)) }
         } catch (_: ArithmeticException) {
             _checkoutResult.value = CheckoutResult(false, "El total de la venta excede el límite permitido")
             return
@@ -166,7 +173,7 @@ class PosViewModel @Inject constructor(
                         invoiceNumber = "POS-${System.currentTimeMillis()}",
                         customerId = customer?.id,
                         date = Instant.now(),
-                        lines = lines.map { SaleLineInput(it.product.id, it.quantity, it.unitPrice) },
+                        lines = lines.map { SaleLineInput(it.product.id, it.quantity, price(it.product)) },
                         paymentType = if (payments.size > 1) SalePaymentType.MIXED else when (payments.firstOrNull()?.method) {
                             "cash" -> SalePaymentType.CASH
                             "card" -> SalePaymentType.CARD
@@ -236,7 +243,7 @@ class PosViewModel @Inject constructor(
         val lines = _cart.value
         if (lines.isEmpty() || _isProcessing.value) return
         val total = try {
-            lines.sumOf { Math.multiplyExact(it.quantity, it.unitPrice) }
+            lines.sumOf { Math.multiplyExact(it.quantity, price(it.product)) }
         } catch (_: ArithmeticException) {
             _checkoutResult.value = CheckoutResult(false, "El total de la venta excede el límite permitido")
             return
@@ -250,7 +257,7 @@ class PosViewModel @Inject constructor(
                         invoiceNumber = "POS-${System.currentTimeMillis()}",
                         customerId = customer?.id,
                         date = Instant.now(),
-                        lines = lines.map { SaleLineInput(it.product.id, it.quantity, it.unitPrice) },
+                        lines = lines.map { SaleLineInput(it.product.id, it.quantity, price(it.product)) },
                         paymentType = type,
                         paidAmount = if (type == SalePaymentType.CREDIT) 0 else total,
                         pendingAmount = if (type == SalePaymentType.CREDIT) total else 0,

@@ -63,6 +63,7 @@ fun MoreScreen(
     ).filterNotNull()
     LazyColumn(Modifier.fillMaxSize().background(BSPOSTheme.colors.background).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
+            Text("Operaciones", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.ExtraBold)
             Text("Herramientas para administrar tu negocio", color = BSPOSTheme.colors.textSecondary)
             Spacer(Modifier.height(6.dp))
         }
