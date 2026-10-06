@@ -17,7 +17,10 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Inventory2
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.ShoppingCart
@@ -26,6 +29,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.animateContentSize
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -45,6 +49,7 @@ import com.example.bspos.core.ui.theme.BSPOSTheme
 import com.example.bspos.core.money.LocalCurrency
 import com.example.bspos.core.money.MoneyUtils
 import com.example.bspos.domain.model.Product
+import com.example.bspos.domain.model.Customer
 import com.example.bspos.domain.model.MiCatalogoBusinessPresentation
 import coil.compose.AsyncImage
 import java.util.Locale
@@ -60,6 +65,7 @@ fun PosScreen(
     val products by viewModel.products.collectAsState()
     val stock by viewModel.stock.collectAsState()
     val cart by viewModel.cart.collectAsState()
+    val cartTotal by viewModel.cartTotal.collectAsState()
     val customers by viewModel.customers.collectAsState()
     val customer by viewModel.customer.collectAsState()
     val isProcessing by viewModel.isProcessing.collectAsState()
@@ -111,6 +117,7 @@ fun PosScreen(
         val tablet = maxWidth >= 700.dp
         if (tablet) {
             Column(Modifier.fillMaxSize().padding(28.dp)) {
+                Text(if (creditOnly) "Venta a crédito" else "Nueva venta", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.ExtraBold)
                 Text(if (creditOnly) "Asigna un cliente y los productos para registrar el saldo" else "Selecciona los productos para agregarlos al carrito", color = BSPOSTheme.colors.textSecondary)
                 if (presentation.posShowWholesale) FilterChip(selected = wholesaleMode, onClick = { viewModel.setWholesaleMode(!wholesaleMode) }, label = { Text(if (wholesaleMode) "Venta por mayor activa" else "Cambiar a precio por mayor") }, enabled = !isProcessing)
                 Spacer(Modifier.height(14.dp))
@@ -118,22 +125,28 @@ fun PosScreen(
                 Spacer(Modifier.height(14.dp))
                 Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                      ProductGrid(catalog, quantities, selectedQuantities, settings.allowNegativeStock, { viewModel.add(it) }, 4, wholesaleMode, Modifier.weight(1f))
-                     CartPanel(cart, customer?.fullName, { choosingCustomer = true }, { viewModel.change(it.product.id, it.quantity - 1) }, { viewModel.change(it.product.id, it.quantity + 1) }, cashAction, viewModel::completeCard, viewModel::completeTransfer, viewModel::completeCredit, { showingSplitDialog = true }, isProcessing, creditOnly, presentation.posShowCredit || creditOnly, cashSession != null, wholesaleMode, Modifier.width(330.dp))
+                     CartPanel(cart, cartTotal, customer, { choosingCustomer = true }, { viewModel.change(it.product.id, it.quantity - 1) }, { viewModel.change(it.product.id, it.quantity + 1) }, { viewModel.change(it.product.id, 0) }, viewModel::clearCart, cashAction, viewModel::completeCard, viewModel::completeTransfer, viewModel::completeCredit, { showingSplitDialog = true }, isProcessing, creditOnly, presentation.posShowCredit || creditOnly, cashSession != null, Modifier.widthIn(min = 340.dp, max = 400.dp).fillMaxHeight())
                 }
             }
         } else {
             Scaffold(
                     modifier = Modifier.fillMaxSize(),
                     containerColor = androidx.compose.ui.graphics.Color.Transparent,
-                    floatingActionButton = {
-                        ExtendedFloatingActionButton(
-                            onClick = { showCart = true },
-                            icon = { Icon(Icons.Default.ShoppingCart, "Abrir carrito") },
-                            text = { Text("Carrito ($cartQuantity)") }
-                        )
+                    bottomBar = {
+                        if (cart.isNotEmpty()) {
+                            Surface(color = BSPOSTheme.colors.surface, shadowElevation = 6.dp) {
+                                Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.ShoppingCart, null, tint = BSPOSTheme.colors.primary)
+                                    Spacer(Modifier.width(8.dp))
+                                    Column(Modifier.weight(1f)) { Text("$cartQuantity productos", fontWeight = FontWeight.Bold); Text(money(cartTotal), color = BSPOSTheme.colors.textSecondary) }
+                                    Button(onClick = { showCart = true }, shape = RoundedCornerShape(14.dp)) { Text("Ver carrito") }
+                                }
+                            }
+                        }
                     }
                 ) { contentPadding ->
                     Column(Modifier.fillMaxSize().padding(contentPadding).padding(horizontal = 18.dp)) {
+                        Text(if (creditOnly) "Venta a crédito" else "Nueva venta", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.ExtraBold)
                         Text(if (creditOnly) "Asigna un cliente y los productos para registrar el saldo" else "Selecciona los productos para agregarlos al carrito", color = BSPOSTheme.colors.textSecondary)
                         if (presentation.posShowWholesale) FilterChip(selected = wholesaleMode, onClick = { viewModel.setWholesaleMode(!wholesaleMode) }, label = { Text(if (wholesaleMode) "Venta por mayor activa" else "Cambiar a precio por mayor") }, enabled = !isProcessing)
                         Spacer(Modifier.height(14.dp))
@@ -152,10 +165,13 @@ fun PosScreen(
         ) {
             CartPanel(
                 cart = cart,
-                 customer = customer?.fullName,
+                 total = cartTotal,
+                 customer = customer,
                 onCustomer = { choosingCustomer = true },
                 onMinus = { viewModel.change(it.product.id, it.quantity - 1) },
                 onPlus = { viewModel.change(it.product.id, it.quantity + 1) },
+                onRemove = { viewModel.change(it.product.id, 0) },
+                onClear = viewModel::clearCart,
                 onCash = cashAction,
                 onCard = viewModel::completeCard,
                 onTransfer = viewModel::completeTransfer,
@@ -165,15 +181,13 @@ fun PosScreen(
                 creditOnly = creditOnly,
                 cashSessionOpen = cashSession != null,
                 creditEnabled = presentation.posShowCredit || creditOnly,
-                wholesaleMode = wholesaleMode,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp).imePadding().navigationBarsPadding()
+                modifier = Modifier.fillMaxWidth().heightIn(max = 720.dp).padding(horizontal = 12.dp).imePadding().navigationBarsPadding()
             )
         }
     }
     if (showingSplitDialog) {
-        val totalCents = cart.sumOf { it.quantity * if (wholesaleMode) it.product.wholesalePrice ?: it.product.salePrice else it.product.salePrice }
         SplitPaymentDialog(
-            totalCents = totalCents,
+            totalCents = cartTotal,
             customerName = customer?.fullName,
             cashSessionOpen = cashSession != null,
             onDismiss = { showingSplitDialog = false },
@@ -307,49 +321,114 @@ private fun ProductGrid(products: List<Product>, quantities: Map<java.util.UUID,
 }
 
 @Composable
-private fun CartPanel(cart: List<PosCartLine>, customer: String?, onCustomer: () -> Unit, onMinus: (PosCartLine) -> Unit, onPlus: (PosCartLine) -> Unit, onCash: () -> Unit, onCard: () -> Unit, onTransfer: () -> Unit, onCredit: () -> Unit, onSplit: () -> Unit, isProcessing: Boolean, creditOnly: Boolean, creditEnabled: Boolean, cashSessionOpen: Boolean, wholesaleMode: Boolean = false, modifier: Modifier = Modifier) {
-    val total = cart.sumOf { it.quantity * if (wholesaleMode) it.product.wholesalePrice ?: it.product.salePrice else it.product.salePrice }
-    Card(modifier, shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface), elevation = CardDefaults.cardElevation(1.dp)) {
-        Column(Modifier.padding(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.ShoppingCart, null, tint = BSPOSTheme.colors.primary); Spacer(Modifier.width(8.dp)); Text("Carrito de venta", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold) }
-            if (creditEnabled) TextButton(onCustomer, Modifier.fillMaxWidth()) { Text(customer ?: "Asignar cliente para crédito") }
-            if (cart.isEmpty()) Box(Modifier.height(120.dp).fillMaxWidth(), contentAlignment = Alignment.Center) { Text("Agrega productos para iniciar", color = BSPOSTheme.colors.textSecondary) } else {
-                LazyColumn(Modifier.heightIn(max = 280.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) { lazyItems(cart, key = { it.product.id }) { line ->
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Box(Modifier.size(38.dp).clip(RoundedCornerShape(10.dp)).background(BSPOSTheme.colors.primaryLight), contentAlignment = Alignment.Center) {
-                            val image = line.product.thumbnailPath ?: line.product.imagePath
-                            if (image != null) {
-                                AsyncImage(image, line.product.name, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-                            } else {
-                                Icon(Icons.Default.Inventory2, null, tint = BSPOSTheme.colors.primary, modifier = Modifier.size(22.dp))
-                            }
-                        }
-                        Spacer(Modifier.width(8.dp)); Column(Modifier.weight(1f)) { Text(line.product.name, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis); Text("Cantidad seleccionada: ${line.quantity}", color = BSPOSTheme.colors.primary, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold); Text("${money(if (wholesaleMode) line.product.wholesalePrice ?: line.product.salePrice else line.product.salePrice)} c/u", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelSmall) }
-                        Row(verticalAlignment = Alignment.CenterVertically) { IconButton({ onMinus(line) }, enabled = !isProcessing) { Icon(Icons.Default.Remove, "Restar") }; Text(line.quantity.toString(), fontWeight = FontWeight.Bold); IconButton({ onPlus(line) }, enabled = !isProcessing) { Icon(Icons.Default.Add, "Sumar") } }
-                    }
-                } }
-            }
-            HorizontalDivider(color = BSPOSTheme.colors.outline); Spacer(Modifier.height(10.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text("Total", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold); Text(money(total), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold, maxLines = 1, softWrap = false) }
-            Spacer(Modifier.height(10.dp))
-            if (creditOnly) {
-                Button(onClick = onCredit, enabled = cart.isNotEmpty() && customer != null && !isProcessing, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp)) { Text(if (isProcessing) "Procesando..." else "Vender a credito") }
-            } else {
-                if (!cashSessionOpen) {
-                    Text(
-                        "La caja está cerrada. Al cobrar efectivo te llevaremos a abrirla.",
-                        color = BSPOSTheme.colors.warning,
-                        style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.padding(bottom = 6.dp)
-                    )
+private fun CartPanel(
+    cart: List<PosCartLine>, total: Long, customer: Customer?, onCustomer: () -> Unit,
+    onMinus: (PosCartLine) -> Unit, onPlus: (PosCartLine) -> Unit, onRemove: (PosCartLine) -> Unit, onClear: () -> Unit,
+    onCash: () -> Unit, onCard: () -> Unit, onTransfer: () -> Unit, onCredit: () -> Unit,
+    onSplit: () -> Unit, isProcessing: Boolean, creditOnly: Boolean, creditEnabled: Boolean, cashSessionOpen: Boolean,
+    modifier: Modifier = Modifier
+) {
+    var confirmClear by remember { mutableStateOf(false) }
+    var creditSelected by remember(creditOnly) { mutableStateOf(creditOnly) }
+    Card(modifier, shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface), elevation = CardDefaults.cardElevation(1.dp)) {
+        Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Carrito de venta", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                TextButton(onClick = { confirmClear = true }, enabled = cart.isNotEmpty() && !isProcessing) {
+                    Icon(Icons.Default.DeleteOutline, null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(4.dp)); Text("Vaciar")
                 }
-                Button(onClick = onCash, enabled = cart.isNotEmpty() && !isProcessing, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp)) { Text(if (isProcessing) "Procesando..." else if (cashSessionOpen) "Cobrar efectivo" else "Abrir caja para cobrar") }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) { OutlinedButton(onClick = onCard, enabled = cart.isNotEmpty() && !isProcessing, modifier = Modifier.weight(1f)) { Text("Tarjeta") }; OutlinedButton(onClick = onTransfer, enabled = cart.isNotEmpty() && !isProcessing, modifier = Modifier.weight(1f)) { Text("Transferencia") } }
-                if (creditEnabled) OutlinedButton(onClick = onCredit, enabled = cart.isNotEmpty() && customer != null && !isProcessing, modifier = Modifier.fillMaxWidth()) { Text("Vender a crédito") }
-                OutlinedButton(onClick = onSplit, enabled = cart.isNotEmpty() && !isProcessing, modifier = Modifier.fillMaxWidth()) { Text("Pago dividido / Mixto") }
+            }
+            SelectedCustomerCard(customer, onCustomer)
+            if (cart.isEmpty()) {
+                EmptyCartState(Modifier.weight(1f))
+            } else {
+                LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    lazyItems(cart, key = { it.product.id }) { line ->
+                        CartProductItem(line, onMinus, onPlus, onRemove, isProcessing)
+                        HorizontalDivider(color = BSPOSTheme.colors.outline)
+                    }
+                }
+            }
+            CartSummary(total)
+            if (creditEnabled && !creditOnly) PaymentTypeSelector(creditSelected) { creditSelected = it }
+            CartActions(cart.isEmpty(), isProcessing, creditSelected, customer != null, cashSessionOpen, onCash, onCredit, onCard, onTransfer, onSplit, creditOnly)
+        }
+    }
+    if (confirmClear) AlertDialog(
+        onDismissRequest = { confirmClear = false },
+        title = { Text("¿Vaciar el carrito?") },
+        text = { Text("Se eliminarán todos los productos agregados.") },
+        confirmButton = { TextButton(onClick = { onClear(); confirmClear = false }) { Text("Vaciar") } },
+        dismissButton = { TextButton(onClick = { confirmClear = false }) { Text("Cancelar") } }
+    )
+}
+
+@Composable
+private fun SelectedCustomerCard(customer: Customer?, onClick: () -> Unit) {
+    Surface(Modifier.fillMaxWidth().clickable(onClick = onClick), shape = RoundedCornerShape(14.dp), color = BSPOSTheme.colors.primaryLight) {
+        Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(40.dp).clip(RoundedCornerShape(12.dp)).background(BSPOSTheme.colors.primary), contentAlignment = Alignment.Center) { Icon(Icons.Default.Person, null, tint = Color.White) }
+            Spacer(Modifier.width(10.dp)); Column(Modifier.weight(1f)) {
+                Text("Cliente", style = MaterialTheme.typography.labelSmall, color = BSPOSTheme.colors.textSecondary)
+                Text(customer?.fullName ?: "Consumidor final", fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(customer?.taxId?.takeIf { it.isNotBlank() } ?: "Seleccionar cliente", style = MaterialTheme.typography.bodySmall, color = BSPOSTheme.colors.textSecondary)
+            }
+            Icon(Icons.Default.ChevronRight, "Seleccionar cliente", tint = BSPOSTheme.colors.primary)
+        }
+    }
+}
+
+@Composable
+private fun CartProductItem(line: PosCartLine, onMinus: (PosCartLine) -> Unit, onPlus: (PosCartLine) -> Unit, onRemove: (PosCartLine) -> Unit, processing: Boolean) {
+    val price = line.unitPrice
+    Row(Modifier.fillMaxWidth().animateContentSize().padding(vertical = 4.dp), verticalAlignment = Alignment.Top) {
+        Box(Modifier.size(56.dp).clip(RoundedCornerShape(12.dp)).background(BSPOSTheme.colors.primaryLight), contentAlignment = Alignment.Center) {
+            val image = line.product.thumbnailPath ?: line.product.imagePath
+            if (image != null) AsyncImage(image, line.product.name, Modifier.fillMaxSize(), contentScale = ContentScale.Fit) else Icon(Icons.Default.Inventory2, null, tint = BSPOSTheme.colors.primary)
+        }
+        Spacer(Modifier.width(10.dp)); Column(Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.Top) {
+                Column(Modifier.weight(1f)) { Text(line.product.name, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis); Text(money(price), color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodySmall) }
+                IconButton(onClick = { onRemove(line) }, enabled = !processing, modifier = Modifier.size(44.dp)) { Icon(Icons.Default.DeleteOutline, "Eliminar ${line.product.name}", tint = BSPOSTheme.colors.error) }
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = { onMinus(line) }, enabled = !processing, modifier = Modifier.size(44.dp)) { Icon(Icons.Default.Remove, "Disminuir cantidad de ${line.product.name}") }
+                Text(line.quantity.toString(), fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 6.dp))
+                IconButton(onClick = { onPlus(line) }, enabled = !processing, modifier = Modifier.size(44.dp)) { Icon(Icons.Default.Add, "Aumentar cantidad de ${line.product.name}") }
+                Spacer(Modifier.weight(1f)); Text(money(Math.multiplyExact(line.quantity, price)), fontWeight = FontWeight.Bold)
             }
         }
     }
+}
+
+@Composable
+private fun EmptyCartState(modifier: Modifier = Modifier) = Box(modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) { Icon(Icons.Default.ShoppingCart, null, tint = BSPOSTheme.colors.primary, modifier = Modifier.size(42.dp)); Spacer(Modifier.height(10.dp)); Text("Tu carrito está vacío", fontWeight = FontWeight.Bold); Text("Selecciona productos para comenzar la venta.", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodySmall) }
+}
+
+@Composable
+private fun CartSummary(total: Long) = Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text("Subtotal", color = BSPOSTheme.colors.textSecondary); Text(money(total), fontWeight = FontWeight.SemiBold) }
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text("Descuento", color = BSPOSTheme.colors.textSecondary); Text("No disponible", color = BSPOSTheme.colors.textTertiary, style = MaterialTheme.typography.bodySmall) }
+    HorizontalDivider(color = BSPOSTheme.colors.outline)
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text("Total", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold); Text(money(total), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
+}
+
+@Composable
+private fun PaymentTypeSelector(creditSelected: Boolean, onChange: (Boolean) -> Unit) = Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Text("Método de pago", fontWeight = FontWeight.Bold)
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        FilterChip(selected = !creditSelected, onClick = { onChange(false) }, label = { Text("Contado") }, modifier = Modifier.weight(1f))
+        FilterChip(selected = creditSelected, onClick = { onChange(true) }, label = { Text("Crédito") }, modifier = Modifier.weight(1f))
+    }
+}
+
+@Composable
+private fun CartActions(cartIsEmpty: Boolean, isProcessing: Boolean, creditSelected: Boolean, hasCustomer: Boolean, cashSessionOpen: Boolean, onCash: () -> Unit, onCredit: () -> Unit, onCard: () -> Unit, onTransfer: () -> Unit, onSplit: () -> Unit, creditOnly: Boolean) {
+    val enabled = !cartIsEmpty && !isProcessing && (!creditSelected || hasCustomer)
+    Button(onClick = { if (creditSelected || creditOnly) onCredit() else onCash() }, enabled = enabled, modifier = Modifier.fillMaxWidth().height(58.dp), shape = RoundedCornerShape(16.dp)) { if (isProcessing) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp) else { Text(if (creditSelected || creditOnly) "Vender a crédito" else if (cashSessionOpen) "Cobrar" else "Abrir caja para cobrar", fontWeight = FontWeight.Bold); Spacer(Modifier.weight(1f)); Icon(Icons.Default.ChevronRight, null) } }
+    if (!creditOnly && !creditSelected) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) { OutlinedButton(onCard, enabled = !cartIsEmpty && !isProcessing, modifier = Modifier.weight(1f)) { Text("Tarjeta") }; OutlinedButton(onTransfer, enabled = !cartIsEmpty && !isProcessing, modifier = Modifier.weight(1f)) { Text("Transferencia") }; OutlinedButton(onSplit, enabled = !cartIsEmpty && !isProcessing, modifier = Modifier.weight(1f)) { Text("Mixto") } }
 }
 
 @Composable

@@ -23,13 +23,14 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.Instant
 import java.util.UUID
 import javax.inject.Inject
 
-data class PosCartLine(val product: Product, val quantity: Long)
+data class PosCartLine(val product: Product, val quantity: Long, val unitPrice: Long = product.salePrice)
 
 data class CheckoutResult(
     val success: Boolean,
@@ -61,6 +62,11 @@ class PosViewModel @Inject constructor(
     val customer = _customer.asStateFlow()
     private val _wholesaleMode = MutableStateFlow(false)
     val wholesaleMode = _wholesaleMode.asStateFlow()
+    val cartTotal = _cart.combine(_wholesaleMode) { lines, _ ->
+        lines.fold(0L) { total, line ->
+            Math.addExact(total, Math.multiplyExact(line.quantity, line.unitPrice))
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0L)
     private val _isProcessing = MutableStateFlow(false)
     val isProcessing = _isProcessing.asStateFlow()
     private val _checkoutResult = MutableStateFlow<CheckoutResult?>(null)
@@ -79,6 +85,7 @@ class PosViewModel @Inject constructor(
             return
         }
         _wholesaleMode.value = enabled
+        _cart.value = _cart.value.map { it.copy(unitPrice = price(it.product)) }
     }
 
     private fun price(product: Product): Long = if (_wholesaleMode.value) product.wholesalePrice ?: product.salePrice else product.salePrice
@@ -90,7 +97,7 @@ class PosViewModel @Inject constructor(
             val index = lines.indexOfFirst { it.product.id == product.id }
             val current = if (index < 0) 0 else lines[index].quantity
             if (current >= maximum) return@also
-            if (index < 0) lines += PosCartLine(product, 1)
+            if (index < 0) lines += PosCartLine(product, 1, price(product))
             else lines[index] = lines[index].copy(quantity = current + 1)
         }
     }
@@ -106,6 +113,11 @@ class PosViewModel @Inject constructor(
         }
     }
 
+    fun clearCart() {
+        if (_isProcessing.value) return
+        _cart.value = emptyList()
+    }
+
     fun completeCash() = complete(SalePaymentType.CASH, null)
     fun completeCard() = complete(SalePaymentType.CARD, null)
     fun completeTransfer() = complete(SalePaymentType.TRANSFER, null)
@@ -115,7 +127,7 @@ class PosViewModel @Inject constructor(
         val lines = _cart.value
         if (lines.isEmpty() || _isProcessing.value) return
         val total = try {
-            lines.sumOf { Math.multiplyExact(it.quantity, price(it.product)) }
+            lines.sumOf { Math.multiplyExact(it.quantity, it.unitPrice) }
         } catch (_: ArithmeticException) {
             _checkoutResult.value = CheckoutResult(false, "El total de la venta excede el límite permitido")
             return
@@ -154,7 +166,7 @@ class PosViewModel @Inject constructor(
                         invoiceNumber = "POS-${System.currentTimeMillis()}",
                         customerId = customer?.id,
                         date = Instant.now(),
-                        lines = lines.map { SaleLineInput(it.product.id, it.quantity, price(it.product)) },
+                        lines = lines.map { SaleLineInput(it.product.id, it.quantity, it.unitPrice) },
                         paymentType = if (payments.size > 1) SalePaymentType.MIXED else when (payments.firstOrNull()?.method) {
                             "cash" -> SalePaymentType.CASH
                             "card" -> SalePaymentType.CARD
@@ -224,7 +236,7 @@ class PosViewModel @Inject constructor(
         val lines = _cart.value
         if (lines.isEmpty() || _isProcessing.value) return
         val total = try {
-            lines.sumOf { Math.multiplyExact(it.quantity, price(it.product)) }
+            lines.sumOf { Math.multiplyExact(it.quantity, it.unitPrice) }
         } catch (_: ArithmeticException) {
             _checkoutResult.value = CheckoutResult(false, "El total de la venta excede el límite permitido")
             return
@@ -238,7 +250,7 @@ class PosViewModel @Inject constructor(
                         invoiceNumber = "POS-${System.currentTimeMillis()}",
                         customerId = customer?.id,
                         date = Instant.now(),
-                        lines = lines.map { SaleLineInput(it.product.id, it.quantity, price(it.product)) },
+                        lines = lines.map { SaleLineInput(it.product.id, it.quantity, it.unitPrice) },
                         paymentType = type,
                         paidAmount = if (type == SalePaymentType.CREDIT) 0 else total,
                         pendingAmount = if (type == SalePaymentType.CREDIT) total else 0,
