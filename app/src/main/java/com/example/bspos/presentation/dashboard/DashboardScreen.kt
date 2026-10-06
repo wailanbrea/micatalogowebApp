@@ -42,6 +42,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.example.bspos.core.ui.theme.BSPOSTheme
 import com.example.bspos.core.money.LocalCurrency
@@ -53,6 +56,10 @@ import com.example.bspos.domain.model.SaleItem
 import com.example.bspos.domain.model.SalePaymentType
 import com.example.bspos.domain.model.SaleStatus
 import com.example.bspos.domain.model.MiCatalogoBusinessPresentation
+import com.example.bspos.presentation.common.DialogScrollableColumn
+import com.example.bspos.presentation.pos.InvoicePdfGenerator
+import com.example.bspos.presentation.pos.PosCartLine
+import com.example.bspos.presentation.pos.shareInvoicePdf
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -70,6 +77,7 @@ fun DashboardScreen(
     onProducts: () -> Unit = {},
     onCustomers: () -> Unit = {},
     onRoutes: () -> Unit = {},
+    onReturns: () -> Unit = {},
     routesEnabled: Boolean = false,
     sellerMode: Boolean = false,
     showSales: Boolean = true,
@@ -87,6 +95,7 @@ fun DashboardScreen(
     val routes by viewModel.routes.collectAsState()
     val selectedSale by viewModel.selectedSale.collectAsState()
     val selectedItems by viewModel.selectedItems.collectAsState()
+    val context = LocalContext.current
     var showAllSales by remember { mutableStateOf(false) }
     var selectedPeriod by remember { mutableStateOf("Hoy") }
     val zone = ZoneId.systemDefault()
@@ -212,7 +221,20 @@ fun DashboardScreen(
             sale = sale,
             customerName = customerNames[sale.customerId] ?: "Consumidor final",
             items = selectedItems,
+            products = products,
             productNames = products.associate { it.id to it.name },
+            onShare = {
+                val lines = selectedItems.mapNotNull { item ->
+                    products.find { it.id == item.productId }?.let { product ->
+                        PosCartLine(product = product, quantity = item.quantity, unitPrice = item.unitPrice)
+                    }
+                }
+                if (lines.isNotEmpty()) {
+                    val pdfUri = InvoicePdfGenerator.create(context, sale, lines)
+                    shareInvoicePdf(context, pdfUri, sale.invoiceNumber)
+                }
+            },
+            onReturn = { viewModel.selectSale(null); onReturns() },
             onDismiss = { viewModel.selectSale(null) }
         )
     }
@@ -535,46 +557,147 @@ private fun SaleDetailDialog(
     sale: Sale,
     customerName: String,
     items: List<SaleItem>,
+    products: List<Product>,
     productNames: Map<java.util.UUID, String>,
+    onShare: () -> Unit,
+    onReturn: () -> Unit,
     onDismiss: () -> Unit
 ) {
     val date = sale.date.atZone(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm"))
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Detalle de ${sale.invoiceNumber}") },
-        text = {
-            Column {
-                Text(customerName, fontWeight = FontWeight.Bold)
-                Text(date, color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelMedium)
-                Text("Pago: ${sale.paymentType.label()}", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelMedium)
-                Spacer(Modifier.height(10.dp))
-                HorizontalDivider()
-                Spacer(Modifier.height(8.dp))
-                if (items.isEmpty()) {
-                    Text("No hay productos asociados a esta venta.", color = BSPOSTheme.colors.textSecondary)
-                } else {
-                    LazyColumn(Modifier.heightIn(max = 260.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        items(items, key = { it.id }) { item ->
-                            Row(Modifier.fillMaxWidth().padding(vertical = 5.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Column(Modifier.weight(1f)) {
-                                    Text(productNames[item.productId] ?: "Producto", fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                    Text("${item.quantity} x ${money(item.unitPrice)}", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelMedium)
-                                }
-                                Text(money(item.subtotal), fontWeight = FontWeight.Bold)
-                            }
+    val cost = items.sumOf { item -> item.unitCostSnapshot * item.quantity }
+    val gain = sale.total - cost
+    val margin = if (sale.total > 0) gain.toDouble() / sale.total.toDouble() * 100 else 0.0
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Surface(
+            modifier = Modifier.fillMaxWidth(.94f).heightIn(max = 760.dp),
+            shape = RoundedCornerShape(24.dp),
+            color = BSPOSTheme.colors.background,
+            tonalElevation = 3.dp
+        ) {
+            DialogScrollableColumn {
+                Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    Row(verticalAlignment = Alignment.Top) {
+                        Column(Modifier.weight(1f)) {
+                            Text("VENTA", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                            Text(sale.invoiceNumber, color = BSPOSTheme.colors.textPrimary, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
+                            Text("$date · Terminal", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+                        }
+                        Surface(shape = RoundedCornerShape(50), color = if (sale.status == SaleStatus.COMPLETED) BSPOSTheme.colors.successLight else BSPOSTheme.colors.errorLight) {
+                            Text(if (sale.status == SaleStatus.COMPLETED) "COMPLETADA" else "ANULADA", color = if (sale.status == SaleStatus.COMPLETED) BSPOSTheme.colors.success else BSPOSTheme.colors.error, modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.ExtraBold)
+                        }
+                    }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = onShare, modifier = Modifier.weight(1f), shape = RoundedCornerShape(14.dp)) { Text("Recibo") }
+                        Button(onClick = onShare, modifier = Modifier.weight(1.2f), shape = RoundedCornerShape(14.dp)) { Text("Compartir") }
+                        OutlinedButton(onClick = onReturn, modifier = Modifier.weight(1f), shape = RoundedCornerShape(14.dp)) { Text("Devolver") }
+                    }
+                    FinanceSummaryCard(sale, cost, gain, margin)
+                    InfoPairCard("Cliente", customerName, "Pago", sale.paymentType.label())
+                    InfoPairCard("Estado", if (sale.status == SaleStatus.COMPLETED) "Completada" else "Anulada", "Origen", "Terminal")
+                    SectionTitle("Productos", Icons.Default.Inventory2, "${items.size} artículo(s)")
+                    if (items.isEmpty()) {
+                        EmptyText("No hay productos asociados a esta venta.")
+                    } else {
+                        items.forEach { item ->
+                            val product = products.find { it.id == item.productId }
+                            SaleDetailLine(item, productNames[item.productId] ?: "Producto", product)
+                        }
+                    }
+                    HorizontalDivider(color = BSPOSTheme.colors.outline)
+                    SummaryRow("Subtotal", money(sale.subtotal))
+                    if (sale.discount > 0) SummaryRow("Descuento", "- ${money(sale.discount)}", BSPOSTheme.colors.success)
+                    if (sale.tax > 0) SummaryRow("Impuestos", money(sale.tax))
+                    SummaryRow("Total", money(sale.total), BSPOSTheme.colors.textPrimary, emphasized = true)
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                        TextButton(onClick = onDismiss) { Text("Cerrar") }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FinanceSummaryCard(sale: Sale, cost: Long, gain: Long, margin: Double) {
+    Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface)) {
+        BoxWithConstraints(Modifier.fillMaxWidth().padding(15.dp)) {
+            val metrics = listOf(
+                Triple("COBRADO", money(sale.paidAmount), BSPOSTheme.colors.primary),
+                Triple("COSTO", money(cost), BSPOSTheme.colors.textSecondary),
+                Triple("GANANCIA", money(gain), BSPOSTheme.colors.success),
+                Triple("MARGEN", "${String.format(Locale.US, "%.1f", margin)}%", BSPOSTheme.colors.success)
+            )
+            if (maxWidth < 520.dp) {
+                Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    metrics.chunked(2).forEach { row ->
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            row.forEach { (label, value, color) -> FinanceMetric(label, value, color, Modifier.weight(1f)) }
+                            if (row.size == 1) Spacer(Modifier.weight(1f))
                         }
                     }
                 }
-                Spacer(Modifier.height(8.dp))
-                HorizontalDivider()
-                Row(Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Total", fontWeight = FontWeight.ExtraBold)
-                    Text(money(sale.total), fontWeight = FontWeight.ExtraBold)
+            } else {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    metrics.forEach { (label, value, color) -> FinanceMetric(label, value, color, Modifier.weight(1f)) }
                 }
             }
-        },
-        confirmButton = { Button(onClick = onDismiss) { Text("Cerrar") } }
-    )
+        }
+    }
+}
+
+@Composable
+private fun FinanceMetric(label: String, value: String, color: Color, modifier: Modifier = Modifier) {
+    Column(modifier) {
+        Text(label, color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(3.dp))
+        Text(value, color = color, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+@Composable
+private fun InfoPairCard(firstLabel: String, firstValue: String, secondLabel: String, secondValue: String) {
+    Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface)) {
+        Row(Modifier.fillMaxWidth().padding(15.dp), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+            InfoValue(firstLabel, firstValue, Modifier.weight(1f))
+            InfoValue(secondLabel, secondValue, Modifier.weight(1f))
+        }
+    }
+}
+
+@Composable
+private fun InfoValue(label: String, value: String, modifier: Modifier = Modifier) {
+    Column(modifier) {
+        Text(label, color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+        Text(value, color = BSPOSTheme.colors.textPrimary, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+@Composable
+private fun SaleDetailLine(item: SaleItem, name: String, product: Product?) {
+    Card(shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface)) {
+        Column(Modifier.fillMaxWidth().padding(13.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Column(Modifier.weight(1f)) {
+                    Text(name, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text("${item.quantity} × ${money(item.unitPrice)}", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+                }
+                Text(money(item.subtotal), fontWeight = FontWeight.ExtraBold)
+            }
+            product?.let {
+                val itemCost = item.unitCostSnapshot * item.quantity
+                val itemGain = item.subtotal - itemCost
+                Text("Costo ${money(itemCost)} · Ganancia ${money(itemGain)}", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelSmall)
+            }
+        }
+    }
+}
+
+@Composable
+private fun SummaryRow(label: String, value: String, color: Color = BSPOSTheme.colors.textSecondary, emphasized: Boolean = false) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Text(label, color = color, fontWeight = if (emphasized) FontWeight.ExtraBold else FontWeight.Normal)
+        Text(value, color = if (emphasized) BSPOSTheme.colors.textPrimary else color, fontWeight = FontWeight.ExtraBold)
+    }
 }
 
 @Composable

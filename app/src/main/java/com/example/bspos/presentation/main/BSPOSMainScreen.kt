@@ -663,6 +663,7 @@ fun BSPOSNavHost(
                 onProducts = { navController.navigate(Screen.Catalog.route) },
                 onCustomers = { navController.navigate(Screen.Customers.route) },
                 onRoutes = { if (routesEnabled) navController.navigate(Screen.Routes.route) },
+                onReturns = { if (canSeeMenu("returns")) navController.navigate(Screen.Returns.route) },
                 routesEnabled = routesEnabled && canSeeMenu("routes"),
                 sellerMode = sellerMode,
                 showSales = canSeeMenu("sales"),
