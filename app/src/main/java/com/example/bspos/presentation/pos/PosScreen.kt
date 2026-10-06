@@ -39,8 +39,14 @@ import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.animation.animateContentSize
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
@@ -312,20 +318,64 @@ private fun TerminalHeader(creditOnly: Boolean, onGuide: () -> Unit, onOptions: 
 
 @Composable
 private fun TerminalGuideDialog(onDismiss: () -> Unit) {
+    val steps = remember {
+        listOf(
+            GuideStep("Busca lo que te piden", "Escribe el nombre o pasa el código de barras. Los precios salen de tu catálogo."),
+            GuideStep("Agrega productos", "Toca una tarjeta o el botón + y ajusta cantidades desde el carrito."),
+            GuideStep("¿Venta o cotización?", "Cobrar registra la venta ahora. Cotizar prepara un precio por escrito sin tocar el inventario."),
+            GuideStep("Revisa la venta", "Confirma artículos, cantidades, cliente, descuentos y total antes de continuar."),
+            GuideStep("Cobra", "Elige efectivo, transferencia, tarjeta, mixto o crédito. Se descuenta inventario y se genera el recibo.")
+        )
+    }
+    var currentStep by rememberSaveable { mutableIntStateOf(0) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Cómo hacer una venta") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                GuideStep("1", "Busca un producto", "Usa el buscador o revisa el catálogo.")
-                GuideStep("2", "Agrégalo al carrito", "Toca la tarjeta o el botón + y ajusta la cantidad.")
-                GuideStep("3", "Elige cliente y pago", "Puedes vender al contado, por tarjeta, transferencia, mixto o crédito.")
-                GuideStep("4", "Confirma y comparte", "La venta descuenta inventario y permite compartir el recibo PDF.")
+        title = {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("Cómo hacer una venta")
+                Text(
+                    "PASO ${currentStep + 1} DE ${steps.size}",
+                    color = BSPOSTheme.colors.textSecondary,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.ExtraBold
+                )
             }
         },
-        confirmButton = { Button(onClick = onDismiss) { Text("Entendido") } }
+        text = {
+            AnimatedContent(
+                targetState = currentStep,
+                transitionSpec = {
+                    (fadeIn(animationSpec = tween(180)) + slideInHorizontally(animationSpec = tween(220)) { it / 10 }) togetherWith
+                        (fadeOut(animationSpec = tween(120)) + slideOutHorizontally(animationSpec = tween(160)) { -it / 10 })
+                },
+                label = "terminal-guide-step"
+            ) { index ->
+                GuideStep(
+                    number = "${index + 1}",
+                    title = steps[index].title,
+                    description = steps[index].description
+                )
+            }
+        },
+        dismissButton = {
+            if (currentStep > 0) {
+                TextButton(onClick = { currentStep -= 1 }) { Text("Atrás") }
+            }
+        },
+        confirmButton = {
+            Button(onClick = {
+                if (currentStep < steps.lastIndex) currentStep += 1 else onDismiss()
+            }) {
+                Text(if (currentStep < steps.lastIndex) "Siguiente" else "Entendido")
+            }
+        }
     )
 }
+
+private data class GuideStep(
+    val title: String,
+    val description: String
+)
 
 @Composable
 private fun GuideStep(number: String, title: String, description: String) {

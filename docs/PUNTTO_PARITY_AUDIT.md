@@ -147,6 +147,10 @@ MiCatalogo Android ahora presenta esos indicadores con datos locales: capital ca
 - Las tablas de módulos con registros ahora incluyen búsqueda local por nombre, código,
   valor o estado, con estado vacío específico para búsquedas sin coincidencias; esto
   acerca la interacción de decants, precios, reportes y equipo a las listas de Puntto.
+- La ayuda de `Terminal` ahora reproduce el recorrido guiado de Puntto en cinco pasos:
+  buscar, agregar, distinguir venta/cotización, revisar el carrito y cobrar. Cada paso
+  aparece individualmente con `Atrás`, `Siguiente` y una transición corta, evitando un
+  bloque de texto estático y manteniendo el fondo claro de MiCatalogo.
 - Inventario móvil ahora replica la jerarquía de Puntto con contexto `CATÁLOGO`, título,
   descripción y accesos directos a Productos, Salud de precios, Movimientos e Importar.
   Se conservan el Kardex, recepción, conteo, ajustes, motivos e importador existente.
