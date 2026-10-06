@@ -1,5 +1,6 @@
 package com.example.bspos.presentation.dashboard
 
+import android.app.DatePickerDialog
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.fadeIn
@@ -105,6 +106,7 @@ fun DashboardScreen(
     val context = LocalContext.current
     var showAllSales by remember { mutableStateOf(false) }
     var selectedPeriod by remember { mutableStateOf("Hoy") }
+    var selectedDate by remember { mutableStateOf<LocalDate?>(null) }
     val zone = ZoneId.systemDefault()
     val today = Instant.now().atZone(zone).toLocalDate()
     LaunchedEffect(printerMessage) {
@@ -114,13 +116,16 @@ fun DashboardScreen(
         }
     }
     val completed = sales.filter { it.status == SaleStatus.COMPLETED }.sortedByDescending { it.date }
-    val periodStart = when (selectedPeriod) {
+    val periodStart = selectedDate ?: when (selectedPeriod) {
         "Este mes" -> today.withDayOfMonth(1)
         "Últimos 7" -> today.minusDays(6)
         else -> today
     }
+    val periodEnd = selectedDate ?: today
     val periodSales = completed.filter { it.date.atZone(zone).toLocalDate() >= periodStart }
-    val periodLabel = if (selectedPeriod == "Hoy") "de hoy" else selectedPeriod.lowercase(Locale("es"))
+        .filter { it.date.atZone(zone).toLocalDate() <= periodEnd }
+    val periodLabel = selectedDate?.let { "del ${it.format(DateTimeFormatter.ofPattern("d MMM", Locale("es")))}" }
+        ?: if (selectedPeriod == "Hoy") "de hoy" else selectedPeriod.lowercase(Locale("es"))
     val todaySales = periodSales.sumOf { it.total }
     val todayCollected = periodSales.sumOf { it.paidAmount }
     val periodCost = periodSales.sumOf { costTotals[it.id] ?: 0L }
@@ -176,7 +181,14 @@ fun DashboardScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             item { DashboardEnter { DashboardHeading(compact, sellerMode, presentation) } }
-            item { DashboardPeriodSelector(selectedPeriod) { selectedPeriod = it } }
+            item {
+                DashboardPeriodSelector(
+                    selected = selectedPeriod,
+                    customDate = selectedDate,
+                    onSelected = { selectedDate = null; selectedPeriod = it },
+                    onDateSelected = { selectedDate = it }
+                )
+            }
             item {
                 val setupItems = listOf(
                     "Agrega tu primer producto" to activeProducts.isNotEmpty(),
@@ -319,8 +331,14 @@ private fun DashboardEnter(delayMillis: Long = 0, content: @Composable () -> Uni
 }
 
 @Composable
-private fun DashboardPeriodSelector(selected: String, onSelected: (String) -> Unit) {
+private fun DashboardPeriodSelector(
+    selected: String,
+    customDate: LocalDate?,
+    onSelected: (String) -> Unit,
+    onDateSelected: (LocalDate) -> Unit
+) {
     val periods = listOf("Hoy", "Este mes", "Últimos 7")
+    val context = LocalContext.current
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -345,11 +363,22 @@ private fun DashboardPeriodSelector(selected: String, onSelected: (String) -> Un
             )
         }
         Spacer(Modifier.weight(1f))
-        Icon(
-            imageVector = Icons.Default.CalendarMonth,
-            contentDescription = "Seleccionar periodo",
-            tint = BSPOSTheme.colors.textSecondary
-        )
+        IconButton(onClick = {
+            val initial = customDate ?: LocalDate.now()
+            DatePickerDialog(
+                context,
+                { _, year, month, day -> onDateSelected(LocalDate.of(year, month + 1, day)) },
+                initial.year,
+                initial.monthValue - 1,
+                initial.dayOfMonth
+            ).show()
+        }) {
+            Icon(
+                imageVector = Icons.Default.CalendarMonth,
+                contentDescription = "Seleccionar fecha",
+                tint = if (customDate != null) BSPOSTheme.colors.primary else BSPOSTheme.colors.textSecondary
+            )
+        }
     }
 }
 
