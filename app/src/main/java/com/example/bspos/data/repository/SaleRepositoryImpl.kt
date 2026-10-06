@@ -10,5 +10,6 @@ class SaleRepositoryImpl @Inject constructor(private val dao: SaleDao) : SaleRep
     override suspend fun insert(sale: Sale, items: List<SaleItem>) = dao.insertWithItems(sale.toEntity(), items.map { it.toEntity() })
     override fun observeAll() = dao.observeAll().map { it.map { row -> row.toDomain() } }
     override fun observeItems(saleId: UUID) = dao.observeItems(saleId).map { it.map { row -> row.toDomain() } }
+    override fun observeAllItems() = dao.observeAllItems().map { it.map { row -> row.toDomain() } }
     override fun observeCostTotals() = dao.observeCostTotals().map { rows -> rows.associate { it.saleId to it.cost } }
 }

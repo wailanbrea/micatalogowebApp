@@ -6,5 +6,6 @@ interface SaleRepository {
     suspend fun insert(sale: Sale, items: List<SaleItem>)
     fun observeAll(): Flow<List<Sale>>
     fun observeItems(saleId: UUID): Flow<List<SaleItem>>
+    fun observeAllItems(): Flow<List<SaleItem>>
     fun observeCostTotals(): Flow<Map<UUID, Long>>
 }

@@ -92,6 +92,7 @@ fun DashboardScreen(
     printerViewModel: PosViewModel = hiltViewModel()
 ) {
     val sales by viewModel.sales.collectAsState()
+    val saleItems by viewModel.saleItems.collectAsState()
     val costTotals by viewModel.costTotals.collectAsState()
     val customers by viewModel.customers.collectAsState()
     val stock by viewModel.stock.collectAsState()
@@ -126,6 +127,24 @@ fun DashboardScreen(
     val periodProfit = periodSales.sumOf { sale -> sale.total - (costTotals[sale.id] ?: 0L) }
     val averageTicket = if (periodSales.isEmpty()) 0L else periodSales.sumOf { it.total } / periodSales.size
     val receivable = customers.sumOf { it.balance }
+    val periodSaleIds = periodSales.mapTo(mutableSetOf()) { it.id }
+    val productById = products.associateBy { it.id }
+    val topProducts = saleItems
+        .asSequence()
+        .filter { it.saleId in periodSaleIds }
+        .groupBy { it.productId }
+        .mapNotNull { (productId, lines) ->
+            productById[productId]?.let { product ->
+                TopProduct(product.name, lines.sumOf { it.quantity }, lines.sumOf { it.subtotal })
+            }
+        }
+        .sortedWith(compareByDescending<TopProduct> { it.quantity }.thenByDescending { it.revenue })
+        .take(5)
+    val paymentMix = periodSales
+        .groupBy { it.paymentType }
+        .map { (type, salesForType) -> PaymentMix(type.label(), salesForType.sumOf { it.paidAmount }) }
+        .filter { it.amount > 0L }
+        .sortedByDescending { it.amount }
     val quantities = stock.associate { it.productId to it.quantity }
     val activeProducts = products.filter { it.isActive && it.deletedAt == null }
     val lowProducts = activeProducts.filter { product ->
@@ -200,6 +219,21 @@ fun DashboardScreen(
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                             WeeklySalesCard(dailySales, week.map { it.dayOfWeek.getDisplayName(TextStyle.SHORT, Locale("es")) }, Modifier.weight(1.35f))
                             if ("receivables" in visibleWidgets) PortfolioCard(completed.sumOf { it.paidAmount }, receivable, customers.count { it.balance > 0 }, Modifier.weight(.85f))
+                        }
+                    }
+                }
+            }
+            item {
+                DashboardEnter(delayMillis = 245) {
+                    if (compact) {
+                        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                            if (topProducts.isNotEmpty()) TopProductsCard(topProducts)
+                            if (paymentMix.isNotEmpty()) PaymentMixCard(paymentMix)
+                        }
+                    } else {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                            if (topProducts.isNotEmpty()) TopProductsCard(topProducts, Modifier.weight(1f))
+                            if (paymentMix.isNotEmpty()) PaymentMixCard(paymentMix, Modifier.weight(1f))
                         }
                     }
                 }
@@ -357,6 +391,8 @@ private fun GuidedSetupCard(
 }
 
 private data class Kpi(val title: String, val value: String, val helper: String, val icon: androidx.compose.ui.graphics.vector.ImageVector, val accent: Color, val soft: Color)
+private data class TopProduct(val name: String, val quantity: Long, val revenue: Long)
+private data class PaymentMix(val label: String, val amount: Long)
 
 @Composable
 private fun DashboardHeading(compact: Boolean, sellerMode: Boolean, presentation: MiCatalogoBusinessPresentation) {
@@ -494,6 +530,57 @@ private fun PortfolioCard(collected: Long, receivable: Long, customers: Int, mod
         HorizontalDivider(color = BSPOSTheme.colors.outline)
         Spacer(Modifier.height(10.dp))
         Text("$customers clientes con saldo pendiente", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelLarge)
+    }
+}
+
+@Composable
+private fun TopProductsCard(products: List<TopProduct>, modifier: Modifier = Modifier) {
+    SectionCard(modifier) {
+        SectionTitle("Top productos", Icons.Default.Inventory2, "Más vendidos")
+        Spacer(Modifier.height(10.dp))
+        products.forEachIndexed { index, product ->
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 7.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    Modifier.size(30.dp).clip(CircleShape).background(BSPOSTheme.colors.primaryLight),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("${index + 1}", color = BSPOSTheme.colors.primary, fontWeight = FontWeight.ExtraBold)
+                }
+                Spacer(Modifier.width(10.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(product.name, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text("${product.quantity} unidad(es)", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+                }
+                Text(money(product.revenue), fontWeight = FontWeight.ExtraBold)
+            }
+        }
+    }
+}
+
+@Composable
+private fun PaymentMixCard(payments: List<PaymentMix>, modifier: Modifier = Modifier) {
+    val total = payments.sumOf { it.amount }.coerceAtLeast(1L)
+    SectionCard(modifier) {
+        SectionTitle("Dinero por método", Icons.Default.AccountBalanceWallet, "Cobrado en el periodo")
+        Spacer(Modifier.height(10.dp))
+        payments.forEach { payment ->
+            Column(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text(payment.label, fontWeight = FontWeight.SemiBold)
+                    Text(money(payment.amount), fontWeight = FontWeight.ExtraBold)
+                }
+                Spacer(Modifier.height(5.dp))
+                LinearProgressIndicator(
+                    progress = { payment.amount.toFloat() / total.toFloat() },
+                    modifier = Modifier.fillMaxWidth().height(7.dp).clip(RoundedCornerShape(50)),
+                    color = BSPOSTheme.colors.primary,
+                    trackColor = BSPOSTheme.colors.primaryLight
+                )
+            }
+        }
     }
 }
 
