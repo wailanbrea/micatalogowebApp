@@ -27,6 +27,8 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -54,12 +56,16 @@ import com.example.bspos.core.ui.theme.BSPOSTheme
 import com.example.bspos.presentation.finance.FinancePeriodFilter
 import com.example.bspos.presentation.finance.FinanceViewModel
 import java.time.LocalDate
+import java.time.Instant
+import java.time.ZoneOffset
 import kotlin.math.roundToLong
 
 @Composable
 fun DayCloseScreen(viewModel: FinanceViewModel = hiltViewModel()) {
     val state by viewModel.uiState.collectAsState()
     var cashDialog by remember { mutableStateOf<CashDialogMode?>(null) }
+    var datePickerOpen by remember { mutableStateOf(false) }
+    val datePickerState = androidx.compose.material3.rememberDatePickerState()
 
     LaunchedEffect(Unit) { viewModel.selectPeriod(FinancePeriodFilter.TODAY) }
 
@@ -72,10 +78,13 @@ fun DayCloseScreen(viewModel: FinanceViewModel = hiltViewModel()) {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text("OPERACIÓN", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
                 Text("Cierre de día", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold)
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.CalendarToday, null, tint = BSPOSTheme.colors.textSecondary, modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text("${state.fromDate.ifBlank { LocalDate.now().toString() }} · ${if (state.cashSession?.hasOpenSession == true) "abierto" else "sin sesión abierta"}", color = BSPOSTheme.colors.textSecondary)
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { datePickerOpen = true }) {
+                        Icon(Icons.Default.CalendarToday, null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(state.fromDate.ifBlank { LocalDate.now().toString() })
+                    }
+                    Text(if (state.cashSession?.hasOpenSession == true) "· abierto" else "· sin sesión abierta", color = BSPOSTheme.colors.textSecondary)
                 }
             }
         }
@@ -120,6 +129,24 @@ fun DayCloseScreen(viewModel: FinanceViewModel = hiltViewModel()) {
             }
         )
     }
+
+    if (datePickerOpen) {
+        DatePickerDialog(
+            onDismissRequest = { datePickerOpen = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    datePickerState.selectedDateMillis?.let { millis ->
+                        val selected = Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate().toString()
+                        viewModel.setCustomPeriod(selected, selected)
+                    }
+                    datePickerOpen = false
+                }) { Text("Aplicar") }
+            },
+            dismissButton = { TextButton(onClick = { datePickerOpen = false }) { Text("Cancelar") } }
+        ) {
+            DatePicker(state = datePickerState, title = { Text("Selecciona el día") })
+        }
+    }
 }
 
 private enum class CashDialogMode { OPEN, CLOSE }
@@ -137,6 +164,7 @@ private fun DayMetricCard(title: String, amount: String, detail: String, icon: a
             Text(detail, color = BSPOSTheme.colors.textSecondary)
         }
     }
+
 }
 
 @Composable

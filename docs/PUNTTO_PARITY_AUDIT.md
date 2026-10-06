@@ -50,6 +50,12 @@ abonos, gastos y devoluciones, calcula el efectivo esperado y solicita el efecti
 antes de cerrar. También advierte que después del cierre no se corrigen movimientos sin
 autorización del dueño.
 
+La inspección del emulador confirmó los bloques `VENTAS COBRADAS`, `ABONOS RECIBIDOS`,
+`GASTOS`, `DEVOLUCIONES` y `EFECTIVO EN CAJA`, con el monto esperado separado de los
+medios no efectivos. MiCatalogo Android ahora permite elegir la fecha con un selector
+nativo y consulta el mismo resumen remoto para ese día, sin crear ni cerrar ninguna sesión
+automáticamente.
+
 En `Operación / Pedidos`, Puntto muestra el estado de la bandeja, el total recibido y
 una tarjeta guiada cuando todavía no hay órdenes. Cuando existe una orden pendiente, el
 flujo esperado es revisar el pedido, escoger contado, crédito o mixto y confirmarlo como
