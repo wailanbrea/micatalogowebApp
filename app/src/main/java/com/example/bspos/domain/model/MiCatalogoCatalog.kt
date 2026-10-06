@@ -62,15 +62,49 @@ val SellerMenuOptions = listOf(
     SellerMenuOption("sales", "Ventas"),
     SellerMenuOption("products", "Productos"),
     SellerMenuOption("printers", "Impresoras"),
+    SellerMenuOption("quotes", "Cotizaciones"),
+    SellerMenuOption("orders", "Pedidos"),
+    SellerMenuOption("encargos", "Encargos"),
+    SellerMenuOption("shipments", "Envíos"),
+    SellerMenuOption("day_close", "Cierre de día"),
+    SellerMenuOption("containers", "Contenedores"),
+    SellerMenuOption("loads", "Cargas"),
+    SellerMenuOption("suppliers", "Suplidores"),
+    SellerMenuOption("purchase_invoices", "Facturas"),
+    SellerMenuOption("photos", "Fotos"),
+    SellerMenuOption("storefront", "Mi tienda"),
+    SellerMenuOption("services", "Servicios"),
+    SellerMenuOption("price_health", "Salud de precios"),
+    SellerMenuOption("pricing", "Precios automáticos"),
+    SellerMenuOption("decants", "Decants"),
+    SellerMenuOption("attributes", "Marcas y atributos"),
+    SellerMenuOption("import", "Importar"),
     SellerMenuOption("customers", "Clientes"),
+    SellerMenuOption("credit", "Crédito"),
     SellerMenuOption("inventory", "Inventario"),
     SellerMenuOption("collections", "Cobros"),
     SellerMenuOption("cash", "Caja"),
+    SellerMenuOption("finance", "Finanzas y Ganancias"),
+    SellerMenuOption("inventory_adjustments", "Ajustes de inventario"),
+    SellerMenuOption("partners", "Socios"),
     SellerMenuOption("expenses", "Gastos"),
+    SellerMenuOption("reports", "Reportes"),
+    SellerMenuOption("commissions", "Comisiones"),
+    SellerMenuOption("authorizations", "Autorizaciones"),
     SellerMenuOption("returns", "Devoluciones"),
     SellerMenuOption("routes", "Rutas"),
-    SellerMenuOption("finance", "Finanzas y Ganancias"),
-    SellerMenuOption("more", "Más herramientas")
+    SellerMenuOption("more", "Más herramientas"),
+    SellerMenuOption("settings", "Ajustes"),
+    SellerMenuOption("accountant", "Contador"),
+    SellerMenuOption("account", "Mi cuenta"),
+    SellerMenuOption("updates", "Novedades"),
+    SellerMenuOption("help", "Ayuda"),
+    SellerMenuOption("practice", "Practicar sin miedo"),
+    SellerMenuOption("support", "Soporte"),
+    SellerMenuOption("metrics", "Métricas y QR"),
+    SellerMenuOption("public_catalog", "Compartir catálogo"),
+    SellerMenuOption("shop_settings", "Configuración de tienda"),
+    SellerMenuOption("sellers", "Vendedores")
 )
 
 private val requiredSellerMenuKeys = setOf("sales", "products", "printers")
@@ -88,7 +122,7 @@ fun canAccessMiCatalogoMenu(
         "inventory" -> "inventory"
         "sales" -> "sales"
         "customers" -> "customers"
-        "collections" -> "credit"
+        "collections", "credit" -> "credit"
         "cash" -> "cash"
         "expenses" -> "expenses"
         "finance" -> "finance"

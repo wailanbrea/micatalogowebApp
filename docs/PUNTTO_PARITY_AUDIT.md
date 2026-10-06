@@ -171,6 +171,10 @@ MiCatalogo Android ahora presenta esos indicadores con datos locales: capital ca
   módulo de actualizaciones ya existente para no depender de una URL de APK fija.
   También incluye `Ver tienda`, que abre el enlace público de la tienda activa, y
   `Cerrar sesión`, que limpia la conexión local mediante el mismo flujo de cuenta.
+- La pantalla de permisos de vendedores en Android ahora cubre la misma matriz de módulos
+  que el panel web (operación, compras, catálogo, cobros, finanzas, análisis y equipo),
+  mientras `Ajustes`, `Configuración de tienda` y `Vendedores` continúan protegidos para
+  propietarios o administradores.
 
 ## Pendientes de paridad funcional
 

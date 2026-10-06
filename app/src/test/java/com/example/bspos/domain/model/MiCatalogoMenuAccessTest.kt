@@ -24,4 +24,20 @@ class MiCatalogoMenuAccessTest {
         assertTrue(canAccessMiCatalogoMenu(false, true, emptyList(), "sellers"))
         assertTrue(canAccessMiCatalogoMenu(true, false, emptyList(), "settings"))
     }
+
+    @Test
+    fun sellerPermissionEditorCoversTheSameFeatureKeysAsThePanel() {
+        val expected = setOf(
+            "sales", "products", "printers", "quotes", "orders", "encargos", "shipments",
+            "day_close", "containers", "loads", "suppliers", "purchase_invoices", "photos",
+            "storefront", "services", "price_health", "pricing", "decants", "attributes",
+            "import", "customers", "credit", "inventory", "collections", "cash", "finance",
+            "inventory_adjustments", "partners", "expenses", "reports", "commissions",
+            "authorizations", "returns", "routes", "more", "settings", "accountant", "account",
+            "updates", "help", "practice", "support", "metrics", "public_catalog", "shop_settings",
+            "sellers"
+        )
+
+        assertTrue(expected.all { key -> SellerMenuOptions.any { it.key == key } })
+    }
 }

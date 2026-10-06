@@ -221,7 +221,7 @@ fun BSPOSMainScreen(
             DrawerGroup(
                 title = "Cobros",
                 screens = listOfNotNull(
-                    Screen.CreditLedger.takeIf { canSeeMenu("collections") },
+                    Screen.CreditLedger.takeIf { canSeeMenu("collections") || canSeeMenu("credit") },
                     Screen.Customers.takeIf { canSeeMenu("customers") }
                 )
             )
