@@ -45,6 +45,11 @@ vacío guiado cuando no hay cartera y la explicación de que las cuentas aparece
 de vender a crédito desde Terminal. La pantalla también conserva `Exportar` como acción
 del módulo.
 
+En `Operación / Cierre de día`, Puntto permite escoger la fecha, separa ventas cobradas,
+abonos, gastos y devoluciones, calcula el efectivo esperado y solicita el efectivo contado
+antes de cerrar. También advierte que después del cierre no se corrigen movimientos sin
+autorización del dueño.
+
 ## Inventario verificado en Puntto
 
 La pantalla muestra acciones para añadir del catálogo, precios y costos, movimientos, importar/exportar, combos y nuevo producto. Antes de la lista presenta capital al costo, productos/unidades, nivel bajo y una alerta de productos sin foto. La lista permite seleccionar un producto para consultar sus acciones y existencias.
@@ -77,6 +82,9 @@ MiCatalogo Android ahora presenta esos indicadores con datos locales: capital ca
 
 - Editar y anular una venta requieren un flujo de dominio y contabilidad completo; no se debe simular con un botón que no revierta inventario/caja.
 - Térmico requiere enlazar la pantalla de detalle con la impresora configurada.
+- El cierre de día móvil todavía muestra el read model y la caja local, pero falta unir en
+  una sola pantalla la conciliación por fecha, abonos, gastos, devoluciones y cierre remoto
+  equivalente al formulario de Puntto.
 - Completar el recorrido de cada grupo del menú y contrastar formularios, permisos, estados vacíos y mensajes de validación con las pantallas equivalentes de MiCatalogo.
 - Ejecutar una prueba equivalente de cada operación en la APK oficial firmada y en la web antes de publicar.
 
