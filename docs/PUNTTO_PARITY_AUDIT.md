@@ -174,7 +174,7 @@ MiCatalogo Android ahora presenta esos indicadores con datos locales: capital ca
 - La pantalla de permisos de vendedores en Android ahora cubre la misma matriz de módulos
   que el panel web (operación, compras, catálogo, cobros, finanzas, análisis y equipo),
   mientras `Ajustes`, `Configuración de tienda` y `Vendedores` continúan protegidos para
-  propietarios o administradores.
+  propietarios o administradores y no aparecen como permisos asignables.
 
 ## Pendientes de paridad funcional
 

@@ -94,7 +94,6 @@ val SellerMenuOptions = listOf(
     SellerMenuOption("returns", "Devoluciones"),
     SellerMenuOption("routes", "Rutas"),
     SellerMenuOption("more", "Más herramientas"),
-    SellerMenuOption("settings", "Ajustes"),
     SellerMenuOption("accountant", "Contador"),
     SellerMenuOption("account", "Mi cuenta"),
     SellerMenuOption("updates", "Novedades"),
@@ -102,9 +101,7 @@ val SellerMenuOptions = listOf(
     SellerMenuOption("practice", "Practicar sin miedo"),
     SellerMenuOption("support", "Soporte"),
     SellerMenuOption("metrics", "Métricas y QR"),
-    SellerMenuOption("public_catalog", "Compartir catálogo"),
-    SellerMenuOption("shop_settings", "Configuración de tienda"),
-    SellerMenuOption("sellers", "Vendedores")
+    SellerMenuOption("public_catalog", "Compartir catálogo")
 )
 
 private val requiredSellerMenuKeys = setOf("sales", "products", "printers")
