@@ -394,11 +394,37 @@ private fun GuideStep(number: String, title: String, description: String) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun TerminalOptionsSheet(onDismiss: () -> Unit, onQuote: () -> Unit, onDayClose: () -> Unit, onCash: () -> Unit) {
+    var quoteMode by rememberSaveable { mutableStateOf(false) }
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = BSPOSTheme.colors.surface) {
-        Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).navigationBarsPadding(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).navigationBarsPadding(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("Opciones de la terminal", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
             Text("Acciones relacionadas con esta jornada de ventas.", color = BSPOSTheme.colors.textSecondary)
-            TextButton(onClick = onQuote, modifier = Modifier.fillMaxWidth()) { Text("Crear cotización", modifier = Modifier.fillMaxWidth()) }
+
+            Text("MODO", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.ExtraBold)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(
+                    selected = !quoteMode,
+                    onClick = { quoteMode = false },
+                    label = { Text("Cobrar", modifier = Modifier.fillMaxWidth(), textAlign = androidx.compose.ui.text.style.TextAlign.Center) },
+                    modifier = Modifier.weight(1f)
+                )
+                FilterChip(
+                    selected = quoteMode,
+                    onClick = { quoteMode = true },
+                    label = { Text("Cotizar", modifier = Modifier.fillMaxWidth(), textAlign = androidx.compose.ui.text.style.TextAlign.Center) },
+                    modifier = Modifier.weight(1f)
+                )
+            }
+            Text(
+                if (quoteMode) "Prepara un precio por escrito sin descontar existencias."
+                else "Registra la venta y el pago al cobrar.",
+                color = BSPOSTheme.colors.textSecondary,
+                style = MaterialTheme.typography.bodySmall
+            )
+            Button(
+                onClick = { if (quoteMode) onQuote() else onDismiss() },
+                modifier = Modifier.fillMaxWidth()
+            ) { Text(if (quoteMode) "Abrir cotizaciones" else "Volver a la terminal") }
             TextButton(onClick = onDayClose, modifier = Modifier.fillMaxWidth()) { Text("Cierre de día", modifier = Modifier.fillMaxWidth()) }
             TextButton(onClick = onCash, modifier = Modifier.fillMaxWidth()) { Text("Abrir o revisar caja", modifier = Modifier.fillMaxWidth()) }
             Spacer(Modifier.height(12.dp))

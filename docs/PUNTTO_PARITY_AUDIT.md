@@ -151,6 +151,10 @@ MiCatalogo Android ahora presenta esos indicadores con datos locales: capital ca
   buscar, agregar, distinguir venta/cotización, revisar el carrito y cobrar. Cada paso
   aparece individualmente con `Atrás`, `Siguiente` y una transición corta, evitando un
   bloque de texto estático y manteniendo el fondo claro de MiCatalogo.
+- Las opciones de `Terminal` ahora presentan el modo `Cobrar / Cotizar` como selector,
+  con una explicación explícita de que cotizar no descuenta existencias. El botón de
+  continuación abre la pantalla de cotizaciones y conserva debajo `Cierre de día` y
+  `Abrir o revisar caja`, como en el flujo de Puntto.
 - Inventario móvil ahora replica la jerarquía de Puntto con contexto `CATÁLOGO`, título,
   descripción y accesos directos a Productos, Salud de precios, Movimientos e Importar.
   Se conservan el Kardex, recepción, conteo, ajustes, motivos e importador existente.
