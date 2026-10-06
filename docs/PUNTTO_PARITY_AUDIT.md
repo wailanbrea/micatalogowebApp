@@ -60,6 +60,11 @@ transacción.
 
 La pantalla muestra acciones para añadir del catálogo, precios y costos, movimientos, importar/exportar, combos y nuevo producto. Antes de la lista presenta capital al costo, productos/unidades, nivel bajo y una alerta de productos sin foto. La lista permite seleccionar un producto para consultar sus acciones y existencias.
 
+La evidencia del emulador también confirma que la jerarquía de Puntto separa la cabecera
+`CATÁLOGO / Inventario`, las acciones rápidas y los indicadores `Activos`, `Archivados`,
+`Combos`, `Capital al costo`, `Productos`, `Nivel bajo` y `Margen prom.`. La búsqueda y
+`Filtros` quedan inmediatamente antes de las tarjetas de producto.
+
 MiCatalogo Android ahora presenta esos indicadores con datos locales: capital calculado desde `averageCost`, unidades, nivel bajo y productos activos sin imagen. Se conservan los flujos de importar CSV/XLSX/PDF, recepción de mercancía, conteo físico, motivos, ajustes y Kardex.
 
 ## Cambios ya incorporados en MiCatalogo Android
@@ -91,6 +96,9 @@ MiCatalogo Android ahora presenta esos indicadores con datos locales: capital ca
 - La navegación Compose ahora usa transiciones cortas de entrada/salida y las tarjetas
   de los módulos aparecen escalonadas; se conserva el fondo claro y los acentos de
   MiCatalogo, sin copiar el color oscuro del menú de Puntto.
+- Inventario móvil ahora replica la jerarquía de Puntto con contexto `CATÁLOGO`, título,
+  descripción y accesos directos a Productos, Salud de precios, Movimientos e Importar.
+  Se conservan el Kardex, recepción, conteo, ajustes, motivos e importador existente.
 
 ## Pendientes de paridad funcional
 

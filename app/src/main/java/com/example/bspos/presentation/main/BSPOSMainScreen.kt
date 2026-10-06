@@ -790,7 +790,12 @@ fun BSPOSNavHost(
             RestrictedMenuDestination(canSeeMenu("suppliers") || canSeeMenu("more"), navController) { SupplierScreen() }
         }
         composable(Screen.Inventory.route) {
-            RestrictedMenuDestination(canSeeMenu("inventory"), navController) { InventoryScreen() }
+            RestrictedMenuDestination(canSeeMenu("inventory"), navController) {
+                InventoryScreen(
+                    onOpenProducts = if (canSeeMenu("products")) {{ navController.navigate(Screen.Catalog.route) }} else null,
+                    onOpenPrices = if (canSeeMenu("price_health")) {{ navController.navigate(Screen.PriceHealth.route) }} else null
+                )
+            }
         }
         composable(Screen.Collections.route) {
             RestrictedMenuDestination(canSeeMenu("collections"), navController) { CollectionScreen() }

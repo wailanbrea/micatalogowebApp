@@ -71,7 +71,11 @@ import java.util.Locale
 import java.util.UUID
 
 @Composable
-fun InventoryScreen(viewModel: InventoryViewModel = hiltViewModel()) {
+fun InventoryScreen(
+    onOpenProducts: (() -> Unit)? = null,
+    onOpenPrices: (() -> Unit)? = null,
+    viewModel: InventoryViewModel = hiltViewModel()
+) {
     val context = LocalContext.current
     val stock by viewModel.stock.collectAsState()
     val products by viewModel.productNames.collectAsState()
@@ -117,7 +121,44 @@ fun InventoryScreen(viewModel: InventoryViewModel = hiltViewModel()) {
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
-            Text("Almacén principal y Kardex", color = BSPOSTheme.colors.textSecondary)
+            Text("CATÁLOGO", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+            Text("Inventario", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold, color = BSPOSTheme.colors.textPrimary)
+            Text("Tus productos y lo que tienes en existencia.", color = BSPOSTheme.colors.textSecondary)
+        }
+        item {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = { onOpenProducts?.invoke() }, enabled = onOpenProducts != null, modifier = Modifier.weight(1f)) {
+                    Icon(Icons.Default.Add, null)
+                    Spacer(Modifier.width(6.dp))
+                    Text("Añadir del catálogo")
+                }
+                OutlinedButton(onClick = { onOpenPrices?.invoke() }, enabled = onOpenPrices != null, modifier = Modifier.weight(1f)) {
+                    Text("Precios y costos")
+                }
+            }
+        }
+        item {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = { stock.firstOrNull()?.productId?.let { id -> selectedProduct = id; viewModel.select(id) } }, enabled = stock.isNotEmpty(), modifier = Modifier.weight(1f)) {
+                    Text("Movimientos")
+                }
+                OutlinedButton(
+                    onClick = {
+                        fileLauncher.launch(
+                            arrayOf(
+                                "text/*",
+                                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                "application/vnd.ms-excel",
+                                "application/pdf"
+                            )
+                        )
+                    },
+                    enabled = importShop != null && !isLoadingImport,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(if (isLoadingImport) "Leyendo..." else "Importar")
+                }
+            }
         }
         item {
             InventorySummaryRow(
@@ -135,28 +176,6 @@ fun InventoryScreen(viewModel: InventoryViewModel = hiltViewModel()) {
                         Spacer(Modifier.width(10.dp))
                         Text("$productsWithoutPhoto ${if (productsWithoutPhoto == 1) "producto sin foto" else "productos sin foto"} · revisa el catálogo", color = BSPOSTheme.colors.warning, fontWeight = FontWeight.Bold)
                     }
-                }
-            }
-        }
-        if (importShop != null) {
-            item {
-                OutlinedButton(
-                    onClick = {
-                        fileLauncher.launch(
-                            arrayOf(
-                                "text/*",
-                                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                                "application/vnd.ms-excel",
-                                "application/pdf"
-                            )
-                        )
-                    },
-                    enabled = !isLoadingImport,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    if (isLoadingImport) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                    Spacer(Modifier.width(8.dp))
-                    Text(if (isLoadingImport) "Leyendo archivo..." else "Subir inventario CSV/XLSX/PDF")
                 }
             }
         }
