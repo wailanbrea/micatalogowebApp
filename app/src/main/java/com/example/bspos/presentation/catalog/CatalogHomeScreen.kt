@@ -71,6 +71,7 @@ fun CatalogHomeScreen(
         it.isActive && it.deletedAt == null && it.remoteShopId != null && it.remoteProductId != null &&
             it.remoteSaleUnit in setOf("bottle", "ml") && it.remoteVolumeMl != null
     }
+    val formReady = categories.isNotEmpty() && units.isNotEmpty()
     var query by remember { mutableStateOf("") }
     val quantities = stock.associate { it.productId to it.quantity }
     val categoryNames = categories.associate { it.id to it.name }
@@ -104,6 +105,21 @@ fun CatalogHomeScreen(
             )
             Button({ showForm = true }, enabled = categories.any { it.isActive } && units.any { it.isActive }, shape = RoundedCornerShape(14.dp)) { Icon(Icons.Default.Add, null); Spacer(Modifier.width(5.dp)); Text(if (initialDecantMode) "Nueva presentación" else "Nuevo producto") }
         }
+        if (initialDecantMode && !formReady) {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                color = BSPOSTheme.colors.warning.copy(alpha = .12f),
+                border = androidx.compose.foundation.BorderStroke(1.dp, BSPOSTheme.colors.warning.copy(alpha = .35f))
+            ) {
+                Text(
+                    "Para crear una presentación decant necesitas al menos una categoría y una unidad activa. Créala desde Productos > Categorías y vuelve a Decants.",
+                    modifier = Modifier.padding(16.dp),
+                    color = BSPOSTheme.colors.textPrimary,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+        }
         Spacer(Modifier.height(12.dp))
         if (filtered.isEmpty()) {
             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
@@ -124,7 +140,7 @@ fun CatalogHomeScreen(
             }
         }
     }
-    if (showForm || editingProduct != null) ProductForm(
+    if ((showForm || editingProduct != null) && formReady) ProductForm(
         current = editingProduct,
         currentQuantity = quantities[editingProduct?.id] ?: 0L,
         categories = categories.filter { it.isActive },

@@ -1087,7 +1087,7 @@ private fun navigateFeatureAction(
     val target = when (normalized) {
         "ir al punto de venta", "ir a terminal", "explorar terminal", "ver terminal", "ir a punto de venta" -> Screen.POS
         "ver pedidos" -> Screen.Orders
-        "ver inventario", "abrir inventario", "explorar inventario", "ver lotes y costos fifo" -> Screen.Inventory
+        "ver inventario", "abrir inventario", "explorar inventario", "ver inventario compartido", "ver lotes y costos fifo" -> Screen.Inventory
         "ver caja", "abrir caja" -> Screen.Cash
         "ver ganancias", "ver ganancias y resumen" -> Screen.Finance
         "ver reportes" -> Screen.Reports
