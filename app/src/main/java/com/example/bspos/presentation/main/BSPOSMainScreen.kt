@@ -929,15 +929,22 @@ private fun navigateFeatureAction(
     label: String,
     navController: androidx.navigation.NavHostController
 ): Boolean {
-    val target = when (label.lowercase()) {
-        "ir a terminal", "explorar terminal", "ver terminal" -> Screen.POS
+    val normalized = label.trim().lowercase()
+    val target = when (normalized) {
+        "ir al punto de venta", "ir a terminal", "explorar terminal", "ver terminal", "ir a punto de venta" -> Screen.POS
         "ver pedidos" -> Screen.Orders
-        "ver inventario", "abrir inventario", "explorar inventario" -> Screen.Inventory
-        "ver caja" -> Screen.Cash
-        "ver ganancias" -> Screen.Finance
+        "ver inventario", "abrir inventario", "explorar inventario", "ver lotes y costos fifo" -> Screen.Inventory
+        "ver caja", "abrir caja" -> Screen.Cash
+        "ver ganancias", "ver ganancias y resumen" -> Screen.Finance
         "ver reportes" -> Screen.Reports
-        "crear producto o servicio" -> Screen.Catalog
-        "administrar equipo" -> Screen.Team
+        "ver clientes y cobros", "gestionar clientes" -> Screen.Customers
+        "ver productos", "crear producto o servicio" -> Screen.Catalog
+        "precios automáticos", "precios y costos" -> Screen.PriceHealth
+        "abrir métricas completas", "ver estadísticas", "descargar qr" -> Screen.Metrics
+        "administrar equipo", "administrar vendedores" -> Screen.Team
+        "configuración de tienda", "configurar apariencia" -> Screen.ShopSettings
+        "abrir mi tienda", "abrir vitrina" -> Screen.Storefront
+        "volver al resumen" -> Screen.Dashboard
         else -> null
     } ?: return false
     navController.navigate(target.route) {
