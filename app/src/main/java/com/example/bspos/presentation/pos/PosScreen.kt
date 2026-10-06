@@ -89,7 +89,13 @@ fun PosScreen(
     val context = LocalContext.current
     val quantities = stock.associate { it.productId to it.quantity }
     val selectedQuantities = cart.associate { it.product.id to it.quantity }
-    val catalog = products.filter { it.isActive && it.deletedAt == null && (!wholesaleMode || (it.wholesalePrice ?: 0L) > 0L) && (it.name.contains(query, true) || it.internalCode.contains(query, true)) }
+    val catalog = products.filter {
+        it.isActive && it.deletedAt == null &&
+            (!wholesaleMode || (it.wholesalePrice ?: 0L) > 0L) &&
+            (it.name.contains(query, true) ||
+                it.internalCode.contains(query, true) ||
+                it.barcode?.contains(query, true) == true)
+    }
     val cartQuantity = cart.sumOf { it.quantity }
     val cashAction = {
         if (cashSession == null) onOpenCash() else viewModel.completeCash()

@@ -69,6 +69,14 @@ flujo esperado es revisar el pedido, escoger contado, crédito o mixto y confirm
 venta; esa confirmación debe descontar inventario y generar factura/caja en una sola
 transacción.
 
+En `Operación / Terminal`, la reauditoría confirmó los controles `Detalle / Mayoreo`,
+ayuda contextual, opciones de terminal, búsqueda, escaneo por cámara, selector de
+`Servicio`, pestañas `Productos`/`Servicios`, productos recientes y un carrito fijo en
+la parte inferior. MiCatalogo ya conserva detalle/mayoreo, ayuda, opciones, carrito
+responsive y cobro contado, tarjeta, transferencia, mixto o crédito; la búsqueda ahora
+también compara el código de barras local para completar el flujo cuando el código se
+introduce manualmente o proviene de un lector externo.
+
 ## Inventario verificado en Puntto
 
 La pantalla muestra acciones para añadir del catálogo, precios y costos, movimientos, importar/exportar, combos y nuevo producto. Antes de la lista presenta capital al costo, productos/unidades, nivel bajo y una alerta de productos sin foto. La lista permite seleccionar un producto para consultar sus acciones y existencias.
