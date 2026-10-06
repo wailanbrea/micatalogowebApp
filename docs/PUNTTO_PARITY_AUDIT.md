@@ -34,6 +34,12 @@ El menú lateral se organiza en `OPERACIÓN`, `COMPRAS`, `CATÁLOGO`, `COBROS`, 
 
 En `Operación / Ventas`, Puntto separa el historial del terminal: permite escoger `Hoy`, `Este mes` o `Últimos 7`, muestra total vendido, promedio por venta y porcentaje a crédito, y lista cada comprobante con cliente, fecha, método de pago, estado y total. Al seleccionar una venta abre el detalle financiero y sus acciones.
 
+En `Operación / Cotizaciones`, la referencia muestra el contexto `VENTAS`, el título y
+la explicación de que los presupuestos salen de Terminal y pueden convertirse en venta.
+Después presenta los indicadores `Vigentes`, `Por convertir` y `Vencidas`, una búsqueda
+por número o cliente y tarjetas con cliente, número, vigencia, artículos, estado y total.
+La prueba existente conservó `COT-000001` como `CONVERTIDA` por RD$950.
+
 ## Inventario verificado en Puntto
 
 La pantalla muestra acciones para añadir del catálogo, precios y costos, movimientos, importar/exportar, combos y nuevo producto. Antes de la lista presenta capital al costo, productos/unidades, nivel bajo y una alerta de productos sin foto. La lista permite seleccionar un producto para consultar sus acciones y existencias.
@@ -49,6 +55,9 @@ MiCatalogo Android ahora presenta esos indicadores con datos locales: capital ca
 - KPI de ganancia y ticket promedio en el dashboard. La ganancia se oculta para el modo vendedor cuando no corresponde mostrar costos.
 - La consulta de costos agregados es de solo lectura y no cambia el esquema de Room ni requiere migración.
 - `Terminal` y `Ventas` ahora son accesos independientes: Terminal conserva el cobro y `Ventas` incorpora historial filtrable por periodo y forma de pago, tarjetas de resumen, estados PAGADA/PENDIENTE y acceso al mismo detalle con recibo, compartir y devolución.
+- La pantalla Android de `Cotizaciones` ahora refleja esa jerarquía: contexto de ventas,
+  resumen de vigentes/por convertir/vencidas, búsqueda y categorías, imágenes de producto
+  en el selector y en el carrito, cantidades, cliente, teléfono, notas, guardado y conversión.
 
 ## Pendientes de paridad funcional
 
