@@ -46,9 +46,16 @@ sealed class Screen(
 
     data object POS : Screen(
         route = "pos",
-        title = "Ventas",
+        title = "Terminal",
         selectedIcon = Icons.Filled.ShoppingCart,
         unselectedIcon = Icons.Outlined.ShoppingCart
+    )
+
+    data object SalesHistory : Screen(
+        route = "sales_history",
+        title = "Ventas",
+        selectedIcon = Icons.Filled.ReceiptLong,
+        unselectedIcon = Icons.Outlined.ReceiptLong
     )
 
     data object Catalog : Screen(

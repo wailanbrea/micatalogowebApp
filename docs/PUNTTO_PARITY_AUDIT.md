@@ -32,6 +32,8 @@ El dashboard expone `Ventas`, `Ganancia`, `Ticket promedio` y `Por cobrar`, adem
 
 El menú lateral se organiza en `OPERACIÓN`, `COMPRAS`, `CATÁLOGO`, `COBROS`, `FINANZAS`, `ANÁLISIS` y `EQUIPO`, seguido por `AJUSTES`, `Ver tienda` y la cuenta. La navegación conserva un encabezado con menú, breadcrumb, plan y ayuda, y una barra inferior con `Terminal`, `Pedidos`, `Inventario` y `Menú`.
 
+En `Operación / Ventas`, Puntto separa el historial del terminal: permite escoger `Hoy`, `Este mes` o `Últimos 7`, muestra total vendido, promedio por venta y porcentaje a crédito, y lista cada comprobante con cliente, fecha, método de pago, estado y total. Al seleccionar una venta abre el detalle financiero y sus acciones.
+
 ## Inventario verificado en Puntto
 
 La pantalla muestra acciones para añadir del catálogo, precios y costos, movimientos, importar/exportar, combos y nuevo producto. Antes de la lista presenta capital al costo, productos/unidades, nivel bajo y una alerta de productos sin foto. La lista permite seleccionar un producto para consultar sus acciones y existencias.
@@ -46,6 +48,7 @@ MiCatalogo Android ahora presenta esos indicadores con datos locales: capital ca
 - Costo exacto por venta leído desde `sale_items.unit_cost_snapshot`; la ganancia del periodo no se estima con el precio actual.
 - KPI de ganancia y ticket promedio en el dashboard. La ganancia se oculta para el modo vendedor cuando no corresponde mostrar costos.
 - La consulta de costos agregados es de solo lectura y no cambia el esquema de Room ni requiere migración.
+- `Terminal` y `Ventas` ahora son accesos independientes: Terminal conserva el cobro y `Ventas` incorpora historial filtrable por periodo y forma de pago, tarjetas de resumen, estados PAGADA/PENDIENTE y acceso al mismo detalle con recibo, compartir y devolución.
 
 ## Pendientes de paridad funcional
 
@@ -58,6 +61,8 @@ MiCatalogo Android ahora presenta esos indicadores con datos locales: capital ca
 
 ```text
 ./gradlew test assembleDebug       PASS
+./gradlew assembleDebug -PmiCatalogoOfflineCheck=true  PASS
+adb install -r app/build/outputs/apk/debug/app-debug.apk  PASS (variante aislada)
 git diff --check                   PASS
 ```
 

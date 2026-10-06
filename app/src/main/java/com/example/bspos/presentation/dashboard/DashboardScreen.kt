@@ -559,7 +559,7 @@ private fun RecentSalesDateHeader(date: LocalDate) {
 }
 
 @Composable
-private fun SaleDetailDialog(
+internal fun SaleDetailDialog(
     sale: Sale,
     customerName: String,
     items: List<SaleItem>,

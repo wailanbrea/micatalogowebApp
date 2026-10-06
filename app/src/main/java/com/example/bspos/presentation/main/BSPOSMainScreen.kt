@@ -96,6 +96,7 @@ import com.example.bspos.presentation.more.MoreScreen
 import com.example.bspos.presentation.customer.CustomerScreen
 import com.example.bspos.presentation.route.RouteScreen
 import com.example.bspos.presentation.pos.PosScreen
+import com.example.bspos.presentation.sales.SalesHistoryScreen
 import com.example.bspos.presentation.collection.CollectionScreen
 import com.example.bspos.presentation.dashboard.DashboardScreen
 import com.example.bspos.presentation.cash.CashScreen
@@ -162,6 +163,7 @@ fun BSPOSMainScreen(
                 screens = listOfNotNull(
                     Screen.Dashboard,
                     Screen.POS.takeIf { canSeeMenu("sales") },
+                    Screen.SalesHistory.takeIf { canSeeMenu("sales") },
                     Screen.Quotes.takeIf { canSeeMenu("quotes") },
                     Screen.Orders.takeIf { canSeeMenu("orders") },
                     Screen.Encargos.takeIf { canSeeMenu("encargos") },
@@ -681,6 +683,13 @@ fun BSPOSNavHost(
                     onOpenCash = { navController.navigate(Screen.Cash.route) },
                     onOpenQuotes = { if (canSeeMenu("quotes")) navController.navigate(Screen.Quotes.route) },
                     onOpenDayClose = { if (canSeeMenu("day_close")) navController.navigate(Screen.DayClose.route) }
+                )
+            }
+        }
+        composable(Screen.SalesHistory.route) {
+            RestrictedMenuDestination(canSeeMenu("sales"), navController) {
+                SalesHistoryScreen(
+                    onReturns = { if (canSeeMenu("returns")) navController.navigate(Screen.Returns.route) }
                 )
             }
         }
