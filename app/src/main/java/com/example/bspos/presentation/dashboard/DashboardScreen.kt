@@ -1,5 +1,10 @@
 package com.example.bspos.presentation.dashboard
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -21,6 +26,7 @@ import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material.icons.filled.WarningAmber
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -35,6 +41,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.example.bspos.core.ui.theme.BSPOSTheme
 import com.example.bspos.core.money.LocalCurrency
@@ -53,6 +60,7 @@ import java.time.format.TextStyle
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlin.math.max
+import kotlinx.coroutines.delay
 
 @Composable
 fun DashboardScreen(
@@ -80,6 +88,7 @@ fun DashboardScreen(
     val selectedSale by viewModel.selectedSale.collectAsState()
     val selectedItems by viewModel.selectedItems.collectAsState()
     var showAllSales by remember { mutableStateOf(false) }
+    var selectedPeriod by remember { mutableStateOf("Hoy") }
     val zone = ZoneId.systemDefault()
     val today = Instant.now().atZone(zone).toLocalDate()
     val completed = sales.filter { it.status == SaleStatus.COMPLETED }.sortedByDescending { it.date }
@@ -114,46 +123,70 @@ fun DashboardScreen(
             contentPadding = PaddingValues(if (compact) 16.dp else 28.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            item { DashboardHeading(compact, sellerMode, presentation) }
+            item { DashboardEnter { DashboardHeading(compact, sellerMode, presentation) } }
+            item { DashboardPeriodSelector(selectedPeriod) { selectedPeriod = it } }
             item {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    kpis.chunked(kpiColumns).forEach { row ->
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            row.forEach { item -> KpiCard(item, Modifier.weight(1f)) }
-                            repeat(kpiColumns - row.size) { Spacer(Modifier.weight(1f)) }
+                val setupItems = listOf(
+                    "Agrega tu primer producto" to activeProducts.isNotEmpty(),
+                    "Haz tu primera venta" to completed.isNotEmpty(),
+                    "Comparte tu catálogo" to false
+                )
+                if (setupItems.any { !it.second }) {
+                    DashboardEnter(delayMillis = 70) {
+                        GuidedSetupCard(
+                            steps = setupItems,
+                            onProduct = onProducts,
+                            onSale = onNewSale,
+                            onShare = onProducts
+                        )
+                    }
+                }
+            }
+            item {
+                DashboardEnter(delayMillis = 120) {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        kpis.chunked(kpiColumns).forEach { row ->
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                row.forEach { item -> KpiCard(item, Modifier.weight(1f)) }
+                                repeat(kpiColumns - row.size) { Spacer(Modifier.weight(1f)) }
+                            }
                         }
                     }
                 }
             }
-            item { QuickActions(onNewSale, onCollections, onInventory, onProducts, compact, sellerMode, showSales, showCollections, showInventory, showProducts, presentation.dashboardQuickActions) }
+            item { DashboardEnter(delayMillis = 170) { QuickActions(onNewSale, onCollections, onInventory, onProducts, compact, sellerMode, showSales, showCollections, showInventory, showProducts, presentation.dashboardQuickActions) } }
             item {
-                if (sellerMode) {
-                    WeeklySalesCard(dailySales, week.map { it.dayOfWeek.getDisplayName(TextStyle.SHORT, Locale("es")) })
-                } else if (compact) {
-                    WeeklySalesCard(dailySales, week.map { it.dayOfWeek.getDisplayName(TextStyle.SHORT, Locale("es")) })
-                    Spacer(Modifier.height(16.dp))
-                    if ("receivables" in visibleWidgets) PortfolioCard(completed.sumOf { it.paidAmount }, receivable, customers.count { it.balance > 0 })
-                } else {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                        WeeklySalesCard(dailySales, week.map { it.dayOfWeek.getDisplayName(TextStyle.SHORT, Locale("es")) }, Modifier.weight(1.35f))
-                        if ("receivables" in visibleWidgets) PortfolioCard(completed.sumOf { it.paidAmount }, receivable, customers.count { it.balance > 0 }, Modifier.weight(.85f))
+                DashboardEnter(delayMillis = 220) {
+                    if (sellerMode) {
+                        WeeklySalesCard(dailySales, week.map { it.dayOfWeek.getDisplayName(TextStyle.SHORT, Locale("es")) })
+                    } else if (compact) {
+                        WeeklySalesCard(dailySales, week.map { it.dayOfWeek.getDisplayName(TextStyle.SHORT, Locale("es")) })
+                        Spacer(Modifier.height(16.dp))
+                        if ("receivables" in visibleWidgets) PortfolioCard(completed.sumOf { it.paidAmount }, receivable, customers.count { it.balance > 0 })
+                    } else {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                            WeeklySalesCard(dailySales, week.map { it.dayOfWeek.getDisplayName(TextStyle.SHORT, Locale("es")) }, Modifier.weight(1.35f))
+                            if ("receivables" in visibleWidgets) PortfolioCard(completed.sumOf { it.paidAmount }, receivable, customers.count { it.balance > 0 }, Modifier.weight(.85f))
+                        }
                     }
                 }
             }
             item {
-                if (sellerMode) {
-                    RecentSalesCard(completed.take(10), customerNames, viewModel::selectSale, { showAllSales = true })
-                } else if (compact) {
-                    if (routesEnabled) RoutesCard(routes.filter { it.isActive }, onRoutes)
-                    Spacer(Modifier.height(16.dp))
-                    if ("low_stock" in visibleWidgets && showInventory) LowStockCard(lowProducts.take(5), quantities, onInventory)
-                    Spacer(Modifier.height(16.dp))
-                    RecentSalesCard(completed.take(5), customerNames, viewModel::selectSale, { showAllSales = true })
-                } else {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                        if (routesEnabled) RoutesCard(routes.filter { it.isActive }, onRoutes, Modifier.weight(1f))
-                        if ("low_stock" in visibleWidgets && showInventory) LowStockCard(lowProducts.take(5), quantities, onInventory, Modifier.weight(1f))
-                        RecentSalesCard(completed.take(5), customerNames, viewModel::selectSale, { showAllSales = true }, Modifier.weight(1f))
+                DashboardEnter(delayMillis = 270) {
+                    if (sellerMode) {
+                        RecentSalesCard(completed.take(10), customerNames, viewModel::selectSale, { showAllSales = true })
+                    } else if (compact) {
+                        if (routesEnabled) RoutesCard(routes.filter { it.isActive }, onRoutes)
+                        Spacer(Modifier.height(16.dp))
+                        if ("low_stock" in visibleWidgets && showInventory) LowStockCard(lowProducts.take(5), quantities, onInventory)
+                        Spacer(Modifier.height(16.dp))
+                        RecentSalesCard(completed.take(5), customerNames, viewModel::selectSale, { showAllSales = true })
+                    } else {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                            if (routesEnabled) RoutesCard(routes.filter { it.isActive }, onRoutes, Modifier.weight(1f))
+                            if ("low_stock" in visibleWidgets && showInventory) LowStockCard(lowProducts.take(5), quantities, onInventory, Modifier.weight(1f))
+                            RecentSalesCard(completed.take(5), customerNames, viewModel::selectSale, { showAllSales = true }, Modifier.weight(1f))
+                        }
                     }
                 }
             }
@@ -175,6 +208,87 @@ fun DashboardScreen(
             productNames = products.associate { it.id to it.name },
             onDismiss = { viewModel.selectSale(null) }
         )
+    }
+}
+
+@Composable
+private fun DashboardEnter(delayMillis: Long = 0, content: @Composable () -> Unit) {
+    var visible by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        if (delayMillis > 0) delay(delayMillis)
+        visible = true
+    }
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(animationSpec = tween(360)) + slideInVertically(animationSpec = tween(360)) { it / 10 }
+    ) { content() }
+}
+
+@Composable
+private fun DashboardPeriodSelector(selected: String, onSelected: (String) -> Unit) {
+    val periods = listOf("Hoy", "Este mes", "Últimos 7")
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        periods.forEach { period ->
+            FilterChip(
+                selected = selected == period,
+                onClick = { onSelected(period) },
+                label = { Text(period, fontWeight = FontWeight.Bold) },
+                colors = FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = BSPOSTheme.colors.secondaryNavy,
+                    selectedLabelColor = Color.White,
+                    containerColor = BSPOSTheme.colors.surface
+                ),
+                border = FilterChipDefaults.filterChipBorder(
+                    enabled = true,
+                    selected = selected == period,
+                    borderColor = BSPOSTheme.colors.outline,
+                    selectedBorderColor = BSPOSTheme.colors.secondaryNavy
+                )
+            )
+        }
+        Spacer(Modifier.weight(1f))
+        Text("▣", color = BSPOSTheme.colors.textSecondary, fontSize = 20.sp)
+    }
+}
+
+@Composable
+private fun GuidedSetupCard(
+    steps: List<Pair<String, Boolean>>,
+    onProduct: () -> Unit,
+    onSale: () -> Unit,
+    onShare: () -> Unit
+) {
+    val actions = listOf(onProduct, onSale, onShare)
+    val completed = steps.count { it.second }
+    Card(
+        modifier = Modifier.fillMaxWidth().animateContentSize(),
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface),
+        border = androidx.compose.foundation.BorderStroke(1.dp, BSPOSTheme.colors.primary.copy(alpha = .35f))
+    ) {
+        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Termina tu tienda", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold, modifier = Modifier.weight(1f))
+                Text("$completed de ${steps.size}", color = BSPOSTheme.colors.textSecondary, fontWeight = FontWeight.Bold)
+            }
+            steps.forEachIndexed { index, (label, done) ->
+                Row(
+                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).clickable { actions[index]() }.padding(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(Modifier.size(28.dp).clip(CircleShape).background(if (done) BSPOSTheme.colors.success else BSPOSTheme.colors.surfaceVariant), contentAlignment = Alignment.Center) {
+                        Text(if (done) "✓" else "${index + 1}", color = if (done) Color.White else BSPOSTheme.colors.textSecondary, fontWeight = FontWeight.ExtraBold)
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Text(label, color = if (done) BSPOSTheme.colors.textSecondary else BSPOSTheme.colors.textPrimary, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                    Text("→", color = BSPOSTheme.colors.primary, fontSize = 18.sp)
+                }
+            }
+        }
     }
 }
 

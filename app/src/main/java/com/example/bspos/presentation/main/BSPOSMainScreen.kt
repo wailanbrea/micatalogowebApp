@@ -1,6 +1,14 @@
 package com.example.bspos.presentation.main
 
 import androidx.compose.foundation.background
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Box
@@ -29,6 +37,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
@@ -257,6 +266,7 @@ fun BSPOSMainScreen(
     var menuQuery by remember { mutableStateOf("") }
     var collapsedGroups by remember { mutableStateOf(emptySet<String>()) }
     val currentScreen = drawerScreens.firstOrNull { it.route == currentRoute }
+    val currentGroup = drawerGroups.firstOrNull { group -> group.screens.any { it.route == currentRoute } }?.title ?: "Inicio"
     val connectedShop = activeShop
     val businessName = connectedShop?.name ?: settings?.invoice?.businessName?.ifBlank { null } ?: "MiCatalogo"
     val drawerWidth = if (windowWidthSizeClass == WindowWidthSizeClass.Expanded) {
@@ -406,28 +416,36 @@ fun BSPOSMainScreen(
                                     )
                                 }
                             }
-                            if (visibleScreens.isNotEmpty() && group.title !in collapsedGroups) visibleScreens.forEach { screen ->
-                                val selected = currentRoute == screen.route
-                                NavigationDrawerItem(
-                                    label = { Text(screen.title, fontWeight = if (selected) FontWeight.ExtraBold else FontWeight.SemiBold) },
-                                    selected = selected,
-                                    onClick = { navigateTo(screen) },
-                                    icon = {
-                                        Icon(
-                                            imageVector = if (selected) screen.selectedIcon else screen.unselectedIcon,
-                                            contentDescription = null
+                            AnimatedVisibility(
+                                visible = visibleScreens.isNotEmpty() && group.title !in collapsedGroups,
+                                enter = fadeIn() + androidx.compose.animation.expandVertically(),
+                                exit = fadeOut() + androidx.compose.animation.shrinkVertically()
+                            ) {
+                                Column(Modifier.animateContentSize()) {
+                                    visibleScreens.forEach { screen ->
+                                        val selected = currentRoute == screen.route
+                                        NavigationDrawerItem(
+                                            label = { Text(screen.title, fontWeight = if (selected) FontWeight.ExtraBold else FontWeight.SemiBold) },
+                                            selected = selected,
+                                            onClick = { navigateTo(screen) },
+                                            icon = {
+                                                Icon(
+                                                    imageVector = if (selected) screen.selectedIcon else screen.unselectedIcon,
+                                                    contentDescription = null
+                                                )
+                                            },
+                                            modifier = Modifier.padding(vertical = 3.dp),
+                                            colors = NavigationDrawerItemDefaults.colors(
+                                                selectedContainerColor = BSPOSTheme.colors.primaryLight,
+                                                selectedIconColor = BSPOSTheme.colors.primary,
+                                                selectedTextColor = BSPOSTheme.colors.primary,
+                                                unselectedContainerColor = Color.Transparent,
+                                                unselectedIconColor = BSPOSTheme.colors.textPrimary,
+                                                unselectedTextColor = BSPOSTheme.colors.textPrimary
+                                            )
                                         )
-                                    },
-                                    modifier = Modifier.padding(vertical = 3.dp),
-                                    colors = NavigationDrawerItemDefaults.colors(
-                                        selectedContainerColor = BSPOSTheme.colors.primaryLight,
-                                        selectedIconColor = BSPOSTheme.colors.primary,
-                                        selectedTextColor = BSPOSTheme.colors.primary,
-                                        unselectedContainerColor = Color.Transparent,
-                                        unselectedIconColor = BSPOSTheme.colors.textPrimary,
-                                        unselectedTextColor = BSPOSTheme.colors.textPrimary
-                                    )
-                                )
+                                    }
+                                }
                             }
                         }
                     }
@@ -510,7 +528,10 @@ fun BSPOSMainScreen(
                         Triple("Más", Screen.More, canSeeMenu("more"))
                     ).filter { it.third }
                     if (bottomItems.isNotEmpty()) {
-                        NavigationBar(containerColor = BSPOSTheme.colors.surface) {
+                        NavigationBar(
+                            containerColor = BSPOSTheme.colors.surface,
+                            tonalElevation = 8.dp
+                        ) {
                             bottomItems.forEach { (label, screen, _) ->
                                 NavigationBarItem(
                                     selected = currentRoute == screen.route,
@@ -538,10 +559,20 @@ fun BSPOSMainScreen(
             topBar = {
                 TopAppBar(
                     title = {
-                        Text(
-                            text = currentScreen?.title ?: if (currentRoute == Screen.Profile.route) Screen.Profile.title else "MiCatalogo",
-                            fontWeight = FontWeight.Bold
-                        )
+                        Column {
+                            Text(
+                                text = "$currentGroup /",
+                                color = BSPOSTheme.colors.textSecondary,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1
+                            )
+                            Text(
+                                text = currentScreen?.title ?: if (currentRoute == Screen.Profile.route) Screen.Profile.title else "MiCatalogo",
+                                fontWeight = FontWeight.ExtraBold,
+                                maxLines = 1
+                            )
+                        }
                     },
                     navigationIcon = {
                         IconButton(onClick = { scope.launch { drawerState.open() } }) {
@@ -550,13 +581,21 @@ fun BSPOSMainScreen(
                     },
                     actions = {
                         accountQuota?.let { quota ->
-                            Text(
-                                text = "Plan ${quota.planLabel}",
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 13.sp,
-                                color = BSPOSTheme.colors.primary,
-                                modifier = Modifier.padding(horizontal = 16.dp)
+                            AssistChip(
+                                onClick = { },
+                                label = { Text("${quota.planLabel} · 30 d", maxLines = 1) },
+                                border = androidx.compose.material3.AssistChipDefaults.assistChipBorder(
+                                    enabled = true,
+                                    borderColor = BSPOSTheme.colors.outline
+                                ),
+                                colors = androidx.compose.material3.AssistChipDefaults.assistChipColors(
+                                    containerColor = BSPOSTheme.colors.surface,
+                                    labelColor = BSPOSTheme.colors.textPrimary
+                                )
                             )
+                        }
+                        TextButton(onClick = { navigateTo(Screen.Help) }) {
+                            Text("Ayuda", color = BSPOSTheme.colors.textSecondary, fontWeight = FontWeight.Bold)
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
@@ -567,20 +606,30 @@ fun BSPOSMainScreen(
                 )
             }
         ) { paddingValues ->
-            BSPOSNavHost(
-                navController = navController,
-                isTablet = windowWidthSizeClass == WindowWidthSizeClass.Expanded,
-                routesEnabled = routesEnabled,
-                currency = settings?.currency ?: CurrencyUnit.DOP,
-                sellerMode = sellerMode,
-                showSettings = canSeeMenu("settings"),
-                showAdminShops = connection.isAdmin,
-                remoteShopAvailable = connectedShop != null,
-                presentation = connectedShop?.presentation ?: MiCatalogoBusinessPresentation(),
-                productFields = connectedShop?.productFields?.toSet().orEmpty(),
-                canSeeMenu = canSeeMenu,
-                modifier = Modifier.padding(paddingValues)
-            )
+            AnimatedContent(
+                targetState = currentRoute,
+                transitionSpec = {
+                    (fadeIn() + slideInHorizontally { it / 18 }) togetherWith
+                        (fadeOut() + slideOutHorizontally { -it / 18 })
+                },
+                label = "screen-transition",
+                modifier = Modifier.fillMaxSize()
+            ) {
+                BSPOSNavHost(
+                    navController = navController,
+                    isTablet = windowWidthSizeClass == WindowWidthSizeClass.Expanded,
+                    routesEnabled = routesEnabled,
+                    currency = settings?.currency ?: CurrencyUnit.DOP,
+                    sellerMode = sellerMode,
+                    showSettings = canSeeMenu("settings"),
+                    showAdminShops = connection.isAdmin,
+                    remoteShopAvailable = connectedShop != null,
+                    presentation = connectedShop?.presentation ?: MiCatalogoBusinessPresentation(),
+                    productFields = connectedShop?.productFields?.toSet().orEmpty(),
+                    canSeeMenu = canSeeMenu,
+                    modifier = Modifier.padding(paddingValues)
+                )
+            }
         }
     }
 }
