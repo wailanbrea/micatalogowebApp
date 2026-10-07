@@ -29,12 +29,17 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Print
 import androidx.compose.material.icons.filled.QrCodeScanner
+import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -64,6 +69,8 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.core.content.ContextCompat
 import com.google.mlkit.vision.barcode.BarcodeScanning
@@ -330,6 +337,15 @@ private fun TerminalGuideDialog(onDismiss: () -> Unit) {
     var currentStep by rememberSaveable { mutableIntStateOf(0) }
     AlertDialog(
         onDismissRequest = onDismiss,
+        modifier = Modifier.padding(8.dp),
+        shape = RoundedCornerShape(28.dp),
+        containerColor = BSPOSTheme.colors.surface,
+        tonalElevation = 8.dp,
+        icon = {
+            Surface(shape = CircleShape, color = BSPOSTheme.colors.primaryLight) {
+                Icon(Icons.Default.ShoppingCart, contentDescription = null, modifier = Modifier.padding(12.dp), tint = BSPOSTheme.colors.primary)
+            }
+        },
         title = {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text("Cómo hacer una venta")
@@ -440,32 +456,140 @@ private fun SaleCompleteDialog(
     onPrint: () -> Unit,
     onDismiss: () -> Unit
 ) {
-    AlertDialog(
+    val sale = result.sale ?: return
+    val itemCount = result.lines.sumOf { it.quantity }
+
+    Dialog(
         onDismissRequest = onDismiss,
-        title = { Text("Venta completada") },
-        text = {
-            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
-                AnimatedCheck()
-                Spacer(Modifier.height(12.dp))
-                Text(result.message, fontWeight = FontWeight.Bold)
-                Text("Factura ${result.sale?.invoiceNumber.orEmpty()}", color = BSPOSTheme.colors.textSecondary)
-            }
-        },
-        confirmButton = {
+        properties = DialogProperties(
+            dismissOnBackPress = true,
+            dismissOnClickOutside = true,
+            usePlatformDefaultWidth = false
+        )
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .widthIn(max = 430.dp)
+                .padding(horizontal = 20.dp, vertical = 24.dp),
+            shape = RoundedCornerShape(28.dp),
+            color = BSPOSTheme.colors.surface,
+            tonalElevation = 8.dp,
+            shadowElevation = 14.dp
+        ) {
             Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                modifier = Modifier.padding(24.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                Button(onClick = onPrint, modifier = Modifier.fillMaxWidth()) {
-                    Text(if (hasConfiguredPrinter) "Enviar a impresora" else "Imprimir")
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.Top,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Surface(
+                            modifier = Modifier.size(58.dp),
+                            shape = CircleShape,
+                            color = BSPOSTheme.colors.successLight
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.CheckCircle,
+                                contentDescription = null,
+                                modifier = Modifier.padding(11.dp),
+                                tint = BSPOSTheme.colors.success
+                            )
+                        }
+                        Column {
+                            Text(
+                                "Venta completada",
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = BSPOSTheme.colors.textPrimary
+                            )
+                            Text(
+                                "Registrada correctamente",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = BSPOSTheme.colors.textSecondary
+                            )
+                        }
+                    }
+                    IconButton(onClick = onDismiss) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Cerrar comprobante",
+                            tint = BSPOSTheme.colors.textSecondary
+                        )
+                    }
                 }
-                OutlinedButton(onClick = onShare, modifier = Modifier.fillMaxWidth()) {
-                    Text("WhatsApp PDF")
+
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(20.dp),
+                    color = BSPOSTheme.colors.primaryLight
+                ) {
+                    Column(
+                        modifier = Modifier.padding(horizontal = 18.dp, vertical = 16.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text("Total de la venta", style = MaterialTheme.typography.labelMedium, color = BSPOSTheme.colors.textSecondary)
+                        Text(money(sale.total), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold, color = BSPOSTheme.colors.primaryDark)
+                        Text(paymentLabel(sale.paymentType), style = MaterialTheme.typography.bodySmall, color = BSPOSTheme.colors.textSecondary)
+                    }
+                }
+
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    color = BSPOSTheme.colors.surfaceVariant,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, BSPOSTheme.colors.outline)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Icon(Icons.Default.ReceiptLong, contentDescription = null, tint = BSPOSTheme.colors.primary)
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Comprobante", style = MaterialTheme.typography.labelSmall, color = BSPOSTheme.colors.textSecondary)
+                            Text(sale.invoiceNumber, fontWeight = FontWeight.Bold, color = BSPOSTheme.colors.textPrimary)
+                        }
+                        Text("$itemCount artículo(s)", style = MaterialTheme.typography.labelSmall, color = BSPOSTheme.colors.textSecondary)
+                    }
+                }
+
+                Text(result.message, style = MaterialTheme.typography.bodySmall, color = BSPOSTheme.colors.textSecondary)
+
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedButton(onClick = onShare, modifier = Modifier.weight(1f), shape = RoundedCornerShape(14.dp)) {
+                        Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("WhatsApp")
+                    }
+                    OutlinedButton(onClick = onPrint, modifier = Modifier.weight(1f), shape = RoundedCornerShape(14.dp)) {
+                        Icon(Icons.Default.Print, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(if (hasConfiguredPrinter) "Imprimir" else "PDF")
+                    }
+                }
+
+                Button(
+                    onClick = onDismiss,
+                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                    shape = RoundedCornerShape(15.dp)
+                ) {
+                    Text("Nueva venta", fontWeight = FontWeight.Bold)
                 }
             }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cerrar") } }
-    )
+        }
+    }
+}
+
+private fun paymentLabel(type: com.example.bspos.domain.model.SalePaymentType): String = when (type) {
+    com.example.bspos.domain.model.SalePaymentType.CASH -> "Pago en efectivo"
+    com.example.bspos.domain.model.SalePaymentType.CARD -> "Pago con tarjeta"
+    com.example.bspos.domain.model.SalePaymentType.TRANSFER -> "Pago por transferencia"
+    com.example.bspos.domain.model.SalePaymentType.CREDIT -> "Venta a crédito"
+    com.example.bspos.domain.model.SalePaymentType.MIXED -> "Pago mixto"
 }
 
 @Composable
@@ -683,6 +807,15 @@ private fun CartPanel(
     }
     if (confirmClear) AlertDialog(
         onDismissRequest = { confirmClear = false },
+        modifier = Modifier.padding(8.dp),
+        shape = RoundedCornerShape(28.dp),
+        containerColor = BSPOSTheme.colors.surface,
+        tonalElevation = 8.dp,
+        icon = {
+            Surface(shape = CircleShape, color = BSPOSTheme.colors.warningLight) {
+                Icon(Icons.Default.DeleteOutline, contentDescription = null, modifier = Modifier.padding(12.dp), tint = BSPOSTheme.colors.warning)
+            }
+        },
         title = { Text("¿Vaciar el carrito?") },
         text = { Text("Se eliminarán todos los productos agregados.") },
         confirmButton = { TextButton(onClick = { onClear(); confirmClear = false }) { Text("Vaciar") } },
@@ -784,6 +917,15 @@ private fun SplitPaymentDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
+        modifier = Modifier.padding(8.dp),
+        shape = RoundedCornerShape(28.dp),
+        containerColor = BSPOSTheme.colors.surface,
+        tonalElevation = 8.dp,
+        icon = {
+            Surface(shape = CircleShape, color = BSPOSTheme.colors.primaryLight) {
+                Icon(Icons.Default.ReceiptLong, contentDescription = null, modifier = Modifier.padding(12.dp), tint = BSPOSTheme.colors.primary)
+            }
+        },
         title = {
             Text("Pago dividido / Mixto", fontWeight = FontWeight.ExtraBold)
         },
@@ -932,7 +1074,33 @@ private fun SplitPaymentDialog(
 
 @Composable
 private fun CustomerDialog(customers: List<com.example.bspos.domain.model.Customer>, onSelect: (com.example.bspos.domain.model.Customer) -> Unit, onClear: () -> Unit) {
-    AlertDialog(onDismissRequest = onClear, title = { Text("Seleccionar cliente") }, text = { if (customers.isEmpty()) Text("No hay clientes activos con crédito disponible. Registra o actualiza uno desde Clientes.") else LazyColumn { lazyItems(customers, key = { it.id }) { customer -> TextButton({ onSelect(customer) }, Modifier.fillMaxWidth()) { Text("${customer.fullName} - Disponible: ${money(customer.creditLimit - customer.balance)}") } } } }, confirmButton = { TextButton(onClear) { Text("Cancelar") } })
+    AlertDialog(
+        onDismissRequest = onClear,
+        modifier = Modifier.padding(8.dp),
+        shape = RoundedCornerShape(28.dp),
+        containerColor = BSPOSTheme.colors.surface,
+        tonalElevation = 8.dp,
+        icon = {
+            Surface(shape = CircleShape, color = BSPOSTheme.colors.primaryLight) {
+                Icon(Icons.Default.Person, contentDescription = null, modifier = Modifier.padding(12.dp), tint = BSPOSTheme.colors.primary)
+            }
+        },
+        title = { Text("Seleccionar cliente") },
+        text = {
+            if (customers.isEmpty()) {
+                Text("No hay clientes activos con crédito disponible. Registra o actualiza uno desde Clientes.")
+            } else {
+                LazyColumn {
+                    lazyItems(customers, key = { it.id }) { customer ->
+                        TextButton({ onSelect(customer) }, Modifier.fillMaxWidth()) {
+                            Text("${customer.fullName} - Disponible: ${money(customer.creditLimit - customer.balance)}")
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClear) { Text("Cancelar") } }
+    )
 }
 
 @Composable
