@@ -148,7 +148,14 @@ class InventoryViewModel @Inject constructor(
         if (_isImporting.value || preview.validRows == 0 || preview.validRows > preview.quota.productsRemaining) return
         viewModelScope.launch {
             _isImporting.value = true
-            when (val result = connection.importInventory(shop.id, preview.rows.filter { it.valid })) {
+            // Confirm the server-side preview session. The rows are deliberately
+            // not sent again when a session exists, so retries are idempotent
+            // and cannot create a second copy of the same inventory.
+            when (val result = connection.importInventory(
+                shop.id,
+                preview.rows.filter { it.valid },
+                preview.sessionId,
+            )) {
                 is MiCatalogoResult.Success -> {
                     _importPreview.value = null
                     val syncMessage = when (val sync = catalog.syncCatalog(shop.id)) {

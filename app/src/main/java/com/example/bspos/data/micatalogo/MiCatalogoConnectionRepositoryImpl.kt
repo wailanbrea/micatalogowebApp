@@ -253,7 +253,26 @@ class MiCatalogoConnectionRepositoryImpl @Inject constructor(
                 )
             },
             validRows = preview.validRows,
-            invalidRows = preview.invalidRows
+            invalidRows = preview.invalidRows,
+            sessionId = preview.sessionId,
+            headerRow = preview.headerRow,
+            sheetIndex = preview.sheet?.index ?: 0,
+            sheetName = preview.sheet?.name.orEmpty(),
+            sheets = preview.sheets.map { sheet ->
+                com.example.bspos.domain.model.ImportSheet(sheet.name, sheet.index, sheet.headerRow, sheet.dataRows)
+            },
+            needsHeaderSelection = preview.needsHeaderSelection,
+            originalHeaders = preview.originalHeaders,
+            mappingDetails = preview.mappingConfidence.mapValues { (_, detail) ->
+                com.example.bspos.domain.model.ImportMappingDetail(detail.source, detail.header, detail.confidence, detail.reason, detail.examples)
+            },
+            ignoredColumns = preview.ignoredColumns.map { detail ->
+                com.example.bspos.domain.model.ImportMappingDetail(detail.source, detail.header, detail.confidence, detail.reason, detail.examples)
+            },
+            warnings = preview.warnings,
+            newRows = preview.newRows,
+            existingRows = preview.existingRows,
+            duplicateRows = preview.duplicateRows
         )
     }.fold(
         onSuccess = { MiCatalogoResult.Success(it) },
@@ -262,11 +281,12 @@ class MiCatalogoConnectionRepositoryImpl @Inject constructor(
 
     override suspend fun importInventory(
         shopId: String,
-        rows: List<MiCatalogoInventoryImportRow>
+        rows: List<MiCatalogoInventoryImportRow>,
+        sessionId: String?
     ): MiCatalogoResult<MiCatalogoInventoryImportResult> = runCatching {
         val response = api.get().importInventory(
             shopId,
-            InventoryImportRequestDto(rows.map { row ->
+            InventoryImportRequestDto(rows = if (sessionId == null) rows.map { row ->
                 InventoryImportRowDto(
                     line = row.line,
                     name = row.name,
@@ -283,7 +303,7 @@ class MiCatalogoConnectionRepositoryImpl @Inject constructor(
                     errors = row.errors,
                     valid = row.valid
                 )
-            })
+            } else emptyList(), sessionId = sessionId, duplicateStrategy = "skip", createMissingCategories = true)
         )
         if (!response.isSuccessful) error(response.apiErrorMessage("No se pudo importar el inventario."))
         val result = response.body() ?: error("MiCatalogo no devolvió el resultado de la importación.")
