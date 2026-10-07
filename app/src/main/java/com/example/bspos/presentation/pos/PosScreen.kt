@@ -864,6 +864,13 @@ private fun CheckoutReviewSheet(
     onDismiss: () -> Unit,
     onConfirm: () -> Unit
 ) {
+    var cashReceivedText by remember(total, method) {
+        mutableStateOf(if (method == CheckoutReviewMethod.CASH) MoneyUtils.formatCents(total).removePrefix("RD$ ").trim() else "")
+    }
+    val cashReceivedCents = MoneyUtils.parsePesosStringToCents(cashReceivedText)
+    val cashChangeCents = cashReceivedCents - total
+    val cashAmountIsValid = method != CheckoutReviewMethod.CASH || cashReceivedCents >= total
+
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         containerColor = BSPOSTheme.colors.surface,
@@ -983,6 +990,55 @@ private fun CheckoutReviewSheet(
                 }
             }
 
+            if (method == CheckoutReviewMethod.CASH) {
+                Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                    OutlinedTextField(
+                        value = cashReceivedText,
+                        onValueChange = { cashReceivedText = it },
+                        label = { Text("Recibido (${LocalCurrency.current.symbol})") },
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        isError = !cashAmountIsValid,
+                        supportingText = {
+                            if (!cashAmountIsValid) Text("El efectivo recibido no puede ser menor que el total.")
+                        }
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf("Exacto" to total, "1,000" to 100_000L, "2,000" to 200_000L, "5,000" to 500_000L)
+                            .forEach { (label, amount) ->
+                                AssistChip(
+                                    onClick = { cashReceivedText = MoneyUtils.formatCents(amount).removePrefix("RD$ ").trim() },
+                                    label = { Text(label) },
+                                    enabled = amount >= total && !isProcessing
+                                )
+                            }
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = BSPOSTheme.colors.surfaceVariant,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Column(Modifier.padding(13.dp)) {
+                                Text("Recibido", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+                                Text(money(cashReceivedCents), fontWeight = FontWeight.ExtraBold)
+                            }
+                        }
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = if (cashChangeCents >= 0) BSPOSTheme.colors.successLight else BSPOSTheme.colors.warningLight,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Column(Modifier.padding(13.dp)) {
+                                Text("Devolver", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+                                Text(money(cashChangeCents.coerceAtLeast(0)), fontWeight = FontWeight.ExtraBold)
+                            }
+                        }
+                    }
+                }
+            }
+
             Surface(shape = RoundedCornerShape(20.dp), color = BSPOSTheme.colors.textPrimary, modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(15.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text("Subtotal", color = BSPOSTheme.colors.surface.copy(alpha = 0.72f)); Text(money(total), color = BSPOSTheme.colors.surface, fontWeight = FontWeight.Bold) }
@@ -991,7 +1047,7 @@ private fun CheckoutReviewSheet(
                 }
             }
 
-            Button(onClick = onConfirm, enabled = !isProcessing, modifier = Modifier.fillMaxWidth().height(56.dp), shape = RoundedCornerShape(16.dp)) {
+            Button(onClick = onConfirm, enabled = !isProcessing && cashAmountIsValid, modifier = Modifier.fillMaxWidth().height(56.dp), shape = RoundedCornerShape(16.dp)) {
                 if (isProcessing) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp) else {
                     Text(if (method == CheckoutReviewMethod.CREDIT) "Registrar venta a crédito" else "Confirmar venta · ${money(total)}", fontWeight = FontWeight.ExtraBold)
                     Spacer(Modifier.weight(1f))
