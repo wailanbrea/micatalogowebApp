@@ -247,7 +247,7 @@ private fun ProductForm(current: Product?, currentQuantity: Long, categories: Li
         runCatching { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
         imagePath = uri.toString()
     }
-    AlertDialog(onDismissRequest = onDismiss, title = { Text(if (effectiveDecantMode) "Nueva presentación decant" else if (current == null) "Nuevo producto" else "Editar producto") }, text = {
+    AlertDialog(onDismissRequest = onDismiss, title = { Text(if (effectiveDecantMode) "Nueva presentación decant" else if (saleUnit == "service") if (current == null) "Nuevo servicio" else "Editar servicio" else if (current == null) "Nuevo producto" else "Editar producto") }, text = {
         DialogScrollableColumn {
             if (effectiveDecantMode) {
                 Text("La presentación comparte el inventario de su producto fuente. Cada venta descuenta los ml correspondientes.", style = MaterialTheme.typography.bodySmall)
@@ -321,14 +321,15 @@ private fun ProductForm(current: Product?, currentQuantity: Long, categories: Li
                         Text("Se vende como: ${when (saleUnit) {
                             "bottle" -> "Botella completa"
                             "ml" -> "Por mililitro (ml)"
+                            "service" -> "Servicio (sin inventario)"
                             else -> "Unidad"
                         }}")
                     }
                     DropdownMenu(saleUnitOpen, { saleUnitOpen = false }) {
-                        listOf("unit" to "Unidad", "bottle" to "Botella completa", "ml" to "Por mililitro (ml)").forEach { (value, label) ->
+                        listOf("unit" to "Unidad", "bottle" to "Botella completa", "ml" to "Por mililitro (ml)", "service" to "Servicio (sin inventario)").forEach { (value, label) ->
                             DropdownMenuItem({ Text(label) }, {
                                 saleUnit = value
-                                if (value == "unit") volumeMl = ""
+                                if (value == "unit" || value == "service") volumeMl = ""
                                 saleUnitOpen = false
                             })
                         }
@@ -345,10 +346,10 @@ private fun ProductForm(current: Product?, currentQuantity: Long, categories: Li
                 }
             }
             if (showProductCode) OutlinedTextField(code, { code = it }, label = { Text("Código interno") })
-            if (showCost && !effectiveDecantMode) OutlinedTextField(purchasePrice, { value -> if (current == null) purchasePrice = value; purchaseChanged = true; priceError = false }, label = { Text(if (saleUnit == "bottle") "Costo de compra por botella (${LocalCurrency.current.symbol})" else "Precio de compra (${LocalCurrency.current.symbol})") }, enabled = current == null, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), isError = priceError, supportingText = { if (saleUnit == "bottle") Text("Obligatorio para calcular la ganancia y el costo recuperado por decants") else if (current != null) Text("Se actualiza desde una entrada de inventario") })
+            if (showCost && !effectiveDecantMode) OutlinedTextField(purchasePrice, { value -> if (current == null) purchasePrice = value; purchaseChanged = true; priceError = false }, label = { Text(when (saleUnit) { "bottle" -> "Costo de compra por botella (${LocalCurrency.current.symbol})"; "service" -> "Costo de insumos (${LocalCurrency.current.symbol})"; else -> "Precio de compra (${LocalCurrency.current.symbol})" }) }, enabled = current == null, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), isError = priceError, supportingText = { if (saleUnit == "bottle") Text("Obligatorio para calcular la ganancia y el costo recuperado por decants") else if (saleUnit == "service") Text("Opcional; se usa para calcular la ganancia del servicio") else if (current != null) Text("Se actualiza desde una entrada de inventario") })
             OutlinedTextField(price, { value -> price = value; priceChanged = true; priceError = false }, label = { Text("Precio de venta (${LocalCurrency.current.symbol})") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), isError = priceError, supportingText = { if (priceError) Text("Indica un precio válido, con hasta dos decimales") })
             OutlinedTextField(wholesalePrice, { wholesalePrice = it; priceError = false }, label = { Text("Precio por mayor (${LocalCurrency.current.symbol})") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), supportingText = { Text("Opcional; habilita el modo mayorista en el POS") })
-            if (showInventoryFields && !effectiveDecantMode) OutlinedTextField(initialQuantity, { value -> if (current == null) initialQuantity = value.filter(Char::isDigit) }, label = { Text("Stock inicial") }, enabled = current == null, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), supportingText = { Text(if (current == null) "Se registra en 0 si lo dejas así" else "Edita existencias desde Inventario") })
+            if (showInventoryFields && !effectiveDecantMode && saleUnit != "service") OutlinedTextField(initialQuantity, { value -> if (current == null) initialQuantity = value.filter(Char::isDigit) }, label = { Text("Stock inicial") }, enabled = current == null, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), supportingText = { Text(if (current == null) "Se registra en 0 si lo dejas así" else "Edita existencias desde Inventario") })
             OutlinedTextField(minimumStock, { minimumStock = it.filter(Char::isDigit) }, label = { Text("Aviso de mínimo") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), supportingText = { Text("Te avisaremos al llegar a esta cantidad") })
             Box { TextButton({ categoryOpen = true }) { Text("Categoria: ${category.name}") }; DropdownMenu(categoryOpen, { categoryOpen = false }) { categories.forEach { item -> DropdownMenuItem({ Text(item.name) }, { category = item; categoryOpen = false }) } } }
             Box { TextButton({ unitOpen = true }) { Text("Unidad: ${unit.name}") }; DropdownMenu(unitOpen, { unitOpen = false }) { units.forEach { item -> DropdownMenuItem({ Text(item.name) }, { unit = item; unitOpen = false }) } } }
@@ -361,12 +362,12 @@ private fun ProductForm(current: Product?, currentQuantity: Long, categories: Li
             val quantity = initialQuantity.toLongOrNull()
             val minimum = minimumStock.toLongOrNull()
             val effectiveCode = code.ifBlank { "AUTO-" + name.trim().uppercase(Locale.ROOT).replace(Regex("[^A-Z0-9]+"), "-").take(24) }
-            val effectivePurchase = if (effectiveDecantMode) 0L else if (showCost) purchase else (current?.lastPurchaseCost ?: 0L)
-            val effectiveQuantity = if (showInventoryFields && !effectiveDecantMode) quantity else 0L
+            val effectivePurchase = if (effectiveDecantMode) 0L else if (saleUnit == "service" && purchasePrice.isBlank()) 0L else if (showCost) purchase else (current?.lastPurchaseCost ?: 0L)
+            val effectiveQuantity = if (showInventoryFields && !effectiveDecantMode && saleUnit != "service") quantity else 0L
             val selectedVolume = volumeMl.toIntOrNull()
             val sourceVolume = sourceProduct?.remoteVolumeMl
             val sourceCost = sourceProduct?.lastPurchaseCost ?: 0L
-            val validVolume = saleUnit == "unit" || (selectedVolume != null && selectedVolume > 0)
+            val validVolume = saleUnit == "unit" || saleUnit == "service" || (selectedVolume != null && selectedVolume > 0)
             val validPresentation = if (effectiveDecantMode) {
                 shopId != null && sourceProduct?.remoteProductId != null && sourceCost > 0 && selectedVolume != null && selectedVolume > 0 && sourceVolume != null && selectedVolume <= sourceVolume
             } else {

@@ -15,7 +15,10 @@ internal object LinkedInventorySaleRecorder {
         allowNegative: Boolean, restoring: Boolean = false) {
         val resolved = items.associateWith { checkNotNull(products.findById(it.productId)) }
         val linked = resolved.filterValues { it.miCatalogoShopId != null && it.miCatalogoSaleUnit in setOf("bottle", "ml", "decant") }
-        val ordinary = resolved.keys - linked.keys
+        // Services are billable catalog offers, not stock. They must never create
+        // a local inventory movement or be blocked by an empty stock row.
+        val services = resolved.filterValues { it.miCatalogoSaleUnit == "service" }
+        val ordinary = resolved.keys - linked.keys - services.keys
         val movements = mutableListOf<InventoryMovementEntity>()
         suspend fun add(productId: UUID, target: Long, cost: Long, sold: Boolean) {
             val previous = inventory.findStock(productId, location.type, location.id)?.quantity ?: 0L

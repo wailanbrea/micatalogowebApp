@@ -130,7 +130,7 @@ fun PosScreen(
     val catalog = products.filter {
         it.isActive && it.deletedAt == null &&
             (!wholesaleMode || (it.wholesalePrice ?: 0L) > 0L) &&
-            (catalogTab == "all" || (catalogTab == "products" && it.remoteSaleUnit != "decant") || (catalogTab == "decants" && it.remoteSaleUnit == "decant")) &&
+            (catalogTab == "all" || (catalogTab == "products" && it.remoteSaleUnit != "decant" && it.remoteSaleUnit != "service") || (catalogTab == "services" && it.remoteSaleUnit == "service") || (catalogTab == "decants" && it.remoteSaleUnit == "decant")) &&
             (selectedCategoryId == null || it.categoryId == selectedCategoryId) &&
             (it.name.contains(query, true) ||
                 it.internalCode.contains(query, true) ||
@@ -139,6 +139,7 @@ fun PosScreen(
     val cartQuantity = cart.sumOf { it.quantity }
     val categoryOptions = categories.filter { category -> products.any { product -> product.categoryId == category.id } }
     val hasDecants = products.any { it.remoteSaleUnit == "decant" }
+    val hasServices = products.any { it.remoteSaleUnit == "service" }
     val recentProducts = recentProductIds.mapNotNull { id -> products.firstOrNull { it.id == id } }
     LaunchedEffect(categoryOptions) {
         if (selectedCategoryId != null && categoryOptions.none { it.id == selectedCategoryId }) {
@@ -147,6 +148,9 @@ fun PosScreen(
     }
     LaunchedEffect(hasDecants) {
         if (!hasDecants && catalogTab == "decants") catalogTab = "all"
+    }
+    LaunchedEffect(hasServices) {
+        if (!hasServices && catalogTab == "services") catalogTab = "all"
     }
     val cashAction = {
         if (cashSession == null) onOpenCash() else reviewMethod = CheckoutReviewMethod.CASH
@@ -194,7 +198,7 @@ fun PosScreen(
                 if (catalogTab == "all" && query.isBlank() && selectedCategoryId == null && recentProducts.isNotEmpty()) {
                     RecentProductsRow(recentProducts, quantities, settings.allowNegativeStock, { viewModel.add(it) })
                 }
-                ProductKindFilterRow(catalogTab, hasDecants) { catalogTab = it }
+                ProductKindFilterRow(catalogTab, hasDecants, hasServices) { catalogTab = it }
                 CategoryFilterRow(categoryOptions, selectedCategoryId) { selectedCategoryId = it }
                 Spacer(Modifier.height(14.dp))
                 Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -232,7 +236,7 @@ fun PosScreen(
                         if (catalogTab == "all" && query.isBlank() && selectedCategoryId == null && recentProducts.isNotEmpty()) {
                             RecentProductsRow(recentProducts, quantities, settings.allowNegativeStock, { viewModel.add(it) })
                         }
-                        ProductKindFilterRow(catalogTab, hasDecants) { catalogTab = it }
+                    ProductKindFilterRow(catalogTab, hasDecants, hasServices) { catalogTab = it }
                         CategoryFilterRow(categoryOptions, selectedCategoryId) { selectedCategoryId = it }
                         Spacer(Modifier.height(14.dp))
                          ProductGrid(catalog, quantities, selectedQuantities, settings.allowNegativeStock, { viewModel.add(it) }, 2, wholesaleMode, Modifier.weight(1f).fillMaxWidth())
@@ -719,6 +723,7 @@ private fun CategoryFilterRow(
 private fun ProductKindFilterRow(
     selected: String,
     hasDecants: Boolean,
+    hasServices: Boolean,
     onSelected: (String) -> Unit
 ) {
     Row(
@@ -740,6 +745,13 @@ private fun ProductKindFilterRow(
                 selected = selected == "decants",
                 onClick = { onSelected("decants") },
                 label = { Text("Decants") }
+            )
+        }
+        if (hasServices) {
+            FilterChip(
+                selected = selected == "services",
+                onClick = { onSelected("services") },
+                label = { Text("Servicios") }
             )
         }
     }
@@ -767,7 +779,7 @@ private fun RecentProductsRow(
         ) {
             lazyItems(products, key = { it.id }) { product ->
                 val quantity = quantities[product.id] ?: 0L
-                val canAdd = quantity > 0 || allowNegativeStock
+                val canAdd = product.remoteSaleUnit == "service" || quantity > 0 || allowNegativeStock
                 Surface(
                     modifier = Modifier
                         .widthIn(min = 150.dp, max = 230.dp)
@@ -892,7 +904,7 @@ private fun ProductGrid(products: List<Product>, quantities: Map<java.util.UUID,
         items(products, key = { it.id }) { product ->
             val quantity = quantities[product.id] ?: 0L
             val selected = selectedQuantities[product.id] ?: 0L
-            val canAdd = quantity > 0 || allowNegativeStock
+            val canAdd = product.remoteSaleUnit == "service" || quantity > 0 || allowNegativeStock
             Card(Modifier.clickable { if (canAdd) onAdd(product) }, shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface), elevation = CardDefaults.cardElevation(1.dp)) {
                 Column(Modifier.padding(13.dp)) {
                     Box(Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(15.dp)).background(BSPOSTheme.colors.primaryLight), contentAlignment = Alignment.Center) {
@@ -904,7 +916,7 @@ private fun ProductGrid(products: List<Product>, quantities: Map<java.util.UUID,
                     Spacer(Modifier.height(9.dp))
                     Text(product.name, fontWeight = FontWeight.Bold, maxLines = 2, minLines = 2, overflow = TextOverflow.Ellipsis)
                     Text(money(if (wholesaleMode) product.wholesalePrice ?: product.salePrice else product.salePrice), color = BSPOSTheme.colors.textPrimary, fontWeight = FontWeight.ExtraBold)
-                     Surface(shape = RoundedCornerShape(50), color = if (quantity > 0) BSPOSTheme.colors.successLight else if (allowNegativeStock) BSPOSTheme.colors.warningLight else BSPOSTheme.colors.errorLight) { Text(if (quantity > 0) "En stock ($quantity)" else if (allowNegativeStock) "Stock negativo permitido" else "Agotado", modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp), color = if (quantity > 0) BSPOSTheme.colors.success else if (allowNegativeStock) BSPOSTheme.colors.warning else BSPOSTheme.colors.error, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold) }
+                     Surface(shape = RoundedCornerShape(50), color = if (product.remoteSaleUnit == "service") BSPOSTheme.colors.primaryLight else if (quantity > 0) BSPOSTheme.colors.successLight else if (allowNegativeStock) BSPOSTheme.colors.warningLight else BSPOSTheme.colors.errorLight) { Text(if (product.remoteSaleUnit == "service") "Servicio · sin inventario" else if (quantity > 0) "En stock ($quantity)" else if (allowNegativeStock) "Stock negativo permitido" else "Agotado", modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp), color = if (product.remoteSaleUnit == "service") BSPOSTheme.colors.primary else if (quantity > 0) BSPOSTheme.colors.success else if (allowNegativeStock) BSPOSTheme.colors.warning else BSPOSTheme.colors.error, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold) }
                 }
             }
         }
