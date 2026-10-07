@@ -93,6 +93,7 @@ fun InventoryScreen(
     var filter by remember { mutableStateOf(0) }
     var initialForm by remember { mutableStateOf(false) }
     var receiptForm by remember { mutableStateOf(false) }
+    var receiptProductId by remember { mutableStateOf<UUID?>(null) }
     var countForm by remember { mutableStateOf(false) }
     var adjustmentForm by remember { mutableStateOf(false) }
     var reasonForm by remember { mutableStateOf(false) }
@@ -106,7 +107,7 @@ fun InventoryScreen(
     val totalUnits = stock.sumOf { it.quantity }
     val capitalAtCost = stock.sumOf { row -> row.quantity * (productById[row.productId]?.averageCost ?: 0L) }
     val productsWithoutPhoto = products.count { it.isActive && it.deletedAt == null && it.imagePath.isNullOrBlank() }
-    val stockEditableProducts = products.filter { it.remoteSaleUnit != "decant" && (it.remoteShopId == null || it.remoteShopId in editableShopIds) }
+    val stockEditableProducts = products.filter { it.remoteSaleUnit != "decant" && it.remoteSaleUnit != "service" && (it.remoteShopId == null || it.remoteShopId in editableShopIds) }
     val productsWithoutStock = stockEditableProducts.filter { product -> stock.none { it.productId == product.id } }
     val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
@@ -238,7 +239,16 @@ fun InventoryScreen(
         if (filtered.isEmpty()) {
             item { Text("No hay existencias para este filtro", color = BSPOSTheme.colors.textSecondary) }
         } else {
-            items(filtered, key = { it.id }) { item -> StockCard(names[item.productId] ?: item.productId.toString(), item.quantity) { selectedProduct = item.productId; viewModel.select(item.productId) } }
+            items(filtered, key = { it.id }) { item ->
+                StockCard(
+                    name = names[item.productId] ?: item.productId.toString(),
+                    quantity = item.quantity,
+                    onClick = { selectedProduct = item.productId; viewModel.select(item.productId) },
+                    onReceive = if (stockEditableProducts.any { it.id == item.productId }) {
+                        { receiptProductId = item.productId; receiptForm = true }
+                    } else null
+                )
+            }
         }
         item {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -246,8 +256,10 @@ fun InventoryScreen(
                 OutlinedButton({ adjustmentForm = true }, Modifier.weight(1f), enabled = stockEditableProducts.isNotEmpty() && reasons.any { it.isActive }) { Text("Ajuste") }
             }
             Spacer(Modifier.size(8.dp))
-            Button({ receiptForm = true }, Modifier.fillMaxWidth(), enabled = stockEditableProducts.isNotEmpty()) {
-                Text("Recibir mercancía")
+            Button({ receiptProductId = null; receiptForm = true }, Modifier.fillMaxWidth(), enabled = stockEditableProducts.isNotEmpty()) {
+                Icon(Icons.Default.Add, null)
+                Spacer(Modifier.width(6.dp))
+                Text("Aumentar existencias")
             }
             OutlinedButton({ countForm = true }, Modifier.fillMaxWidth(), enabled = stockEditableProducts.isNotEmpty()) { Text("Conteo físico") }
             Text("Cada entrada conserva su costo. Los lotes y precios Pro se calculan al sincronizar con la tienda.",
@@ -261,7 +273,17 @@ fun InventoryScreen(
     }
 
     if (initialForm) InitialInventoryForm(productsWithoutStock, { id, quantity, cost -> viewModel.initialize(id, quantity, cost); initialForm = false }, { initialForm = false })
-    if (receiptForm && stockEditableProducts.isNotEmpty()) InitialInventoryForm(stockEditableProducts, { id, quantity, cost -> viewModel.receive(id, quantity, cost); receiptForm = false }, { receiptForm = false }, "Recibir mercancía")
+    if (receiptForm && stockEditableProducts.isNotEmpty()) {
+        val receiptProducts = receiptProductId?.let { selectedId ->
+            stockEditableProducts.sortedBy { if (it.id == selectedId) 0 else 1 }
+        } ?: stockEditableProducts
+        InitialInventoryForm(
+            products = receiptProducts,
+            onSave = { id, quantity, cost -> viewModel.receive(id, quantity, cost); receiptForm = false; receiptProductId = null },
+            onDismiss = { receiptForm = false; receiptProductId = null },
+            title = if (receiptProductId == null) "Aumentar existencias" else "Entrada de mercancía"
+        )
+    }
     if (countForm && stockEditableProducts.isNotEmpty()) PhysicalCountForm(stockEditableProducts, { id, quantity, notes -> viewModel.count(id, quantity, notes); countForm = false }, { countForm = false })
     if (reasonForm) AdjustmentReasonForm({ name, direction -> viewModel.addReason(name, direction); reasonForm = false }, { reasonForm = false })
     if (adjustmentForm && stockEditableProducts.isNotEmpty()) InventoryAdjustmentForm(stockEditableProducts, reasons, { product, type, quantity, cost, reason, notes -> viewModel.adjust(product.id, type, quantity, cost, reason.id, notes); adjustmentForm = false }, { adjustmentForm = false })
@@ -441,7 +463,7 @@ private fun buildInventoryCsv(products: List<Product>, stock: List<com.example.b
 private fun escapeCsv(value: String): String = "\"${value.replace("\"", "\"\"")}\""
 
 @Composable
-private fun StockCard(name: String, quantity: Long, onClick: () -> Unit) {
+private fun StockCard(name: String, quantity: Long, onClick: () -> Unit, onReceive: (() -> Unit)?) {
     val color = if (quantity <= 0) BSPOSTheme.colors.error else BSPOSTheme.colors.success
     Card(onClick = onClick, shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface)) {
         Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -449,6 +471,16 @@ private fun StockCard(name: String, quantity: Long, onClick: () -> Unit) {
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) { Text(name, fontWeight = FontWeight.ExtraBold); Text(if (quantity <= 0) "Agotado" else "Disponible", color = color, style = MaterialTheme.typography.labelMedium) }
             Text(quantity.toString(), color = color, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
+            onReceive?.let { receive ->
+                OutlinedButton(
+                    onClick = receive,
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(2.dp))
+                    Text("Entrada", style = MaterialTheme.typography.labelSmall)
+                }
+            }
         }
     }
 }
