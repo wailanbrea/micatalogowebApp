@@ -61,7 +61,7 @@ import com.example.bspos.data.local.entity.UnitOfMeasureEntity
         CustomerEntity::class, RouteEntity::class, RouteCustomerEntity::class,
         RouteLoadEntity::class, RouteLoadItemEntity::class, SaleEntity::class, SaleItemEntity::class, PosSaleOutboxEntity::class, PaymentEntity::class, PaymentAllocationEntity::class, ReturnEntity::class, ReturnItemEntity::class, BackupHistoryEntity::class, CashSessionEntity::class, CashMovementEntity::class
     ],
-    version = 20,
+    version = 21,
     exportSchema = true
 )
 @TypeConverters(DatabaseConverters::class, InventoryConverters::class)

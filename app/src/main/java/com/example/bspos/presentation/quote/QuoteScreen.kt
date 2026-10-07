@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items as lazyItems
@@ -52,6 +53,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -99,13 +101,15 @@ fun QuoteScreen(viewModel: QuoteViewModel = hiltViewModel()) {
             modifier = Modifier.fillMaxSize(),
             containerColor = androidx.compose.ui.graphics.Color.Transparent,
             floatingActionButton = {
-                ExtendedFloatingActionButton(
-                    onClick = { showCart = true },
-                    icon = { Icon(Icons.Default.ShoppingCart, contentDescription = null) },
-                    text = { Text(if (cartQuantity == 0) "Cotizar" else "Cotización ($cartQuantity)") },
-                    containerColor = BSPOSTheme.colors.primary,
-                    contentColor = androidx.compose.ui.graphics.Color.White
-                )
+                if (cartQuantity > 0) {
+                    ExtendedFloatingActionButton(
+                        onClick = { showCart = true },
+                        icon = { Icon(Icons.Default.ShoppingCart, contentDescription = null) },
+                        text = { Text("Cotización ($cartQuantity)") },
+                        containerColor = BSPOSTheme.colors.primary,
+                        contentColor = androidx.compose.ui.graphics.Color.White
+                    )
+                }
             }
         ) { contentPadding ->
         if (state.loading) {
@@ -121,25 +125,30 @@ fun QuoteScreen(viewModel: QuoteViewModel = hiltViewModel()) {
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
-                    Text("Presupuestos guardados para convertirlos en venta.", color = BSPOSTheme.colors.textSecondary)
-                    Spacer(Modifier.height(14.dp))
-                    QuoteSummary(state.rows)
-                    Spacer(Modifier.height(14.dp))
-                    Text("Busca y agrega productos al presupuesto", color = BSPOSTheme.colors.textSecondary)
-                    Spacer(Modifier.height(10.dp))
-                    OutlinedTextField(
-                        value = query,
-                        onValueChange = { query = it },
+                    Column(
                         modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        placeholder = { Text("Buscar por nombre, marca o código") },
-                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) }
-                    )
-                    if (categories.isNotEmpty()) {
-                        Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            FilterChip(selected = selectedCategory == null, onClick = { selectedCategory = null }, label = { Text("Todos") })
-                            categories.take(5).forEach { category ->
-                                FilterChip(selected = selectedCategory == category, onClick = { selectedCategory = category }, label = { Text(category, maxLines = 1, overflow = TextOverflow.Ellipsis) })
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Text("Presupuestos guardados para convertirlos en venta.", color = BSPOSTheme.colors.textSecondary)
+                        QuoteSummary(state.rows)
+                        Text("Busca y agrega productos al presupuesto", color = BSPOSTheme.colors.textSecondary)
+                        OutlinedTextField(
+                            value = query,
+                            onValueChange = { query = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            placeholder = { Text("Buscar por nombre, marca o código") },
+                            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) }
+                        )
+                        if (categories.isNotEmpty()) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                FilterChip(selected = selectedCategory == null, onClick = { selectedCategory = null }, label = { Text("Todos") })
+                                categories.take(5).forEach { category ->
+                                    FilterChip(selected = selectedCategory == category, onClick = { selectedCategory = category }, label = { Text(category, maxLines = 1, overflow = TextOverflow.Ellipsis) })
+                                }
                             }
                         }
                     }

@@ -5,4 +5,5 @@ import androidx.room.PrimaryKey
 @Entity(tableName = "payment_sync_outbox")
 data class PaymentSyncEntity(@PrimaryKey val id: String, val shopId: String,
     val customerId: String, val payload: String, val dependencies: String,
-    val state: String = "PENDING", val error: String? = null)
+    val state: String = "PENDING", val error: String? = null,
+    @androidx.room.ColumnInfo(name = "server_response", defaultValue = "NULL") val serverResponse: String? = null)

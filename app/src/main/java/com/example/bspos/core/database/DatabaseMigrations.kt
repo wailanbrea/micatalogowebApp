@@ -4,6 +4,14 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 object DatabaseMigrations {
+    /** Preserve the server response for queued operations when upgrading v20 installs. */
+    val MIGRATION_20_21 = object : Migration(20, 21) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE payment_sync_outbox ADD COLUMN server_response TEXT DEFAULT NULL")
+            db.execSQL("ALTER TABLE operation_outbox ADD COLUMN server_response TEXT DEFAULT NULL")
+        }
+    }
+
     val MIGRATION_19_20 = object : Migration(19, 20) {
         override fun migrate(db: SupportSQLiteDatabase) {
             db.execSQL("ALTER TABLE sales ADD COLUMN sale_mode TEXT NOT NULL DEFAULT 'retail'")
