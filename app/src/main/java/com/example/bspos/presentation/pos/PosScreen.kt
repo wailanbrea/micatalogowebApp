@@ -18,6 +18,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items as lazyItems
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -95,6 +96,7 @@ fun PosScreen(
     viewModel: PosViewModel = hiltViewModel()
 ) {
     val products by viewModel.products.collectAsState()
+    val categories by viewModel.categories.collectAsState()
     val stock by viewModel.stock.collectAsState()
     val cart by viewModel.cart.collectAsState()
     val cartTotal by viewModel.cartTotal.collectAsState()
@@ -108,6 +110,7 @@ fun PosScreen(
     val printerMessage by viewModel.printerMessage.collectAsState()
     val wholesaleMode by viewModel.wholesaleMode.collectAsState()
     var query by remember { mutableStateOf("") }
+    var selectedCategoryId by remember { mutableStateOf<java.util.UUID?>(null) }
     var choosingCustomer by remember { mutableStateOf(false) }
     var showCart by rememberSaveable { mutableStateOf(false) }
     var showingSplitDialog by remember { mutableStateOf(false) }
@@ -123,11 +126,18 @@ fun PosScreen(
     val catalog = products.filter {
         it.isActive && it.deletedAt == null &&
             (!wholesaleMode || (it.wholesalePrice ?: 0L) > 0L) &&
+            (selectedCategoryId == null || it.categoryId == selectedCategoryId) &&
             (it.name.contains(query, true) ||
                 it.internalCode.contains(query, true) ||
                 it.barcode?.contains(query, true) == true)
     }
     val cartQuantity = cart.sumOf { it.quantity }
+    val categoryOptions = categories.filter { category -> products.any { product -> product.categoryId == category.id } }
+    LaunchedEffect(categoryOptions) {
+        if (selectedCategoryId != null && categoryOptions.none { it.id == selectedCategoryId }) {
+            selectedCategoryId = null
+        }
+    }
     val cashAction = {
         if (cashSession == null) onOpenCash() else reviewMethod = CheckoutReviewMethod.CASH
     }
@@ -171,6 +181,7 @@ fun PosScreen(
                 }
                 Spacer(Modifier.height(14.dp))
                 SearchField(query, { query = it }, presentation.posSearchPlaceholder) { showingBarcodeScanner = true }
+                CategoryFilterRow(categoryOptions, selectedCategoryId) { selectedCategoryId = it }
                 Spacer(Modifier.height(14.dp))
                 Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                      ProductGrid(catalog, quantities, selectedQuantities, settings.allowNegativeStock, { viewModel.add(it) }, 4, wholesaleMode, Modifier.weight(1f))
@@ -204,6 +215,7 @@ fun PosScreen(
                         }
                         Spacer(Modifier.height(14.dp))
                         SearchField(query, { query = it }, presentation.posSearchPlaceholder) { showingBarcodeScanner = true }
+                        CategoryFilterRow(categoryOptions, selectedCategoryId) { selectedCategoryId = it }
                         Spacer(Modifier.height(14.dp))
                          ProductGrid(catalog, quantities, selectedQuantities, settings.allowNegativeStock, { viewModel.add(it) }, 2, wholesaleMode, Modifier.weight(1f).fillMaxWidth())
                     }
@@ -652,6 +664,35 @@ private fun SearchField(
             IconButton(onClick = onScan) {
                 Icon(Icons.Default.QrCodeScanner, contentDescription = "Escanear código de barras", tint = BSPOSTheme.colors.primary)
             }
+        }
+    }
+}
+
+@Composable
+private fun CategoryFilterRow(
+    categories: List<com.example.bspos.domain.model.Category>,
+    selectedCategoryId: java.util.UUID?,
+    onCategorySelected: (java.util.UUID?) -> Unit
+) {
+    if (categories.isEmpty()) return
+    LazyRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        contentPadding = PaddingValues(horizontal = 2.dp)
+    ) {
+        item {
+            FilterChip(
+                selected = selectedCategoryId == null,
+                onClick = { onCategorySelected(null) },
+                label = { Text("Todos") }
+            )
+        }
+        lazyItems(categories, key = { it.id }) { category ->
+            FilterChip(
+                selected = selectedCategoryId == category.id,
+                onClick = { onCategorySelected(category.id) },
+                label = { Text(category.name, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+            )
         }
     }
 }

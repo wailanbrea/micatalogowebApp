@@ -10,6 +10,7 @@ import com.example.bspos.domain.model.Sale
 import com.example.bspos.data.printer.BluetoothPrinterClient
 import com.example.bspos.data.printer.BluetoothPrinterRepository
 import com.example.bspos.domain.repository.CustomerRepository
+import com.example.bspos.domain.repository.CategoryRepository
 import com.example.bspos.domain.repository.InventoryRepository
 import com.example.bspos.domain.repository.ProductRepository
 import com.example.bspos.domain.repository.MiCatalogoConnectionRepository
@@ -26,6 +27,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.Instant
@@ -44,6 +46,7 @@ data class CheckoutResult(
 @HiltViewModel
 class PosViewModel @Inject constructor(
     productsRepository: ProductRepository,
+    categoryRepository: CategoryRepository,
     customers: CustomerRepository,
     inventory: InventoryRepository,
     settingsRepository: SettingsRepository,
@@ -56,6 +59,13 @@ class PosViewModel @Inject constructor(
     val products = connectionRepository.observeConnection()
         .flatMapLatest { state ->
             state.activeShopId?.let(productsRepository::observeForShop) ?: productsRepository.observeAll()
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    val categories = categoryRepository.observeAll()
+        .map { records ->
+            records
+                .filter { it.isActive && it.deletedAt == null }
+                .sortedWith(compareBy({ it.sortOrder }, { it.name.lowercase() }))
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val customers = customers.observeAll().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
