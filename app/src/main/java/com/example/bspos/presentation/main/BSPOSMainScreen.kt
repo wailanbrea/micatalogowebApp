@@ -1084,6 +1084,7 @@ private fun navigateFeatureAction(
         "abrir métricas completas", "ver estadísticas", "ver qr y métricas" -> Screen.Metrics
         "administrar equipo", "administrar vendedores" -> Screen.Team
         "ver comisiones" -> Screen.Commissions
+        "abrir métricas" -> Screen.Metrics
         "configuración de tienda", "configurar apariencia", "editar configuración" -> Screen.ShopSettings
         "ver mi tienda" -> Screen.Storefront
         "registrar gasto" -> Screen.Expenses
