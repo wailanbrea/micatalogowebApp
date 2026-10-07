@@ -68,6 +68,7 @@ fun CatalogHomeScreen(
     val stock by viewModel.stock.collectAsState()
     val message by viewModel.message.collectAsState()
     val shops by viewModel.shops.collectAsState()
+    val activeShopId by viewModel.activeShopId.collectAsState()
     val sourceProducts = products.filter {
         it.isActive && it.deletedAt == null && it.remoteShopId != null && it.remoteProductId != null &&
             it.remoteSaleUnit in setOf("bottle", "ml") && it.remoteVolumeMl != null
@@ -175,6 +176,7 @@ fun CatalogHomeScreen(
         onSave = { input, initialQuantity -> if (editingProduct == null) viewModel.add(input, initialQuantity) else viewModel.update(editingProduct!!, input); showForm = false; editingProduct = null },
         onDismiss = { showForm = false; editingProduct = null },
         shops = shops,
+        activeShopId = activeShopId,
         decantMode = initialDecantMode,
         sourceProducts = sourceProducts
     )
@@ -211,7 +213,7 @@ private fun ProductCard(product: Product, quantity: Long, category: String?, sho
 }
 
 @Composable
-private fun ProductForm(current: Product?, currentQuantity: Long, categories: List<Category>, units: List<UnitOfMeasure>, presentation: MiCatalogoBusinessPresentation, showCost: Boolean, showInventoryFields: Boolean, showProductCode: Boolean, onSave: (ProductInput, Long) -> Unit, onDismiss: () -> Unit, shops: List<com.example.bspos.domain.model.MiCatalogoShop>, decantMode: Boolean = false, sourceProducts: List<Product> = emptyList()) {
+private fun ProductForm(current: Product?, currentQuantity: Long, categories: List<Category>, units: List<UnitOfMeasure>, presentation: MiCatalogoBusinessPresentation, showCost: Boolean, showInventoryFields: Boolean, showProductCode: Boolean, onSave: (ProductInput, Long) -> Unit, onDismiss: () -> Unit, shops: List<com.example.bspos.domain.model.MiCatalogoShop>, activeShopId: String?, decantMode: Boolean = false, sourceProducts: List<Product> = emptyList()) {
     val context = LocalContext.current
     var name by remember(current?.id) { mutableStateOf(current?.name.orEmpty()) }
     var code by remember(current?.id) { mutableStateOf(current?.internalCode.orEmpty()) }
@@ -228,7 +230,9 @@ private fun ProductForm(current: Product?, currentQuantity: Long, categories: Li
     var categoryOpen by remember { mutableStateOf(false) }
     var unitOpen by remember { mutableStateOf(false) }
     var imagePath by remember(current?.id) { mutableStateOf(current?.imagePath) }
-    var shopId by remember(current?.id, shops) { mutableStateOf(current?.remoteShopId ?: shops.singleOrNull()?.id) }
+    var shopId by remember(current?.id, shops, activeShopId) {
+        mutableStateOf(current?.remoteShopId ?: shops.singleOrNull()?.id ?: activeShopId)
+    }
     var shopOpen by remember { mutableStateOf(false) }
     val effectiveDecantMode = decantMode || current?.remoteSaleUnit == "decant"
     var volumeMl by remember(current?.id, effectiveDecantMode) { mutableStateOf(current?.remoteVolumeMl?.toString().orEmpty()) }
@@ -291,9 +295,15 @@ private fun ProductForm(current: Product?, currentQuantity: Long, categories: Li
                 OutlinedTextField(volumeMl, { volumeMl = it.filter(Char::isDigit) }, label = { Text("Tamaño del decant (ml)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), supportingText = { Text("Máximo: ${sourceProduct?.remoteVolumeMl ?: "—"} ml") })
             }
             if (current == null) Box {
-                TextButton({ shopOpen = true }) { Text("Destino: ${shops.find { it.id == shopId }?.name ?: "Solo este dispositivo"}") }
+                val selectedShop = shops.find { it.id == shopId }
+                val destinationLabel = selectedShop?.name
+                    ?: if (shopId != null && shopId == activeShopId) "Tienda activa" else "Solo este dispositivo"
+                TextButton({ shopOpen = true }) { Text("Destino: $destinationLabel") }
                 DropdownMenu(shopOpen, { shopOpen = false }) {
                     DropdownMenuItem({ Text("Solo este dispositivo") }, { shopId = null; shopOpen = false })
+                    if (activeShopId != null && shops.none { it.id == activeShopId }) {
+                        DropdownMenuItem({ Text("Tienda activa") }, { shopId = activeShopId; shopOpen = false })
+                    }
                     shops.forEach { shop -> DropdownMenuItem({ Text(shop.name) }, { shopId = shop.id; shopOpen = false }) }
                 }
             } else if (current.remoteShopId != null) Text("Producto vinculado a MiCatalogo: se enviarán los cambios al sincronizar.", style = MaterialTheme.typography.bodySmall)

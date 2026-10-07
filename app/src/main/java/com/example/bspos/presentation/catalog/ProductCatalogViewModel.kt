@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -41,6 +42,14 @@ class ProductCatalogViewModel @Inject constructor(
             state.activeShopId?.let(productRepository::observeForShop) ?: productRepository.observeAll()
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    /**
+     * The selected shop is persisted independently from the shop list cache.
+     * Keep it available to creation forms so a temporary shop-list refresh
+     * cannot silently turn a remote product or decant into a local-only item.
+     */
+    val activeShopId = connection.observeConnection()
+        .map { it.activeShopId }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
     val categories = categoryUseCases.observe().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val units = unitUseCases.observe().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val stock = inventory.observeStock(InventoryLocation.MAIN).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
