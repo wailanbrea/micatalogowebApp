@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.ReceiptLong
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
@@ -26,6 +27,8 @@ import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -75,6 +78,7 @@ fun SalesHistoryScreen(
     val context = LocalContext.current
     var period by remember { mutableStateOf("Hoy") }
     var paymentFilter by remember { mutableStateOf("Todas") }
+    var query by remember { mutableStateOf("") }
 
     androidx.compose.runtime.LaunchedEffect(printerMessage) {
         printerMessage?.let {
@@ -87,10 +91,20 @@ fun SalesHistoryScreen(
     val start = when (period) {
         "Este mes" -> today.withDayOfMonth(1)
         "Últimos 7" -> today.minusDays(6)
+        "Todo" -> null
         else -> today
     }
+    val customerNames = customers.associate { it.id to it.fullName }
+    val normalizedQuery = query.trim()
     val visibleSales = sales
-        .filter { it.status == SaleStatus.COMPLETED && it.date.atZone(ZoneId.systemDefault()).toLocalDate() >= start }
+        .filter { sale ->
+            val isCancelled = sale.status != SaleStatus.COMPLETED
+            when (paymentFilter) {
+                "Anuladas" -> isCancelled
+                else -> !isCancelled
+            }
+        }
+        .filter { sale -> start == null || sale.date.atZone(ZoneId.systemDefault()).toLocalDate() >= start }
         .filter { sale ->
             when (paymentFilter) {
                 "Pagadas" -> sale.pendingAmount <= 0
@@ -98,9 +112,11 @@ fun SalesHistoryScreen(
                 else -> true
             }
         }
+        .filter { sale ->
+            normalizedQuery.isBlank() || sale.invoiceNumber.contains(normalizedQuery, ignoreCase = true) ||
+                (customerNames[sale.customerId] ?: "").contains(normalizedQuery, ignoreCase = true)
+        }
         .sortedByDescending { it.date }
-    val customerNames = customers.associate { it.id to it.fullName }
-
     Column(
         modifier = Modifier.fillMaxSize().background(BSPOSTheme.colors.background)
     ) {
@@ -117,7 +133,7 @@ fun SalesHistoryScreen(
             }
             item {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                    listOf("Hoy", "Este mes", "Últimos 7").forEach { option ->
+                    listOf("Hoy", "Este mes", "Últimos 7", "Todo").forEach { option ->
                         FilterChip(
                             selected = period == option,
                             onClick = { period = option },
@@ -131,6 +147,22 @@ fun SalesHistoryScreen(
                     }
                 }
             }
+            item {
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = { query = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                    placeholder = { Text("Buscar factura o cliente...") },
+                    shape = RoundedCornerShape(14.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = BSPOSTheme.colors.primary,
+                        unfocusedBorderColor = BSPOSTheme.colors.outline,
+                        focusedLeadingIconColor = BSPOSTheme.colors.primary
+                    )
+                )
+            }
             item { SalesSummary(visibleSales) }
             item {
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
@@ -142,7 +174,7 @@ fun SalesHistoryScreen(
             }
             item {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                    listOf("Todas", "Pagadas", "A crédito").forEach { option ->
+                    listOf("Todas", "Pagadas", "A crédito", "Anuladas").forEach { option ->
                         FilterChip(
                             selected = paymentFilter == option,
                             onClick = { paymentFilter = option },
