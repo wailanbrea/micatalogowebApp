@@ -495,7 +495,7 @@ private fun InitialInventoryForm(products: List<Product>, onSave: (UUID, Long, L
     AlertDialog(onDismissRequest = onDismiss, title = { Text(title) }, text = {
         DialogScrollableColumn {
             Box { TextButton({ open = true }) { Text("Producto: ${selected.name}") }; DropdownMenu(open, { open = false }) { products.forEach { item -> DropdownMenuItem({ Text(item.name) }, { selected = item; open = false }) } } }
-            OutlinedTextField(quantity, { quantity = it; error = null }, label = { Text("Cantidad") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), isError = error != null)
+            OutlinedTextField(quantity, { quantity = it.filter(Char::isDigit); error = null }, label = { Text("Cantidad") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), isError = error != null)
             OutlinedTextField(cost, { cost = it; error = null }, label = { Text("Costo unitario (${LocalCurrency.current.symbol})") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), isError = error != null)
             error?.let { Text(it, color = BSPOSTheme.colors.error, style = MaterialTheme.typography.bodySmall) }
         }
@@ -514,7 +514,7 @@ private fun PhysicalCountForm(products: List<Product>, onSave: (UUID, Long, Stri
             Box { TextButton({ open = true }) { Text(product.name) }; DropdownMenu(open, { open = false }) {
                 products.forEach { item -> DropdownMenuItem({ Text(item.name) }, { product = item; open = false }) }
             } }
-            OutlinedTextField(quantity, { quantity = it; error = false }, label = { Text("Cantidad contada (puede ser 0)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+            OutlinedTextField(quantity, { quantity = it.filter(Char::isDigit); error = false }, label = { Text("Cantidad contada (puede ser 0)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
             OutlinedTextField(notes, { notes = it; error = false }, label = { Text("Nota obligatoria") })
             Text("Si el saldo remoto cambió, la operación quedará pendiente de revisión. Un conteo no acredita costo de compra.", style = MaterialTheme.typography.bodySmall)
             if (error) Text("Indica cantidad válida y nota.", color = BSPOSTheme.colors.error)
@@ -547,7 +547,7 @@ private fun InventoryAdjustmentForm(products: List<Product>, reasons: List<Inven
             Box { TextButton({ productOpen = true }) { Text("Producto: ${product.name}") }; DropdownMenu(productOpen, { productOpen = false }) { products.forEach { item -> DropdownMenuItem({ Text(item.name) }, { product = item; productOpen = false }) } } }
             Box { TextButton({ typeOpen = true }) { Text("Tipo: ${type.label()}") }; DropdownMenu(typeOpen, { typeOpen = false }) { listOf(InventoryMovementType.ADJUSTMENT_IN, InventoryMovementType.ADJUSTMENT_OUT, InventoryMovementType.DAMAGED, InventoryMovementType.LOSS, InventoryMovementType.EXPIRED, InventoryMovementType.INTERNAL_USE).forEach { item -> DropdownMenuItem({ Text(item.label()) }, { type = item; typeOpen = false }) } } }
             Box { TextButton({ reasonOpen = true }) { Text("Motivo: ${reason?.name ?: "Seleccione"}") }; DropdownMenu(reasonOpen, { reasonOpen = false }) { compatible.forEach { item -> DropdownMenuItem({ Text(item.name) }, { reason = item; reasonOpen = false }) } } }
-            OutlinedTextField(quantity, { quantity = it; error = null }, label = { Text("Cantidad absoluta") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), isError = error != null)
+            OutlinedTextField(quantity, { quantity = it.filter(Char::isDigit); error = null }, label = { Text("Cantidad absoluta") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), isError = error != null)
             OutlinedTextField(cost, { cost = it.filter(Char::isDigit); error = null }, label = { Text("Costo unitario (${LocalCurrency.current.symbol})") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), isError = error != null)
             OutlinedTextField(notes, { notes = it; error = null }, label = { Text("Nota obligatoria") }, isError = error != null)
             error?.let { Text(it, color = BSPOSTheme.colors.error, style = MaterialTheme.typography.bodySmall) }

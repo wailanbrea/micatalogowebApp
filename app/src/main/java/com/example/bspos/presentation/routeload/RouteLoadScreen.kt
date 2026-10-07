@@ -88,7 +88,7 @@ fun RouteLoadScreen(viewModel: RouteLoadViewModel = hiltViewModel()) {
                     Selector("Producto", product?.name ?: "Sin productos activos", productOpen, { productOpen = true }, { productOpen = false }) {
                         activeProducts.forEach { item -> DropdownMenuItem({ Text(item.name) }, { product = item; productOpen = false }) }
                     }
-                    OutlinedTextField(quantity, { quantity = it; validationError = null }, modifier = Modifier.fillMaxWidth(), label = { Text("Cantidad") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true, isError = validationError != null)
+                    OutlinedTextField(quantity, { quantity = it.filter(Char::isDigit); validationError = null }, modifier = Modifier.fillMaxWidth(), label = { Text("Cantidad") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true, isError = validationError != null)
                     Button(onClick = {
                         val selected = product
                         val value = quantity.toLongOrNull()

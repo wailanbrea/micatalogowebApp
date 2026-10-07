@@ -136,7 +136,7 @@ private fun ReturnLineDialog(item: SaleItem, charged: Long, returned: Long, onSa
     AlertDialog(onDismissRequest = onDismiss, title = { Text("Confirmar devolución") }, text = {
         DialogScrollableColumn {
             Text("Máximo permitido: $remaining unidades · Ya devueltas: $returned", color = BSPOSTheme.colors.textSecondary)
-            OutlinedTextField(quantity, { quantity = it; error = null }, label = { Text("Cantidad") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), isError = error != null)
+            OutlinedTextField(quantity, { quantity = it.filter(Char::isDigit); error = null }, label = { Text("Cantidad") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), isError = error != null)
             amount?.let { Text("Reembolso: ${money(it)}", fontWeight = FontWeight.Bold, color = BSPOSTheme.colors.primary) }
             Text("Importe original con descuentos e impuestos. La devolución remota espera la confirmación de la venta original.", style = MaterialTheme.typography.bodySmall)
             FilterChip(restock, { restock = !restock }, label = { Text(if (restock) "Reintegrar al inventario" else "No reintegrar al inventario") })
