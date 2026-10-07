@@ -82,7 +82,17 @@ data class FeatureModuleDto(
     val kpis: List<FeatureKpiDto> = emptyList(),
     val rows: List<FeatureRowDto> = emptyList(),
     val actions: List<FeatureActionDto> = emptyList(),
+    val sections: List<FeatureSectionDto> = emptyList(),
     @SerialName("quoteProducts") val quoteProducts: List<FeatureProductDto> = emptyList(),
+    val note: String? = null
+)
+
+@Serializable
+data class FeatureSectionDto(
+    val key: String = "",
+    val label: String = "",
+    val kpis: List<FeatureKpiDto> = emptyList(),
+    val rows: List<FeatureRowDto> = emptyList(),
     val note: String? = null
 )
 

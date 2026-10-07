@@ -19,6 +19,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ErrorOutline
@@ -55,6 +57,7 @@ import com.example.bspos.data.micatalogo.dto.FeatureDefinitionDto
 import com.example.bspos.data.micatalogo.dto.FeatureKpiDto
 import com.example.bspos.data.micatalogo.dto.FeatureModuleDto
 import com.example.bspos.data.micatalogo.dto.FeatureRowDto
+import com.example.bspos.data.micatalogo.dto.FeatureSectionDto
 
 @Composable
 fun FeatureModuleScreen(
@@ -98,6 +101,10 @@ private fun FeatureContent(
                 .any { it.contains(normalized, ignoreCase = true) }
         }
     }
+    var activeSectionKey by remember(module.sections) {
+        mutableStateOf(module.sections.firstOrNull()?.key.orEmpty())
+    }
+    val activeSection = module.sections.firstOrNull { it.key == activeSectionKey }
     LazyColumn(
         modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
@@ -168,52 +175,94 @@ private fun FeatureContent(
                 }
             }
         }
-        if (module.rows.size >= 4) {
+        if (module.sections.isNotEmpty()) {
             item {
-                OutlinedTextField(
-                    value = query,
-                    onValueChange = { query = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    shape = RoundedCornerShape(14.dp),
-                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                    label = { Text("Buscar en ${definition.title.lowercase()}") },
-                    colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = BSPOSTheme.colors.primary,
-                        unfocusedBorderColor = BSPOSTheme.colors.outline,
-                        focusedLabelColor = BSPOSTheme.colors.primary
-                    )
+                ReportSectionTabs(
+                    sections = module.sections,
+                    activeKey = activeSectionKey,
+                    onSelect = { activeSectionKey = it }
                 )
             }
-        }
-        if (filteredRows.isEmpty()) {
-            item {
-                Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface)) {
-                    Column(Modifier.fillMaxWidth().padding(18.dp)) {
-                        Text(
-                            when {
-                                query.isNotBlank() -> "No encontramos coincidencias"
-                                module.kind == "prepared" -> "Estamos preparando este módulo"
-                                else -> "Todavía no hay registros"
-                            },
-                            fontWeight = FontWeight.Bold
-                        )
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            if (query.isNotBlank()) "Prueba con otro nombre, código o estado."
-                            else "Cuando existan datos, aparecerán aquí sin salir de la aplicación.",
-                            color = BSPOSTheme.colors.textSecondary
-                        )
+            activeSection?.let { section ->
+                if (section.kpis.isNotEmpty()) {
+                    item {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            section.kpis.take(3).forEach { kpi -> KpiCard(kpi, Modifier.weight(1f)) }
+                        }
+                    }
+                }
+                section.note?.takeIf { it.isNotBlank() }?.let { note ->
+                    item { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.primaryLight)) { Text(note, Modifier.padding(14.dp), color = BSPOSTheme.colors.textPrimary) } }
+                }
+                if (section.rows.isEmpty()) {
+                    item { EmptyFeatureRows("Todavía no hay registros en esta sección.") }
+                } else {
+                    items(section.rows, key = { row -> "${section.key}-${row.primary}-${row.id}" }) { row ->
+                        AnimatedVisibility(visible = true, enter = fadeIn() + slideInHorizontally { it / 12 }) { FeatureRow(row) }
                     }
                 }
             }
         } else {
-            items(filteredRows, key = { row -> "${row.primary}-${row.id}" }) { row ->
-                AnimatedVisibility(
-                    visible = true,
-                    enter = fadeIn() + slideInHorizontally { it / 12 }
-                ) { FeatureRow(row) }
+            if (module.rows.size >= 4) {
+                item {
+                    OutlinedTextField(
+                        value = query,
+                        onValueChange = { query = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        shape = RoundedCornerShape(14.dp),
+                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                        label = { Text("Buscar en ${definition.title.lowercase()}") },
+                        colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = BSPOSTheme.colors.primary,
+                            unfocusedBorderColor = BSPOSTheme.colors.outline,
+                            focusedLabelColor = BSPOSTheme.colors.primary
+                        )
+                    )
+                }
             }
+            if (filteredRows.isEmpty()) {
+                item { EmptyFeatureRows(when {
+                    query.isNotBlank() -> "No encontramos coincidencias"
+                    module.kind == "prepared" -> "Estamos preparando este módulo"
+                    else -> "Todavía no hay registros"
+                }, query.isNotBlank()) }
+            } else {
+                items(filteredRows, key = { row -> "${row.primary}-${row.id}" }) { row ->
+                    AnimatedVisibility(visible = true, enter = fadeIn() + slideInHorizontally { it / 12 }) { FeatureRow(row) }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ReportSectionTabs(
+    sections: List<FeatureSectionDto>,
+    activeKey: String,
+    onSelect: (String) -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        sections.forEach { section ->
+            if (section.key == activeKey) {
+                Button(onClick = { onSelect(section.key) }, contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp, vertical = 0.dp)) { Text(section.label) }
+            } else {
+                OutlinedButton(onClick = { onSelect(section.key) }, contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp, vertical = 0.dp)) { Text(section.label) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun EmptyFeatureRows(title: String, hasQuery: Boolean = false) {
+    Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface)) {
+        Column(Modifier.fillMaxWidth().padding(18.dp)) {
+            Text(title, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(4.dp))
+            Text(if (hasQuery) "Prueba con otro nombre, código o estado." else "Cuando existan datos, aparecerán aquí sin salir de la aplicación.", color = BSPOSTheme.colors.textSecondary)
         }
     }
 }
