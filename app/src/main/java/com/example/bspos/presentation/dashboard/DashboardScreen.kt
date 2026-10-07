@@ -78,6 +78,8 @@ fun DashboardScreen(
     onCollections: () -> Unit = {},
     onInventory: () -> Unit = {},
     onProducts: () -> Unit = {},
+    onStorefront: () -> Unit = {},
+    onCash: () -> Unit = {},
     onCustomers: () -> Unit = {},
     onRoutes: () -> Unit = {},
     onReturns: () -> Unit = {},
@@ -104,6 +106,7 @@ fun DashboardScreen(
     val selectedItems by viewModel.selectedItems.collectAsState()
     val printers by printerViewModel.printers.collectAsState()
     val printerMessage by printerViewModel.printerMessage.collectAsState()
+    val cashSession by printerViewModel.cashSession.collectAsState()
     val context = LocalContext.current
     var showAllSales by remember { mutableStateOf(false) }
     var selectedPeriod by remember { mutableStateOf("Hoy") }
@@ -189,6 +192,7 @@ fun DashboardScreen(
             }
             item {
                 val setupItems = listOf(
+                    "Confirma cómo te pagan" to (cashSession != null),
                     "Agrega tu primer producto" to activeProducts.isNotEmpty(),
                     "Haz tu primera venta" to completed.isNotEmpty(),
                     "Comparte tu catálogo" to false
@@ -197,9 +201,10 @@ fun DashboardScreen(
                     DashboardEnter(delayMillis = 70) {
                         GuidedSetupCard(
                             steps = setupItems,
+                            onCash = onCash,
                             onProduct = onProducts,
                             onSale = onNewSale,
-                            onShare = onProducts
+                            onShare = onStorefront
                         )
                     }
                 }
@@ -390,11 +395,12 @@ private fun DashboardPeriodSelector(
 @Composable
 private fun GuidedSetupCard(
     steps: List<Pair<String, Boolean>>,
+    onCash: () -> Unit,
     onProduct: () -> Unit,
     onSale: () -> Unit,
     onShare: () -> Unit
 ) {
-    val actions = listOf(onProduct, onSale, onShare)
+    val actions = listOf(onCash, onProduct, onSale, onShare)
     val completed = steps.count { it.second }
     Card(
         modifier = Modifier.fillMaxWidth().animateContentSize(),
@@ -404,9 +410,14 @@ private fun GuidedSetupCard(
     ) {
         Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Termina tu tienda", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold, modifier = Modifier.weight(1f))
+                Text("Primeros pasos", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold, modifier = Modifier.weight(1f))
                 Text("$completed de ${steps.size}", color = BSPOSTheme.colors.textSecondary, fontWeight = FontWeight.Bold)
             }
+            Text(
+                "Completa estas acciones para dejar tu negocio listo para operar.",
+                color = BSPOSTheme.colors.textSecondary,
+                style = MaterialTheme.typography.bodySmall
+            )
             steps.forEachIndexed { index, (label, done) ->
                 Row(
                     modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).clickable { actions[index]() }.padding(10.dp),

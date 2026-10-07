@@ -728,6 +728,8 @@ fun BSPOSNavHost(
                 onCollections = { navController.navigate(Screen.CreditLedger.route) },
                 onInventory = { navController.navigate(Screen.Inventory.route) },
                 onProducts = { navController.navigate(Screen.Catalog.route) },
+                onStorefront = { if (canSeeMenu("storefront")) navController.navigate(Screen.Storefront.route) },
+                onCash = { if (canSeeMenu("cash")) navController.navigate(Screen.Cash.route) },
                 onCustomers = { navController.navigate(Screen.Customers.route) },
                 onRoutes = { if (routesEnabled) navController.navigate(Screen.Routes.route) },
                 onReturns = { if (canSeeMenu("returns")) navController.navigate(Screen.Returns.route) },
