@@ -112,13 +112,9 @@ private fun FeatureContent(
         item {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.weight(1f)) {
-                    if (definition.group.isNotBlank()) {
-                        Text(definition.group.uppercase(), color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+                    if (definition.description.isNotBlank()) {
+                        Text(definition.description, color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
                     }
-                    if (definition.title.isNotBlank()) {
-                        Text(definition.title, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold, color = BSPOSTheme.colors.textPrimary)
-                    }
-                    Text(definition.description, color = BSPOSTheme.colors.textSecondary)
                 }
                 IconButton(onClick = onRefresh) {
                     Icon(Icons.Default.Refresh, contentDescription = "Actualizar", tint = BSPOSTheme.colors.primary)
