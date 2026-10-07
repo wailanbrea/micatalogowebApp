@@ -230,8 +230,36 @@ private fun ProductForm(current: Product?, currentQuantity: Long, categories: Li
                     DropdownMenu(sourceOpen, { sourceOpen = false }) {
                         sourceProducts.forEach { item ->
                             DropdownMenuItem(
-                                text = { Text("${item.name} · ${item.remoteVolumeMl} ml") },
+                                text = {
+                                    Column {
+                                        Text(item.name, fontWeight = FontWeight.SemiBold)
+                                        Text("${item.remoteVolumeMl} ml · costo ${money(item.lastPurchaseCost)}", style = MaterialTheme.typography.labelSmall, color = BSPOSTheme.colors.textSecondary)
+                                    }
+                                },
                                 onClick = { sourceProduct = item; sourceOpen = false }
+                            )
+                        }
+                    }
+                }
+                sourceProduct?.let { source ->
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(14.dp),
+                        color = BSPOSTheme.colors.primaryLight,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, BSPOSTheme.colors.primary.copy(alpha = .25f))
+                    ) {
+                        Column(Modifier.padding(12.dp)) {
+                            Text("Botella fuente identificada", fontWeight = FontWeight.Bold, color = BSPOSTheme.colors.textPrimary)
+                            Text(source.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                            Spacer(Modifier.height(6.dp))
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text("${source.remoteVolumeMl ?: 0} ml de origen", style = MaterialTheme.typography.labelSmall, color = BSPOSTheme.colors.textSecondary)
+                                Text("Costo ${money(source.lastPurchaseCost)}", style = MaterialTheme.typography.labelSmall, color = BSPOSTheme.colors.textSecondary)
+                            }
+                            Text(
+                                source.remoteAvailableMl?.let { "$it ml disponibles para decantar" } ?: "Existencia de ml pendiente de sincronizar",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = BSPOSTheme.colors.textSecondary
                             )
                         }
                     }
@@ -284,7 +312,7 @@ private fun ProductForm(current: Product?, currentQuantity: Long, categories: Li
                 }
             }
             if (showProductCode) OutlinedTextField(code, { code = it }, label = { Text("Código interno") })
-            if (showCost && !effectiveDecantMode) OutlinedTextField(purchasePrice, { value -> if (current == null) purchasePrice = value; purchaseChanged = true; priceError = false }, label = { Text("Precio de compra (${LocalCurrency.current.symbol})") }, enabled = current == null, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), isError = priceError, supportingText = { if (current != null) Text("Se actualiza desde una entrada de inventario") })
+            if (showCost && !effectiveDecantMode) OutlinedTextField(purchasePrice, { value -> if (current == null) purchasePrice = value; purchaseChanged = true; priceError = false }, label = { Text(if (saleUnit == "bottle") "Costo de compra por botella (${LocalCurrency.current.symbol})" else "Precio de compra (${LocalCurrency.current.symbol})") }, enabled = current == null, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), isError = priceError, supportingText = { if (saleUnit == "bottle") Text("Obligatorio para calcular la ganancia y el costo recuperado por decants") else if (current != null) Text("Se actualiza desde una entrada de inventario") })
             OutlinedTextField(price, { value -> price = value; priceChanged = true; priceError = false }, label = { Text("Precio de venta (${LocalCurrency.current.symbol})") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), isError = priceError, supportingText = { if (priceError) Text("Indica un precio válido, con hasta dos decimales") })
             OutlinedTextField(wholesalePrice, { wholesalePrice = it; priceError = false }, label = { Text("Precio por mayor (${LocalCurrency.current.symbol})") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), supportingText = { Text("Opcional; habilita el modo mayorista en el POS") })
             if (showInventoryFields && !effectiveDecantMode) OutlinedTextField(initialQuantity, { value -> if (current == null) initialQuantity = value.filter(Char::isDigit) }, label = { Text("Stock inicial") }, enabled = current == null, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), supportingText = { Text(if (current == null) "Se registra en 0 si lo dejas así" else "Edita existencias desde Inventario") })
@@ -304,11 +332,12 @@ private fun ProductForm(current: Product?, currentQuantity: Long, categories: Li
             val effectiveQuantity = if (showInventoryFields && !effectiveDecantMode) quantity else 0L
             val selectedVolume = volumeMl.toIntOrNull()
             val sourceVolume = sourceProduct?.remoteVolumeMl
+            val sourceCost = sourceProduct?.lastPurchaseCost ?: 0L
             val validVolume = saleUnit == "unit" || (selectedVolume != null && selectedVolume > 0)
             val validPresentation = if (effectiveDecantMode) {
-                shopId != null && sourceProduct?.remoteProductId != null && selectedVolume != null && selectedVolume > 0 && sourceVolume != null && selectedVolume <= sourceVolume
+                shopId != null && sourceProduct?.remoteProductId != null && sourceCost > 0 && selectedVolume != null && selectedVolume > 0 && sourceVolume != null && selectedVolume <= sourceVolume
             } else {
-                validVolume
+                validVolume && (saleUnit != "bottle" || !showInventoryFields || effectivePurchase?.let { it > 0 } == true)
             }
             if (name.isBlank() || (showProductCode && effectiveCode.isBlank()) || sale == null || sale < 0 || effectivePurchase == null || effectivePurchase < 0 || wholesale?.let { it < 0 } == true || effectiveQuantity == null || effectiveQuantity < 0 || minimum == null || minimum < 0 || !validPresentation) {
                 priceError = true
