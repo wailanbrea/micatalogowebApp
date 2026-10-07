@@ -87,13 +87,6 @@ sealed class Screen(
         unselectedIcon = Icons.Outlined.Route
     )
 
-    data object More : Screen(
-        route = "more",
-        title = "Más",
-        selectedIcon = Icons.Filled.MoreHoriz,
-        unselectedIcon = Icons.Outlined.MoreHoriz
-    )
-
     data object Suppliers : Screen("suppliers", "Proveedores", Icons.Filled.People, Icons.Outlined.People)
     data object Inventory : Screen("inventory", "Inventario", Icons.Filled.Inventory2, Icons.Outlined.Inventory2)
     data object Collections : Screen("collections", "Cobros", Icons.Filled.ReceiptLong, Icons.Outlined.ReceiptLong)

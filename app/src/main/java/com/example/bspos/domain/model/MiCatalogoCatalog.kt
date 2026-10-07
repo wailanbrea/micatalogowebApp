@@ -93,6 +93,8 @@ val SellerMenuOptions = listOf(
     SellerMenuOption("authorizations", "Autorizaciones"),
     SellerMenuOption("returns", "Devoluciones"),
     SellerMenuOption("routes", "Rutas"),
+    // Legacy permission key kept for existing seller profiles; the duplicate
+    // shortcut is no longer rendered because these destinations live in the drawer.
     SellerMenuOption("more", "Más herramientas"),
     SellerMenuOption("accountant", "Contador"),
     SellerMenuOption("account", "Mi cuenta"),

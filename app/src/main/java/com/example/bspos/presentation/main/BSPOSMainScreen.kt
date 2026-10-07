@@ -98,7 +98,6 @@ import com.example.bspos.presentation.catalog.CatalogSettingsScreen
 import com.example.bspos.presentation.catalog.CatalogHomeScreen
 import com.example.bspos.presentation.supplier.SupplierScreen
 import com.example.bspos.presentation.inventory.InventoryScreen
-import com.example.bspos.presentation.more.MoreScreen
 import com.example.bspos.presentation.customer.CustomerScreen
 import com.example.bspos.presentation.route.RouteScreen
 import com.example.bspos.presentation.pos.PosScreen
@@ -193,7 +192,7 @@ fun BSPOSMainScreen(
                 screens = listOfNotNull(
                     Screen.Containers.takeIf { canSeeMenu("containers") },
                     Screen.RouteLoads.takeIf { canSeeMenu("loads") || (routesEnabled && canSeeMenu("routes")) },
-                    Screen.Suppliers.takeIf { canSeeMenu("suppliers") || canSeeMenu("more") },
+                    Screen.Suppliers.takeIf { canSeeMenu("suppliers") },
                     Screen.PurchaseInvoices.takeIf { canSeeMenu("purchase_invoices") }
                 )
             )
@@ -580,8 +579,7 @@ fun BSPOSMainScreen(
                     val bottomItems = listOfNotNull(
                         Triple("Terminal", Screen.POS, canSeeMenu("sales")),
                         Triple("Pedidos", Screen.Orders, canSeeMenu("orders")),
-                        Triple("Inventario", Screen.Inventory, canSeeMenu("inventory")),
-                        Triple("Más", Screen.More, canSeeMenu("more"))
+                        Triple("Inventario", Screen.Inventory, canSeeMenu("inventory"))
                     ).filter { it.third }
                     if (bottomItems.isNotEmpty()) {
                         NavigationBar(
@@ -865,34 +863,8 @@ fun BSPOSNavHost(
                 }
             }
         }
-        composable(Screen.More.route) {
-            RestrictedMenuDestination(canSeeMenu("more"), navController) {
-                MoreScreen(
-                    onSuppliers = { navController.navigate(Screen.Suppliers.route) },
-                    onInventory = { navController.navigate(Screen.Inventory.route) },
-                    onCollections = { navController.navigate(Screen.CreditLedger.route) },
-                    onCredit = { navController.navigate(Screen.Credit.route) },
-                    onCash = { navController.navigate(Screen.Cash.route) },
-                    onReturns = { navController.navigate(Screen.Returns.route) },
-                    onRouteLoads = { navController.navigate(Screen.RouteLoads.route) },
-                    onPrinters = { navController.navigate(Screen.Printers.route) },
-                    onSettings = { navController.navigate(Screen.Settings.route) },
-                    onFinance = { navController.navigate(Screen.Finance.route) },
-                    showSuppliers = canSeeMenu("more"),
-                    showInventory = canSeeMenu("inventory"),
-                    showCollections = canSeeMenu("collections"),
-                    showCredit = canSeeMenu("sales"),
-                    showCash = canSeeMenu("cash"),
-                    showReturns = canSeeMenu("returns"),
-                    showRouteLoads = routesEnabled && canSeeMenu("routes"),
-                    showPrinters = canSeeMenu("printers"),
-                    showSettings = showSettings,
-                    showFinance = canSeeMenu("finance") || !sellerMode
-                )
-            }
-        }
         composable(Screen.Suppliers.route) {
-            RestrictedMenuDestination(canSeeMenu("suppliers") || canSeeMenu("more"), navController) { SupplierScreen() }
+            RestrictedMenuDestination(canSeeMenu("suppliers"), navController) { SupplierScreen() }
         }
         composable(Screen.Inventory.route) {
             RestrictedMenuDestination(canSeeMenu("inventory"), navController) {
