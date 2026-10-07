@@ -114,6 +114,7 @@ fun PosScreen(
     var showingTerminalGuide by remember { mutableStateOf(false) }
     var showingTerminalOptions by remember { mutableStateOf(false) }
     var showingBarcodeScanner by rememberSaveable { mutableStateOf(false) }
+    var reviewMethod by remember { mutableStateOf<CheckoutReviewMethod?>(null) }
     val cartSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val snackbarHostState = remember { SnackbarHostState() }
     val context = LocalContext.current
@@ -128,8 +129,11 @@ fun PosScreen(
     }
     val cartQuantity = cart.sumOf { it.quantity }
     val cashAction = {
-        if (cashSession == null) onOpenCash() else viewModel.completeCash()
+        if (cashSession == null) onOpenCash() else reviewMethod = CheckoutReviewMethod.CASH
     }
+    val cardAction = { reviewMethod = CheckoutReviewMethod.CARD }
+    val transferAction = { reviewMethod = CheckoutReviewMethod.TRANSFER }
+    val creditAction = { if (customer == null) choosingCustomer = true else reviewMethod = CheckoutReviewMethod.CREDIT }
 
     LaunchedEffect(checkoutResult) {
         checkoutResult?.let { result ->
@@ -170,7 +174,7 @@ fun PosScreen(
                 Spacer(Modifier.height(14.dp))
                 Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                      ProductGrid(catalog, quantities, selectedQuantities, settings.allowNegativeStock, { viewModel.add(it) }, 4, wholesaleMode, Modifier.weight(1f))
-                     CartPanel(cart, cartTotal, customer, { choosingCustomer = true }, { viewModel.change(it.product.id, it.quantity - 1) }, { viewModel.change(it.product.id, it.quantity + 1) }, { viewModel.change(it.product.id, 0) }, viewModel::clearCart, cashAction, viewModel::completeCard, viewModel::completeTransfer, viewModel::completeCredit, { showingSplitDialog = true }, isProcessing, creditOnly, presentation.posShowCredit || creditOnly, cashSession != null, Modifier.widthIn(min = 340.dp, max = 400.dp).fillMaxHeight())
+                     CartPanel(cart, cartTotal, customer, { choosingCustomer = true }, { viewModel.change(it.product.id, it.quantity - 1) }, { viewModel.change(it.product.id, it.quantity + 1) }, { viewModel.change(it.product.id, 0) }, viewModel::clearCart, cashAction, cardAction, transferAction, creditAction, { showingSplitDialog = true }, isProcessing, creditOnly, presentation.posShowCredit || creditOnly, cashSession != null, Modifier.widthIn(min = 340.dp, max = 400.dp).fillMaxHeight())
                 }
             }
         } else {
@@ -222,9 +226,9 @@ fun PosScreen(
                  onRemove = { viewModel.change(it.product.id, 0) },
                  onClear = viewModel::clearCart,
                 onCash = cashAction,
-                onCard = viewModel::completeCard,
-                onTransfer = viewModel::completeTransfer,
-                onCredit = viewModel::completeCredit,
+                onCard = cardAction,
+                onTransfer = transferAction,
+                onCredit = creditAction,
                 onSplit = { showingSplitDialog = true },
                 isProcessing = isProcessing,
                 creditOnly = creditOnly,
@@ -253,6 +257,25 @@ fun PosScreen(
             onDismiss = { showingSplitDialog = false },
             onConfirm = { payments, dueDate ->
                 viewModel.completeSplit(payments, dueDate)
+            }
+        )
+    }
+    reviewMethod?.let { method ->
+        CheckoutReviewSheet(
+            cart = cart,
+            total = cartTotal,
+            customer = customer,
+            method = method,
+            isProcessing = isProcessing,
+            onDismiss = { if (!isProcessing) reviewMethod = null },
+            onConfirm = {
+                reviewMethod = null
+                when (method) {
+                    CheckoutReviewMethod.CASH -> viewModel.completeCash()
+                    CheckoutReviewMethod.CARD -> viewModel.completeCard()
+                    CheckoutReviewMethod.TRANSFER -> viewModel.completeTransfer()
+                    CheckoutReviewMethod.CREDIT -> viewModel.completeCredit()
+                }
             }
         )
     }
@@ -821,6 +844,163 @@ private fun CartPanel(
         confirmButton = { TextButton(onClick = { onClear(); confirmClear = false }) { Text("Vaciar") } },
         dismissButton = { TextButton(onClick = { confirmClear = false }) { Text("Cancelar") } }
     )
+}
+
+private enum class CheckoutReviewMethod(val title: String, val subtitle: String) {
+    CASH("Efectivo", "Se registra en la caja abierta"),
+    CARD("Tarjeta", "Se concilia contra el banco"),
+    TRANSFER("Transferencia", "Se concilia contra el banco"),
+    CREDIT("A crédito", "Queda pendiente de cobro")
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CheckoutReviewSheet(
+    cart: List<PosCartLine>,
+    total: Long,
+    customer: Customer?,
+    method: CheckoutReviewMethod,
+    isProcessing: Boolean,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = BSPOSTheme.colors.surface,
+        tonalElevation = 8.dp,
+        scrimColor = Color.Black.copy(alpha = 0.52f)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = 760.dp)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp)
+                .navigationBarsPadding(),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.Top,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Surface(
+                        modifier = Modifier.size(44.dp),
+                        shape = RoundedCornerShape(15.dp),
+                        color = BSPOSTheme.colors.primary
+                    ) {
+                        Icon(Icons.Default.ReceiptLong, contentDescription = null, tint = Color.White, modifier = Modifier.padding(10.dp))
+                    }
+                    Column {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text("Cobrar", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
+                            Surface(shape = RoundedCornerShape(50), color = BSPOSTheme.colors.primaryLight) {
+                                Text("VENTA", modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp), color = BSPOSTheme.colors.primary, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.ExtraBold)
+                            }
+                        }
+                        Text("${cart.sumOf { it.quantity }} artículo(s) · revisa antes de confirmar", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+                IconButton(onClick = onDismiss, enabled = !isProcessing) { Icon(Icons.Default.Close, "Cerrar cobro") }
+            }
+
+            Text(money(total), style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.ExtraBold, color = BSPOSTheme.colors.textPrimary)
+
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = BSPOSTheme.colors.background,
+                border = androidx.compose.foundation.BorderStroke(1.dp, BSPOSTheme.colors.outline),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Column {
+                            Text("Detalle de la venta", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.ExtraBold, color = BSPOSTheme.colors.textSecondary)
+                            Text("El inventario se actualiza al confirmar.", style = MaterialTheme.typography.bodySmall, color = BSPOSTheme.colors.textSecondary)
+                        }
+                        Surface(shape = RoundedCornerShape(50), color = BSPOSTheme.colors.surface) {
+                            Text("${cart.sumOf { it.quantity }} unidad(es)", modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                    cart.forEach { line ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(BSPOSTheme.colors.surface)
+                                .padding(9.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(Modifier.size(42.dp).clip(RoundedCornerShape(11.dp)).background(BSPOSTheme.colors.primaryLight), contentAlignment = Alignment.Center) {
+                                val image = line.product.thumbnailPath ?: line.product.imagePath
+                                if (image != null) AsyncImage(image, line.product.name, Modifier.fillMaxSize(), contentScale = ContentScale.Fit) else Icon(Icons.Default.Inventory2, null, tint = BSPOSTheme.colors.primary)
+                            }
+                            Spacer(Modifier.width(10.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(line.product.name, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text("${line.quantity} × ${money(line.unitPrice)}", style = MaterialTheme.typography.bodySmall, color = BSPOSTheme.colors.textSecondary)
+                            }
+                            Text(money(Math.multiplyExact(line.quantity, line.unitPrice)), fontWeight = FontWeight.ExtraBold)
+                        }
+                    }
+                }
+            }
+
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = BSPOSTheme.colors.primaryLight,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(40.dp).clip(RoundedCornerShape(12.dp)).background(BSPOSTheme.colors.primary), contentAlignment = Alignment.Center) { Icon(Icons.Default.Person, null, tint = Color.White) }
+                    Spacer(Modifier.width(10.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("Cliente", style = MaterialTheme.typography.labelSmall, color = BSPOSTheme.colors.textSecondary)
+                        Text(customer?.fullName ?: "Consumidor final", fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(if (customer == null) "Venta de mostrador" else "Cliente seleccionado", style = MaterialTheme.typography.bodySmall, color = BSPOSTheme.colors.textSecondary)
+                    }
+                    Icon(Icons.Default.CheckCircle, null, tint = BSPOSTheme.colors.success)
+                }
+            }
+
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = BSPOSTheme.colors.surface,
+                border = androidx.compose.foundation.BorderStroke(1.dp, BSPOSTheme.colors.outline),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Surface(shape = RoundedCornerShape(12.dp), color = BSPOSTheme.colors.successLight) {
+                        Icon(if (method == CheckoutReviewMethod.CREDIT) Icons.Default.ReceiptLong else Icons.Default.CheckCircle, null, tint = BSPOSTheme.colors.success, modifier = Modifier.padding(9.dp))
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    Column {
+                        Text("Método de pago", style = MaterialTheme.typography.labelSmall, color = BSPOSTheme.colors.textSecondary)
+                        Text(method.title, fontWeight = FontWeight.Bold)
+                        Text(method.subtitle, style = MaterialTheme.typography.bodySmall, color = BSPOSTheme.colors.textSecondary)
+                    }
+                }
+            }
+
+            Surface(shape = RoundedCornerShape(20.dp), color = BSPOSTheme.colors.textPrimary, modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(15.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text("Subtotal", color = BSPOSTheme.colors.surface.copy(alpha = 0.72f)); Text(money(total), color = BSPOSTheme.colors.surface, fontWeight = FontWeight.Bold) }
+                    HorizontalDivider(color = BSPOSTheme.colors.surface.copy(alpha = 0.18f))
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) { Text("Total", color = BSPOSTheme.colors.surface, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold); Text(money(total), color = BSPOSTheme.colors.surface, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold) }
+                }
+            }
+
+            Button(onClick = onConfirm, enabled = !isProcessing, modifier = Modifier.fillMaxWidth().height(56.dp), shape = RoundedCornerShape(16.dp)) {
+                if (isProcessing) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp) else {
+                    Text(if (method == CheckoutReviewMethod.CREDIT) "Registrar venta a crédito" else "Confirmar venta · ${money(total)}", fontWeight = FontWeight.ExtraBold)
+                    Spacer(Modifier.weight(1f))
+                    Icon(Icons.Default.ChevronRight, null)
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+        }
+    }
 }
 
 @Composable
