@@ -7,6 +7,8 @@ import com.example.bspos.domain.model.InventoryLocation
 import com.example.bspos.domain.model.Product
 import com.example.bspos.domain.model.SalePaymentType
 import com.example.bspos.domain.model.Sale
+import com.example.bspos.domain.model.SaleStatus
+import com.example.bspos.domain.repository.SaleRepository
 import com.example.bspos.data.printer.BluetoothPrinterClient
 import com.example.bspos.data.printer.BluetoothPrinterRepository
 import com.example.bspos.domain.repository.CustomerRepository
@@ -51,6 +53,7 @@ class PosViewModel @Inject constructor(
     inventory: InventoryRepository,
     settingsRepository: SettingsRepository,
     connectionRepository: MiCatalogoConnectionRepository,
+    sales: SaleRepository,
     private val completeSale: CompleteSaleUseCase,
     cashSessions: CashSessionUseCases,
     private val printerRepository: BluetoothPrinterRepository,
@@ -61,6 +64,19 @@ class PosViewModel @Inject constructor(
             state.activeShopId?.let(productsRepository::observeForShop) ?: productsRepository.observeAll()
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    val recentProductIds = combine(sales.observeAll(), sales.observeAllItems()) { invoices, items ->
+        val completedIds = invoices
+            .asSequence()
+            .filter { it.status == SaleStatus.COMPLETED }
+            .sortedByDescending { it.date }
+            .map { it.id }
+            .toList()
+
+        completedIds
+            .flatMap { saleId -> items.filter { it.saleId == saleId }.map { it.productId } }
+            .distinct()
+            .take(8)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val categories = categoryRepository.observeAll()
         .map { records ->
             records

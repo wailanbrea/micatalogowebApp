@@ -70,6 +70,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -96,6 +97,7 @@ fun PosScreen(
     viewModel: PosViewModel = hiltViewModel()
 ) {
     val products by viewModel.products.collectAsState()
+    val recentProductIds by viewModel.recentProductIds.collectAsState()
     val categories by viewModel.categories.collectAsState()
     val stock by viewModel.stock.collectAsState()
     val cart by viewModel.cart.collectAsState()
@@ -133,6 +135,7 @@ fun PosScreen(
     }
     val cartQuantity = cart.sumOf { it.quantity }
     val categoryOptions = categories.filter { category -> products.any { product -> product.categoryId == category.id } }
+    val recentProducts = recentProductIds.mapNotNull { id -> products.firstOrNull { it.id == id } }
     LaunchedEffect(categoryOptions) {
         if (selectedCategoryId != null && categoryOptions.none { it.id == selectedCategoryId }) {
             selectedCategoryId = null
@@ -181,6 +184,9 @@ fun PosScreen(
                 }
                 Spacer(Modifier.height(14.dp))
                 SearchField(query, { query = it }, presentation.posSearchPlaceholder) { showingBarcodeScanner = true }
+                if (query.isBlank() && selectedCategoryId == null && recentProducts.isNotEmpty()) {
+                    RecentProductsRow(recentProducts, quantities, settings.allowNegativeStock, { viewModel.add(it) })
+                }
                 CategoryFilterRow(categoryOptions, selectedCategoryId) { selectedCategoryId = it }
                 Spacer(Modifier.height(14.dp))
                 Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -215,6 +221,9 @@ fun PosScreen(
                         }
                         Spacer(Modifier.height(14.dp))
                         SearchField(query, { query = it }, presentation.posSearchPlaceholder) { showingBarcodeScanner = true }
+                        if (query.isBlank() && selectedCategoryId == null && recentProducts.isNotEmpty()) {
+                            RecentProductsRow(recentProducts, quantities, settings.allowNegativeStock, { viewModel.add(it) })
+                        }
                         CategoryFilterRow(categoryOptions, selectedCategoryId) { selectedCategoryId = it }
                         Spacer(Modifier.height(14.dp))
                          ProductGrid(catalog, quantities, selectedQuantities, settings.allowNegativeStock, { viewModel.add(it) }, 2, wholesaleMode, Modifier.weight(1f).fillMaxWidth())
@@ -693,6 +702,47 @@ private fun CategoryFilterRow(
                 onClick = { onCategorySelected(category.id) },
                 label = { Text(category.name, maxLines = 1, overflow = TextOverflow.Ellipsis) }
             )
+        }
+    }
+}
+
+@Composable
+private fun RecentProductsRow(
+    products: List<Product>,
+    quantities: Map<java.util.UUID, Long>,
+    allowNegativeStock: Boolean,
+    onAdd: (Product) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            "Recientes",
+            color = BSPOSTheme.colors.textSecondary,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.ExtraBold,
+            letterSpacing = 1.2.sp
+        )
+        LazyRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            contentPadding = PaddingValues(horizontal = 2.dp)
+        ) {
+            lazyItems(products, key = { it.id }) { product ->
+                val quantity = quantities[product.id] ?: 0L
+                val canAdd = quantity > 0 || allowNegativeStock
+                Surface(
+                    modifier = Modifier
+                        .widthIn(min = 150.dp, max = 230.dp)
+                        .clickable(enabled = canAdd) { onAdd(product) },
+                    shape = RoundedCornerShape(16.dp),
+                    color = BSPOSTheme.colors.surface,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, BSPOSTheme.colors.outline)
+                ) {
+                    Column(Modifier.padding(horizontal = 14.dp, vertical = 11.dp)) {
+                        Text(product.name, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.Bold)
+                        Text(money(product.salePrice), color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
         }
     }
 }
