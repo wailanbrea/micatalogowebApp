@@ -23,6 +23,7 @@ import androidx.compose.foundation.lazy.items as lazyItems
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -112,6 +113,7 @@ fun PosScreen(
     val printerMessage by viewModel.printerMessage.collectAsState()
     val wholesaleMode by viewModel.wholesaleMode.collectAsState()
     var query by remember { mutableStateOf("") }
+    var catalogTab by rememberSaveable { mutableStateOf("all") }
     var selectedCategoryId by remember { mutableStateOf<java.util.UUID?>(null) }
     var choosingCustomer by remember { mutableStateOf(false) }
     var showCart by rememberSaveable { mutableStateOf(false) }
@@ -128,6 +130,7 @@ fun PosScreen(
     val catalog = products.filter {
         it.isActive && it.deletedAt == null &&
             (!wholesaleMode || (it.wholesalePrice ?: 0L) > 0L) &&
+            (catalogTab == "all" || (catalogTab == "products" && it.remoteSaleUnit != "decant") || (catalogTab == "decants" && it.remoteSaleUnit == "decant")) &&
             (selectedCategoryId == null || it.categoryId == selectedCategoryId) &&
             (it.name.contains(query, true) ||
                 it.internalCode.contains(query, true) ||
@@ -135,11 +138,15 @@ fun PosScreen(
     }
     val cartQuantity = cart.sumOf { it.quantity }
     val categoryOptions = categories.filter { category -> products.any { product -> product.categoryId == category.id } }
+    val hasDecants = products.any { it.remoteSaleUnit == "decant" }
     val recentProducts = recentProductIds.mapNotNull { id -> products.firstOrNull { it.id == id } }
     LaunchedEffect(categoryOptions) {
         if (selectedCategoryId != null && categoryOptions.none { it.id == selectedCategoryId }) {
             selectedCategoryId = null
         }
+    }
+    LaunchedEffect(hasDecants) {
+        if (!hasDecants && catalogTab == "decants") catalogTab = "all"
     }
     val cashAction = {
         if (cashSession == null) onOpenCash() else reviewMethod = CheckoutReviewMethod.CASH
@@ -184,9 +191,10 @@ fun PosScreen(
                 }
                 Spacer(Modifier.height(14.dp))
                 SearchField(query, { query = it }, presentation.posSearchPlaceholder) { showingBarcodeScanner = true }
-                if (query.isBlank() && selectedCategoryId == null && recentProducts.isNotEmpty()) {
+                if (catalogTab == "all" && query.isBlank() && selectedCategoryId == null && recentProducts.isNotEmpty()) {
                     RecentProductsRow(recentProducts, quantities, settings.allowNegativeStock, { viewModel.add(it) })
                 }
+                ProductKindFilterRow(catalogTab, hasDecants) { catalogTab = it }
                 CategoryFilterRow(categoryOptions, selectedCategoryId) { selectedCategoryId = it }
                 Spacer(Modifier.height(14.dp))
                 Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -221,9 +229,10 @@ fun PosScreen(
                         }
                         Spacer(Modifier.height(14.dp))
                         SearchField(query, { query = it }, presentation.posSearchPlaceholder) { showingBarcodeScanner = true }
-                        if (query.isBlank() && selectedCategoryId == null && recentProducts.isNotEmpty()) {
+                        if (catalogTab == "all" && query.isBlank() && selectedCategoryId == null && recentProducts.isNotEmpty()) {
                             RecentProductsRow(recentProducts, quantities, settings.allowNegativeStock, { viewModel.add(it) })
                         }
+                        ProductKindFilterRow(catalogTab, hasDecants) { catalogTab = it }
                         CategoryFilterRow(categoryOptions, selectedCategoryId) { selectedCategoryId = it }
                         Spacer(Modifier.height(14.dp))
                          ProductGrid(catalog, quantities, selectedQuantities, settings.allowNegativeStock, { viewModel.add(it) }, 2, wholesaleMode, Modifier.weight(1f).fillMaxWidth())
@@ -701,6 +710,36 @@ private fun CategoryFilterRow(
                 selected = selectedCategoryId == category.id,
                 onClick = { onCategorySelected(category.id) },
                 label = { Text(category.name, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+            )
+        }
+    }
+}
+
+@Composable
+private fun ProductKindFilterRow(
+    selected: String,
+    hasDecants: Boolean,
+    onSelected: (String) -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        FilterChip(
+            selected = selected == "all",
+            onClick = { onSelected("all") },
+            label = { Text("Todos") }
+        )
+        FilterChip(
+            selected = selected == "products",
+            onClick = { onSelected("products") },
+            label = { Text("Productos") }
+        )
+        if (hasDecants) {
+            FilterChip(
+                selected = selected == "decants",
+                onClick = { onSelected("decants") },
+                label = { Text("Decants") }
             )
         }
     }
