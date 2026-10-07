@@ -209,6 +209,10 @@ private fun ProductForm(current: Product?, currentQuantity: Long, categories: Li
     var shopOpen by remember { mutableStateOf(false) }
     val effectiveDecantMode = decantMode || current?.remoteSaleUnit == "decant"
     var volumeMl by remember(current?.id, effectiveDecantMode) { mutableStateOf(current?.remoteVolumeMl?.toString().orEmpty()) }
+    var saleUnit by remember(current?.id, effectiveDecantMode) {
+        mutableStateOf(if (effectiveDecantMode) "decant" else (current?.remoteSaleUnit ?: "unit"))
+    }
+    var saleUnitOpen by remember { mutableStateOf(false) }
     var sourceProduct by remember(current?.id, sourceProducts) { mutableStateOf(sourceProducts.firstOrNull { it.remoteProductId == current?.remoteSourceProductId }) }
     var sourceOpen by remember { mutableStateOf(false) }
     val imageLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -250,6 +254,35 @@ private fun ProductForm(current: Product?, currentQuantity: Long, categories: Li
             OutlinedButton({ imageLauncher.launch(arrayOf("image/*")) }, Modifier.fillMaxWidth()) { Icon(Icons.Default.PhotoCamera, null); Spacer(Modifier.width(6.dp)); Text(if (imagePath == null) "Subir foto" else "Cambiar foto") }
             if (shopId != null) Text("La foto se enviará como principal. Se conservan las anteriores y se respeta el límite de tu plan.", style = MaterialTheme.typography.bodySmall)
             OutlinedTextField(name, { name = it }, label = { Text(presentation.term("product", "Nombre")) })
+            if (!effectiveDecantMode) {
+                Box {
+                    TextButton({ saleUnitOpen = true }) {
+                        Text("Se vende como: ${when (saleUnit) {
+                            "bottle" -> "Botella completa"
+                            "ml" -> "Por mililitro (ml)"
+                            else -> "Unidad"
+                        }}")
+                    }
+                    DropdownMenu(saleUnitOpen, { saleUnitOpen = false }) {
+                        listOf("unit" to "Unidad", "bottle" to "Botella completa", "ml" to "Por mililitro (ml)").forEach { (value, label) ->
+                            DropdownMenuItem({ Text(label) }, {
+                                saleUnit = value
+                                if (value == "unit") volumeMl = ""
+                                saleUnitOpen = false
+                            })
+                        }
+                    }
+                }
+                if (saleUnit == "bottle" || saleUnit == "ml") {
+                    OutlinedTextField(
+                        volumeMl,
+                        { volumeMl = it.filter(Char::isDigit) },
+                        label = { Text("Contenido en ml") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        supportingText = { Text("Ejemplo: 100 ml") }
+                    )
+                }
+            }
             if (showProductCode) OutlinedTextField(code, { code = it }, label = { Text("Código interno") })
             if (showCost && !effectiveDecantMode) OutlinedTextField(purchasePrice, { value -> if (current == null) purchasePrice = value; purchaseChanged = true; priceError = false }, label = { Text("Precio de compra (${LocalCurrency.current.symbol})") }, enabled = current == null, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), isError = priceError, supportingText = { if (current != null) Text("Se actualiza desde una entrada de inventario") })
             OutlinedTextField(price, { value -> price = value; priceChanged = true; priceError = false }, label = { Text("Precio de venta (${LocalCurrency.current.symbol})") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), isError = priceError, supportingText = { if (priceError) Text("Indica un precio válido, con hasta dos decimales") })
@@ -271,11 +304,16 @@ private fun ProductForm(current: Product?, currentQuantity: Long, categories: Li
             val effectiveQuantity = if (showInventoryFields && !effectiveDecantMode) quantity else 0L
             val selectedVolume = volumeMl.toIntOrNull()
             val sourceVolume = sourceProduct?.remoteVolumeMl
-            val validPresentation = !effectiveDecantMode || (shopId != null && sourceProduct?.remoteProductId != null && selectedVolume != null && selectedVolume > 0 && sourceVolume != null && selectedVolume <= sourceVolume)
+            val validVolume = saleUnit == "unit" || (selectedVolume != null && selectedVolume > 0)
+            val validPresentation = if (effectiveDecantMode) {
+                shopId != null && sourceProduct?.remoteProductId != null && selectedVolume != null && selectedVolume > 0 && sourceVolume != null && selectedVolume <= sourceVolume
+            } else {
+                validVolume
+            }
             if (name.isBlank() || (showProductCode && effectiveCode.isBlank()) || sale == null || sale < 0 || effectivePurchase == null || effectivePurchase < 0 || wholesale?.let { it < 0 } == true || effectiveQuantity == null || effectiveQuantity < 0 || minimum == null || minimum < 0 || !validPresentation) {
                 priceError = true
             } else {
-                onSave(ProductInput(name, effectiveCode, category.id, unit.id, sale, purchasePrice = if (effectiveDecantMode) 0L else effectivePurchase, wholesalePrice = wholesale, imagePath = imagePath, thumbnailPath = imagePath, minimumStock = minimum, tracksExpiration = current?.tracksExpiration ?: false, remoteShopId = shopId, remoteSaleUnit = if (decantMode) "decant" else null, remoteVolumeMl = if (decantMode) selectedVolume else null, remoteSourceProductId = if (decantMode) sourceProduct?.remoteProductId else null), if (current == null) effectiveQuantity else 0L)
+                onSave(ProductInput(name, effectiveCode, category.id, unit.id, sale, purchasePrice = if (effectiveDecantMode) 0L else effectivePurchase, wholesalePrice = wholesale, imagePath = imagePath, thumbnailPath = imagePath, minimumStock = minimum, tracksExpiration = current?.tracksExpiration ?: false, remoteShopId = shopId, remoteSaleUnit = if (effectiveDecantMode) "decant" else saleUnit, remoteVolumeMl = if (effectiveDecantMode || saleUnit == "bottle" || saleUnit == "ml") selectedVolume else null, remoteSourceProductId = if (effectiveDecantMode) sourceProduct?.remoteProductId else null), if (current == null) effectiveQuantity else 0L)
             }
         }) { Text("Guardar") }
     }, dismissButton = { TextButton(onDismiss) { Text("Cancelar") } })
