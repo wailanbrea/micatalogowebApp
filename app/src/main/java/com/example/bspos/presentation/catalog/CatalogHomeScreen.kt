@@ -54,6 +54,7 @@ fun CatalogHomeScreen(
     var showForm by remember { mutableStateOf(initialDecantMode) }
     var editingProduct by remember { mutableStateOf<Product?>(null) }
     var deleteTarget by remember { mutableStateOf<Product?>(null) }
+    var photoFilter by remember { mutableStateOf("Pendientes") }
     if (baseCatalog) {
         Column(Modifier.fillMaxSize().background(BSPOSTheme.colors.background).padding(20.dp)) {
             TextButton({ baseCatalog = false }) { Text(presentation.term("products", "Productos")) }
@@ -77,7 +78,11 @@ fun CatalogHomeScreen(
     val categoryNames = categories.associate { it.id to it.name }
     val filtered = products.filter {
         it.isActive && it.deletedAt == null &&
-            (!photosOnly || it.imagePath.isNullOrBlank()) &&
+            (!photosOnly || when (photoFilter) {
+                "Con foto" -> !it.imagePath.isNullOrBlank()
+                "Todos" -> true
+                else -> it.imagePath.isNullOrBlank()
+            }) &&
             (it.name.contains(query, true) || it.internalCode.contains(query, true))
     }
 
@@ -85,7 +90,7 @@ fun CatalogHomeScreen(
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(if (photosOnly) "CATÁLOGO / FOTOS" else if (initialDecantMode) "CATÁLOGO / DECANTS" else presentation.term("products", "Catalogo comercial"), color = BSPOSTheme.colors.textSecondary)
-                if (photosOnly) Text("Productos sin foto", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
+                if (photosOnly) Text("Gestión de fotografías", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
             }
             if (!photosOnly) TextButton({ baseCatalog = true }) { Text("Categorias") }
         }
@@ -99,11 +104,29 @@ fun CatalogHomeScreen(
         Spacer(Modifier.height(12.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Text(
-                if (photosOnly) "${filtered.size} pendientes de fotografía" else "${filtered.size} productos",
+                if (photosOnly) "$photoFilter · ${filtered.size} producto(s)" else "${filtered.size} productos",
                 color = BSPOSTheme.colors.textSecondary,
                 style = MaterialTheme.typography.labelLarge
             )
-            Button({ showForm = true }, enabled = categories.any { it.isActive } && units.any { it.isActive }, shape = RoundedCornerShape(14.dp)) { Icon(Icons.Default.Add, null); Spacer(Modifier.width(5.dp)); Text(if (initialDecantMode) "Nueva presentación" else "Nuevo producto") }
+            if (!photosOnly) {
+                Button({ showForm = true }, enabled = categories.any { it.isActive } && units.any { it.isActive }, shape = RoundedCornerShape(14.dp)) { Icon(Icons.Default.Add, null); Spacer(Modifier.width(5.dp)); Text(if (initialDecantMode) "Nueva presentación" else "Nuevo producto") }
+            }
+        }
+        if (photosOnly) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf("Pendientes", "Con foto", "Todos").forEach { option ->
+                    FilterChip(
+                        selected = photoFilter == option,
+                        onClick = { photoFilter = option },
+                        label = { Text(option, fontWeight = FontWeight.Bold) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = BSPOSTheme.colors.secondaryNavy,
+                            selectedLabelColor = androidx.compose.ui.graphics.Color.White,
+                            containerColor = BSPOSTheme.colors.surface
+                        )
+                    )
+                }
+            }
         }
         if (initialDecantMode && !formReady) {
             Surface(
@@ -126,7 +149,7 @@ fun CatalogHomeScreen(
                 Text(
                     when {
                         query.isNotBlank() -> "Sin coincidencias"
-                        photosOnly -> "Todos tus productos tienen foto"
+                        photosOnly -> if (photoFilter == "Pendientes") "Todos tus productos tienen foto" else "No hay productos en este filtro"
                         else -> presentation.catalogEmptyMessage
                     },
                     color = BSPOSTheme.colors.textSecondary
