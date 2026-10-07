@@ -115,6 +115,7 @@ import com.example.bspos.presentation.printer.BluetoothPrinterScreen
 import com.example.bspos.presentation.adminshops.AdminShopsScreen
 import com.example.bspos.presentation.finance.FinanceScreen
 import com.example.bspos.presentation.feature.FeatureModuleScreen
+import com.example.bspos.presentation.purchase.PurchaseModuleScreen
 import com.example.bspos.presentation.quote.QuoteScreen
 import com.example.bspos.presentation.orders.OrdersScreen
 import com.example.bspos.presentation.dayclose.DayCloseScreen
@@ -776,8 +777,8 @@ fun BSPOSNavHost(
         composable(Screen.DownloadApp.route) {
             FeatureDestination("updates", canSeeMenu("updates"), navController)
         }
-        composable(Screen.Containers.route) { FeatureDestination("containers", canSeeMenu("containers"), navController) }
-        composable(Screen.PurchaseInvoices.route) { FeatureDestination("purchase_invoices", canSeeMenu("purchase_invoices"), navController) }
+        composable(Screen.Containers.route) { PurchaseDestination("containers", canSeeMenu("containers"), navController) }
+        composable(Screen.PurchaseInvoices.route) { PurchaseDestination("purchase_invoices", canSeeMenu("purchase_invoices"), navController) }
         composable(Screen.Photos.route) {
             RestrictedMenuDestination(canSeeMenu("photos"), navController) {
                 CatalogHomeScreen(
@@ -1048,6 +1049,17 @@ private fun FeatureDestination(
             feature = feature,
             onAction = { label -> navigateFeatureAction(label, navController) }
         )
+    }
+}
+
+@Composable
+private fun PurchaseDestination(
+    feature: String,
+    isAllowed: Boolean,
+    navController: androidx.navigation.NavHostController
+) {
+    RestrictedMenuDestination(isAllowed, navController) {
+        PurchaseModuleScreen(feature = feature)
     }
 }
 

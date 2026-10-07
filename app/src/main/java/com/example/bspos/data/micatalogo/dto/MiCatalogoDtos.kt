@@ -175,6 +175,77 @@ data class FeatureActionDto(
 )
 
 @Serializable
+data class PurchaseWorkspaceDto(
+    val documents: List<PurchaseDocumentDto> = emptyList(),
+    val suppliers: List<PurchaseSupplierDto> = emptyList(),
+    val products: List<PurchaseProductDto> = emptyList()
+)
+
+@Serializable
+data class PurchaseSupplierDto(
+    val id: String = "",
+    val name: String = ""
+)
+
+@Serializable
+data class PurchaseProductDto(
+    val id: String = "",
+    val name: String = "",
+    val code: String = "",
+    val cost: String = "0.00"
+)
+
+@Serializable
+data class PurchaseDocumentDto(
+    val id: String = "",
+    @SerialName("document_number") val documentNumber: String = "",
+    val type: String = "container",
+    val status: String = "draft",
+    val currency: String = "DOP",
+    val subtotal: String = "0.00",
+    val total: String = "0.00",
+    val notes: String? = null,
+    @SerialName("received_at") val receivedAt: String? = null,
+    val supplier: PurchaseSupplierDto? = null,
+    val items: List<PurchaseItemDto> = emptyList()
+)
+
+@Serializable
+data class PurchaseItemDto(
+    @Serializable(with = FlexibleStringSerializer::class) val id: String? = null,
+    @SerialName("product_id") val productId: String? = null,
+    @SerialName("product_name") val productName: String = "",
+    val quantity: Int = 0,
+    @SerialName("unit_cost") val unitCost: String = "0.00",
+    @SerialName("line_total") val lineTotal: String = "0.00",
+    val received: Boolean = false
+)
+
+@Serializable
+data class PurchaseItemRequestDto(
+    @SerialName("product_id") val productId: String,
+    val quantity: Int,
+    @SerialName("unit_cost") val unitCost: String
+)
+
+@Serializable
+data class PurchaseCreateRequestDto(
+    val type: String,
+    @SerialName("document_number") val documentNumber: String,
+    @SerialName("supplier_id") val supplierId: String? = null,
+    val currency: String = "DOP",
+    val mode: String = "draft",
+    val notes: String? = null,
+    val items: List<PurchaseItemRequestDto>
+)
+
+@Serializable
+data class PurchaseActionResponseDto(
+    val message: String = "",
+    val document: PurchaseDocumentDto? = null
+)
+
+@Serializable
 data class MeDto(
     val id: String? = null,
     val name: String? = null,

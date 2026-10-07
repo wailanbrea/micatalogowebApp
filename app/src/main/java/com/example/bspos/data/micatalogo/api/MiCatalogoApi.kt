@@ -32,6 +32,9 @@ import com.example.bspos.data.micatalogo.dto.ExpenseCategoryDto
 import com.example.bspos.data.micatalogo.dto.ExpenseCreateRequestDto
 import com.example.bspos.data.micatalogo.dto.ExpensePaginatedResponseDto
 import com.example.bspos.data.micatalogo.dto.FeatureResponseDto
+import com.example.bspos.data.micatalogo.dto.PurchaseActionResponseDto
+import com.example.bspos.data.micatalogo.dto.PurchaseCreateRequestDto
+import com.example.bspos.data.micatalogo.dto.PurchaseWorkspaceDto
 import com.example.bspos.data.micatalogo.dto.FinanceCashFlowDto
 import com.example.bspos.data.micatalogo.dto.FinanceIncomeStatementDto
 import com.example.bspos.data.micatalogo.dto.FinanceSummaryDto
@@ -81,6 +84,21 @@ interface MiCatalogoApi {
         @Path("shopId") shopId: String,
         @Path("feature") feature: String
     ): Response<FeatureResponseDto>
+
+    @GET("api/v1/shops/{shopId}/purchases")
+    suspend fun purchases(@Path("shopId") shopId: String): Response<PurchaseWorkspaceDto>
+
+    @POST("api/v1/shops/{shopId}/purchases")
+    suspend fun createPurchase(
+        @Path("shopId") shopId: String,
+        @Body request: PurchaseCreateRequestDto
+    ): Response<PurchaseActionResponseDto>
+
+    @POST("api/v1/shops/{shopId}/purchases/{documentId}/receive")
+    suspend fun receivePurchase(
+        @Path("shopId") shopId: String,
+        @Path("documentId") documentId: String
+    ): Response<PurchaseActionResponseDto>
 
     @Multipart
     @POST("api/v1/shops/{shopId}/inventory-import/preview")
