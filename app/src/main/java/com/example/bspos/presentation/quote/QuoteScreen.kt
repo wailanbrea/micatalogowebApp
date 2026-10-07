@@ -44,6 +44,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -57,13 +58,17 @@ import java.util.Locale
 @Composable
 fun QuoteScreen(viewModel: QuoteViewModel = hiltViewModel()) {
     val state by viewModel.state.collectAsState()
+    val focusManager = LocalFocusManager.current
     var query by remember { mutableStateOf("") }
     var selectedCategory by remember { mutableStateOf<String?>(null) }
     var customerName by remember { mutableStateOf("") }
     var customerPhone by remember { mutableStateOf("") }
     var notes by remember { mutableStateOf("") }
 
-    LaunchedEffect(Unit) { viewModel.load() }
+    LaunchedEffect(Unit) {
+        focusManager.clearFocus(force = true)
+        viewModel.load()
+    }
 
     val products = state.products.filter { product ->
         (selectedCategory == null || product.category == selectedCategory) &&
@@ -81,8 +86,6 @@ fun QuoteScreen(viewModel: QuoteViewModel = hiltViewModel()) {
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 item {
-                    Text("VENTAS", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
-                    Text("Cotizaciones", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold)
                     Text("Presupuestos guardados para convertirlos en venta.", color = BSPOSTheme.colors.textSecondary)
                     Spacer(Modifier.height(14.dp))
                     QuoteSummary(state.rows)
