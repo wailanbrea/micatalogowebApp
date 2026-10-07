@@ -42,6 +42,7 @@ class MiCatalogoPosSaleRepositoryImpl @Inject constructor(
         var sent = 0
         var retried = 0
         var blocked = 0
+        val recoveredBottles = linkedSetOf<String>()
         val haltedShops = mutableSetOf<String>()
         val blockedShops = mutableSetOf<String>()
         suspend fun drainOperations(shopId: String, before: Long?): Boolean {
@@ -91,6 +92,10 @@ class MiCatalogoPosSaleRepositoryImpl @Inject constructor(
                             haltedShops.add(record.remoteShopId)
                         } else {
                             outbox.markSent(record.saleId, acknowledgement.invoiceNumber, now)
+                            acknowledgement.bottleRecovery
+                                .filter { it.justCovered }
+                                .mapNotNull { it.sourceProductName ?: it.sourceProductId }
+                                .forEach(recoveredBottles::add)
                             sent++
                         }
                     }
@@ -133,7 +138,7 @@ class MiCatalogoPosSaleRepositoryImpl @Inject constructor(
                 if (operation == null || operation.queueSequence > first.queueSequence || operation.state != "BLOCKED") retried++
             }
         }
-        MiCatalogoPosSaleSyncResult(sent, retried, blocked)
+        MiCatalogoPosSaleSyncResult(sent, retried, blocked, recoveredBottles.toList())
     }.fold(
         onSuccess = { MiCatalogoResult.Success(it) },
         onFailure = {

@@ -216,7 +216,8 @@ data class MiCatalogoCatalogSyncResult(
 data class MiCatalogoPosSaleSyncResult(
     val sent: Int,
     val retried: Int,
-    val blocked: Int
+    val blocked: Int,
+    val recoveredBottles: List<String> = emptyList()
 )
 
 sealed interface MiCatalogoResult<out T> {

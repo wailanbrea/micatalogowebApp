@@ -519,11 +519,25 @@ data class PosSaleUploadItemDto(
 )
 
 @Serializable
+data class BottleRecoveryDto(
+    @SerialName("source_product_id") val sourceProductId: String? = null,
+    @SerialName("source_product_name") val sourceProductName: String? = null,
+    val cost: Double = 0.0,
+    val revenue: Double = 0.0,
+    val difference: Double = 0.0,
+    val percent: Double = 0.0,
+    val covered: Boolean = false,
+    @SerialName("just_covered") val justCovered: Boolean = false,
+    val alert: String? = null
+)
+
+@Serializable
 data class PosSaleUploadResponseDto(
     @SerialName("client_sale_uuid") val clientSaleUuid: String? = null,
     @SerialName("invoice_number") val invoiceNumber: String? = null,
     val status: String? = null,
-    val total: String? = null
+    val total: String? = null,
+    @SerialName("bottle_recovery") val bottleRecovery: List<BottleRecoveryDto> = emptyList()
 )
 
 @Serializable

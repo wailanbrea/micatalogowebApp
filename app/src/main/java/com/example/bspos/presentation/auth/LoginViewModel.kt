@@ -55,11 +55,14 @@ class LoginViewModel @Inject constructor(
             UiErrorBus.show("Sincronizando MiCatalogo...")
             val saleSyncMessage = when (val result = posSaleRepository.syncDueSales()) {
                 is MiCatalogoResult.Success -> {
+                    val recoveryMessage = result.value.recoveredBottles
+                        .takeIf { it.isNotEmpty() }
+                        ?.joinToString(prefix = "; botella(s) recuperada(s): ")
                     if (result.value.retried > 0) posSaleSyncScheduler.enqueue()
                     when {
-                        result.value.sent > 0 -> "${result.value.sent} ventas enviadas"
+                        result.value.sent > 0 -> "${result.value.sent} ventas enviadas${recoveryMessage.orEmpty()}"
                         result.value.blocked > 0 -> "${result.value.blocked} ventas requieren revisión"
-                        else -> null
+                        else -> recoveryMessage?.trimStart(';', ' ')
                     }
                 }
                 is MiCatalogoResult.Failure -> {

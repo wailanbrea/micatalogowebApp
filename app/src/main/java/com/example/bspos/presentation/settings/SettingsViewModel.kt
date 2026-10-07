@@ -182,7 +182,11 @@ class SettingsViewModel @Inject constructor(
                 val blockedSales = saleQueue.observeOutstanding().first().count { it.state == com.example.bspos.domain.model.PosSaleOutboxState.BLOCKED }
                 val blockedOperations = operationQueue.activeShopIds().sumOf { shopId -> operationQueue.activeForShop(shopId).count { it.state == "BLOCKED" } }
                 val hasIssues = summary.retried > 0 || summary.blocked > 0 || paymentsPending || blockedPayments > 0 || blockedSales > 0 || blockedOperations > 0 || catalogPending
-                val message = "Ventas y operaciones: ${summary.sent} confirmadas en este envío; ${summary.retried} reintentos. Conflictos actuales: $blockedSales ventas, $blockedOperations operaciones y $blockedPayments abonos. ${if (paymentsPending) "Hay abonos pendientes." else "Sin abonos pendientes de envío."} ${if (catalogPending) "Falta descargar el catálogo actualizado." else "Sin descargas posconfirmación pendientes."}"
+                val recoveryMessage = summary.recoveredBottles
+                    .takeIf { it.isNotEmpty() }
+                    ?.joinToString(prefix = " Botella(s) recuperada(s) por decants: ")
+                    .orEmpty()
+                val message = "Ventas y operaciones: ${summary.sent} confirmadas en este envío; ${summary.retried} reintentos. Conflictos actuales: $blockedSales ventas, $blockedOperations operaciones y $blockedPayments abonos.$recoveryMessage ${if (paymentsPending) "Hay abonos pendientes." else "Sin abonos pendientes de envío."} ${if (catalogPending) "Falta descargar el catálogo actualizado." else "Sin descargas posconfirmación pendientes."}"
                 miCatalogoUi.value = miCatalogoUi.value.copy(
                     isSyncingPosSales = false,
                     successMessage = if (!hasIssues) message else null,
