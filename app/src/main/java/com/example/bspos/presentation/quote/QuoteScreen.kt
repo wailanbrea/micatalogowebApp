@@ -217,10 +217,6 @@ private fun QuoteProductCard(product: FeatureProductDto, quantity: Int, onAdd: (
                 } else {
                     Icon(Icons.Default.Inventory2, null, tint = BSPOSTheme.colors.primary)
                 }
-                IconButton(
-                    onClick = { onAdd(product) },
-                    modifier = Modifier.align(Alignment.TopEnd)
-                ) { Icon(Icons.Default.Add, "Agregar") }
                 if (quantity > 0) {
                     Text(
                         "En cotización: $quantity",
@@ -237,11 +233,35 @@ private fun QuoteProductCard(product: FeatureProductDto, quantity: Int, onAdd: (
             if (product.category.isNotBlank()) Text(product.category, color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text("RD$ ${product.price}", fontWeight = FontWeight.ExtraBold, color = BSPOSTheme.colors.primary)
             product.stock?.let { Text("Existencia: $it", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelSmall) }
-            if (quantity > 0) {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.End) {
-                    IconButton(onClick = { onRemove(product) }) { Icon(Icons.Default.Remove, "Quitar") }
-                    Text(quantity.toString(), fontWeight = FontWeight.Bold)
-                    IconButton(onClick = { onAdd(product) }) { Icon(Icons.Default.Add, "Agregar") }
+            if (quantity == 0) {
+                Button(
+                    onClick = { onAdd(product) },
+                    modifier = Modifier.fillMaxWidth(),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 5.dp)
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(5.dp))
+                    Text("Agregar")
+                }
+            } else {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    OutlinedButton(
+                        onClick = { onRemove(product) },
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Icon(Icons.Default.Remove, contentDescription = "Disminuir", modifier = Modifier.size(18.dp))
+                    }
+                    Text("$quantity en cotización", fontWeight = FontWeight.Bold, color = BSPOSTheme.colors.primary)
+                    OutlinedButton(
+                        onClick = { onAdd(product) },
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = "Aumentar", modifier = Modifier.size(18.dp))
+                    }
                 }
             }
         }
