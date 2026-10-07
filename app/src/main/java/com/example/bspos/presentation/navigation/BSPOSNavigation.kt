@@ -96,7 +96,11 @@ sealed class Screen(
     data object Returns : Screen("returns", "Devoluciones", Icons.Filled.Replay, Icons.Outlined.Replay)
     data object RouteLoads : Screen("route_loads", "Cargas", Icons.Filled.LocalShipping, Icons.Outlined.LocalShipping)
     data object Printers : Screen("printers", "Impresoras", Icons.Filled.Print, Icons.Filled.Print)
-    data object Finance : Screen("finance", "Finanzas", Icons.Filled.BarChart, Icons.Outlined.BarChart)
+    // Puntto names the financial analysis destination “Ganancias” inside the
+    // “Finanzas” group. Keeping the destination label specific also makes it
+    // discoverable from the drawer search and preserves the shell breadcrumb:
+    // “Finanzas / Ganancias”.
+    data object Finance : Screen("finance", "Ganancias", Icons.Filled.BarChart, Icons.Outlined.BarChart)
     data object Expenses : Screen("expenses", "Gastos", Icons.Filled.ReceiptLong, Icons.Outlined.ReceiptLong)
 
     data object Quotes : Screen("quotes", "Cotizaciones", Icons.Filled.ReceiptLong, Icons.Outlined.ReceiptLong)

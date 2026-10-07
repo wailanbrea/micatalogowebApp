@@ -84,7 +84,7 @@ val SellerMenuOptions = listOf(
     SellerMenuOption("inventory", "Inventario"),
     SellerMenuOption("collections", "Cobros"),
     SellerMenuOption("cash", "Caja"),
-    SellerMenuOption("finance", "Finanzas y Ganancias"),
+    SellerMenuOption("finance", "Ganancias"),
     SellerMenuOption("inventory_adjustments", "Ajustes de inventario"),
     SellerMenuOption("partners", "Socios"),
     SellerMenuOption("expenses", "Gastos"),
