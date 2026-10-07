@@ -110,7 +110,7 @@ fun QuoteScreen(viewModel: QuoteViewModel = hiltViewModel()) {
                     }
                 }
 
-                items(products, key = { it.id }) { product ->
+                items(products, key = { "product-${it.id}" }) { product ->
                     QuoteProductCard(product, state.cart[product] ?: 0, viewModel::add, viewModel::remove)
                 }
 
@@ -121,7 +121,7 @@ fun QuoteScreen(viewModel: QuoteViewModel = hiltViewModel()) {
                 if (state.cart.isEmpty()) {
                     item { Text("Agrega productos para preparar una cotización.", color = BSPOSTheme.colors.textSecondary) }
                 } else {
-                    items(state.cart.entries.toList(), key = { it.key.id }) { (product, quantity) ->
+                    items(state.cart.entries.toList(), key = { "cart-${it.key.id}" }) { (product, quantity) ->
                         QuoteCartRow(product, quantity, { viewModel.remove(product) }, { viewModel.add(product) })
                     }
                     item {
@@ -143,7 +143,7 @@ fun QuoteScreen(viewModel: QuoteViewModel = hiltViewModel()) {
 
                 if (state.rows.isNotEmpty()) {
                     item { Text("Cotizaciones recientes", fontWeight = FontWeight.ExtraBold, modifier = Modifier.padding(top = 8.dp)) }
-                    items(state.rows, key = { it.id ?: it.primary }) { row ->
+                    items(state.rows, key = { "recent-${it.id ?: it.primary}" }) { row ->
                         RecentQuoteRow(row, state.convertingId == row.id, { row.id?.let(viewModel::convert) })
                     }
                 }
