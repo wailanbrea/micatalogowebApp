@@ -74,6 +74,7 @@ fun FeatureModuleScreen(
                 state.response!!.feature,
                 state.response!!.module,
                 onAction,
+                onExport = { format -> viewModel.exportReport(feature, format); true },
                 onRefresh = { viewModel.load(feature) }
             )
         }
@@ -85,6 +86,7 @@ private fun FeatureContent(
     definition: FeatureDefinitionDto,
     module: FeatureModuleDto,
     onAction: (String) -> Boolean,
+    onExport: (String) -> Boolean,
     onRefresh: () -> Unit
 ) {
     val context = LocalContext.current
@@ -141,7 +143,13 @@ private fun FeatureContent(
                 ) {
                     module.actions.forEach { action ->
                         val openAction = {
-                            if (!onAction(action.label)) {
+                            val exportFormat = when (action.label.trim().lowercase()) {
+                                "exportar csv" -> "csv"
+                                "excel" -> "xlsx"
+                                else -> null
+                            }
+                            val handled = exportFormat != null && onExport(exportFormat)
+                            if (!handled && !onAction(action.label)) {
                                 action.url.toUriOrNull()?.let { uri ->
                                     context.startActivity(Intent(Intent.ACTION_VIEW, uri))
                                 }

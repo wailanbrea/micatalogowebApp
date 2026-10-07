@@ -40,6 +40,7 @@ import com.example.bspos.data.micatalogo.dto.FinanceIncomeStatementDto
 import com.example.bspos.data.micatalogo.dto.FinanceSummaryDto
 import okhttp3.MultipartBody
 import okhttp3.RequestBody
+import okhttp3.ResponseBody
 import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.Multipart
@@ -50,6 +51,7 @@ import retrofit2.http.POST
 import retrofit2.http.Path
 import retrofit2.http.PUT
 import retrofit2.http.Query
+import retrofit2.http.Streaming
 
 interface MiCatalogoApi {
     @GET("api/v1/app-updates/android")
@@ -84,6 +86,13 @@ interface MiCatalogoApi {
         @Path("shopId") shopId: String,
         @Path("feature") feature: String
     ): Response<FeatureResponseDto>
+
+    @Streaming
+    @GET("api/v1/shops/{shopId}/reports/export")
+    suspend fun exportReport(
+        @Path("shopId") shopId: String,
+        @Query("format") format: String
+    ): Response<ResponseBody>
 
     @GET("api/v1/shops/{shopId}/purchases")
     suspend fun purchases(@Path("shopId") shopId: String): Response<PurchaseWorkspaceDto>
