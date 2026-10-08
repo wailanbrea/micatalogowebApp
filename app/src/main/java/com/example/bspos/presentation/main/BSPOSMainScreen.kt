@@ -144,6 +144,7 @@ import com.example.bspos.presentation.feature.AccountantScreen
 import com.example.bspos.presentation.purchase.PurchaseModuleScreen
 import com.example.bspos.presentation.quote.QuoteScreen
 import com.example.bspos.presentation.orders.OrdersScreen
+import com.example.bspos.presentation.support.SupportChatScreen
 import com.example.bspos.presentation.dayclose.DayCloseScreen
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import kotlinx.coroutines.launch
@@ -649,7 +650,7 @@ fun BSPOSMainScreen(
                 }
             },
             topBar = {
-                if (currentBaseRoute !in setOf(Screen.POS.route, Screen.Quotes.route) || windowWidthSizeClass == WindowWidthSizeClass.Expanded) TopAppBar(
+                if (currentBaseRoute !in setOf(Screen.POS.route, Screen.Quotes.route, Screen.Orders.route) || windowWidthSizeClass == WindowWidthSizeClass.Expanded) TopAppBar(
                     title = {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
@@ -813,6 +814,27 @@ fun BSPOSNavHost(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val publicStoreUrl = shopSlug?.trim()?.takeIf { it.isNotBlank() }?.let {
+        "${BuildConfig.MICATALOGO_API_BASE_URL.trimEnd('/')}/tienda/$it"
+    }
+
+    fun sharePublicStore() {
+        val url = publicStoreUrl
+        if (url.isNullOrBlank()) {
+            UiErrorBus.show("Esta tienda todavía no tiene un enlace público.")
+            return
+        }
+        runCatching {
+            context.startActivity(
+                Intent(
+                    Intent.ACTION_VIEW,
+                    Uri.parse("https://wa.me/?text=${Uri.encode("Mira mi catálogo: $url")}")
+                )
+            )
+        }.onFailure {
+            UiErrorBus.show("No se pudo abrir WhatsApp.")
+        }
+    }
     fun openPublicProduct(product: com.example.bspos.domain.model.Product) {
         val slug = shopSlug?.trim().orEmpty()
         val productSlug = product.remoteProductSlug?.trim().takeUnless { it.isNullOrBlank() }
@@ -920,7 +942,13 @@ fun BSPOSNavHost(
             }
         }
         composable(Screen.Orders.route) {
-            RestrictedMenuDestination(canSeeMenu("orders"), navController) { OrdersScreen() }
+            RestrictedMenuDestination(canSeeMenu("orders"), navController) {
+                OrdersScreen(
+                    publicStoreUrl = publicStoreUrl,
+                    onShareStore = ::sharePublicStore,
+                    onOpenChat = { navController.navigate(Screen.Support.route) }
+                )
+            }
         }
         composable(Screen.Encargos.route) {
             RestrictedMenuDestination(canSeeMenu("encargos"), navController) { OrdersScreen(feature = "encargos") }
@@ -1050,7 +1078,11 @@ fun BSPOSNavHost(
             }
         }
         composable(Screen.Practice.route) { FeatureDestination("practice", canSeeMenu("practice"), navController, canSeeMenu) }
-        composable(Screen.Support.route) { FeatureDestination("support", canSeeMenu("support"), navController, canSeeMenu) }
+        composable(Screen.Support.route) {
+            RestrictedMenuDestination(canSeeMenu("support"), navController) {
+                SupportChatScreen(onNavigateBack = { navController.popBackStack() })
+            }
+        }
         composable(Screen.Metrics.route) { FeatureDestination("metrics", canSeeMenu("metrics"), navController, canSeeMenu) }
         composable(Screen.PublicCatalog.route) { FeatureDestination("public_catalog", canSeeMenu("public_catalog"), navController, canSeeMenu) }
         composable(Screen.Categories.route) {

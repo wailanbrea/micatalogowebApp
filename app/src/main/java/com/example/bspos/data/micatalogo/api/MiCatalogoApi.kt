@@ -35,6 +35,11 @@ import com.example.bspos.data.micatalogo.dto.ExpenseCategoryDto
 import com.example.bspos.data.micatalogo.dto.ExpenseCreateRequestDto
 import com.example.bspos.data.micatalogo.dto.ExpensePaginatedResponseDto
 import com.example.bspos.data.micatalogo.dto.FeatureResponseDto
+import com.example.bspos.data.micatalogo.dto.SupportChatCreateRequestDto
+import com.example.bspos.data.micatalogo.dto.SupportChatMessageRequestDto
+import com.example.bspos.data.micatalogo.dto.SupportChatMessageResponseDto
+import com.example.bspos.data.micatalogo.dto.SupportConversationDetailDto
+import com.example.bspos.data.micatalogo.dto.SupportInboxResponseDto
 import com.example.bspos.data.micatalogo.dto.AuthorizationDecisionResponseDto
 import com.example.bspos.data.micatalogo.dto.PurchaseActionResponseDto
 import com.example.bspos.data.micatalogo.dto.PurchaseCreateRequestDto
@@ -112,6 +117,31 @@ interface MiCatalogoApi {
         @Query("q") query: String? = null,
         @Query("status") status: String? = null
     ): Response<FeatureResponseDto>
+
+    @GET("api/v1/support/conversations")
+    suspend fun supportConversations(): Response<SupportInboxResponseDto>
+
+    @GET("api/v1/support/conversations/{conversationId}")
+    suspend fun supportConversation(
+        @Path("conversationId") conversationId: String
+    ): Response<SupportConversationDetailDto>
+
+    @POST("api/v1/shops/{shopId}/support/conversations")
+    suspend fun createSupportConversation(
+        @Path("shopId") shopId: String,
+        @Body request: SupportChatCreateRequestDto
+    ): Response<SupportConversationDetailDto>
+
+    @POST("api/v1/support/conversations/{conversationId}/messages")
+    suspend fun sendSupportMessage(
+        @Path("conversationId") conversationId: String,
+        @Body request: SupportChatMessageRequestDto
+    ): Response<SupportChatMessageResponseDto>
+
+    @POST("api/v1/support/conversations/{conversationId}/read")
+    suspend fun markSupportConversationRead(
+        @Path("conversationId") conversationId: String
+    ): Response<Unit>
 
     @POST("api/v1/shops/{shopId}/authorization-requests/{requestId}/approve")
     suspend fun approveAuthorization(

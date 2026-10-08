@@ -69,6 +69,71 @@ data class FeatureResponseDto(
 )
 
 @Serializable
+data class SupportChatUserDto(
+    val id: String = "",
+    val name: String = "",
+    val email: String = ""
+)
+
+@Serializable
+data class SupportChatShopDto(
+    val id: String = "",
+    val name: String = ""
+)
+
+@Serializable
+data class SupportConversationDto(
+    val id: String = "",
+    val subject: String = "Ayuda con MiCatalogo",
+    val status: String = "open",
+    @SerialName("created_at") val createdAt: String? = null,
+    @SerialName("last_message_at") val lastMessageAt: String? = null,
+    @SerialName("unread_count") val unreadCount: Int = 0,
+    val shop: SupportChatShopDto? = null,
+    val requester: SupportChatUserDto? = null,
+    @SerialName("assigned_to") val assignedTo: SupportChatUserDto? = null
+)
+
+@Serializable
+data class SupportMessageDto(
+    val id: String = "",
+    val body: String = "",
+    @SerialName("created_at") val createdAt: String? = null,
+    @SerialName("read_at") val readAt: String? = null,
+    val sender: SupportChatUserDto? = null
+)
+
+@Serializable
+data class SupportInboxResponseDto(
+    @SerialName("owner_email") val ownerEmail: String = "",
+    @SerialName("is_inbox") val isInbox: Boolean = false,
+    val conversations: List<SupportConversationDto> = emptyList()
+)
+
+@Serializable
+data class SupportConversationDetailDto(
+    val conversation: SupportConversationDto = SupportConversationDto(),
+    val messages: List<SupportMessageDto> = emptyList()
+)
+
+@Serializable
+data class SupportChatCreateRequestDto(
+    val subject: String? = null,
+    val message: String
+)
+
+@Serializable
+data class SupportChatMessageRequestDto(
+    val message: String
+)
+
+@Serializable
+data class SupportChatMessageResponseDto(
+    val message: String = "",
+    @SerialName("chat_message") val chatMessage: SupportMessageDto? = null
+)
+
+@Serializable
 data class FeatureDefinitionDto(
     val group: String = "",
     val title: String = "",
@@ -81,6 +146,7 @@ data class FeatureModuleDto(
     val kind: String = "prepared",
     val kpis: List<FeatureKpiDto> = emptyList(),
     val rows: List<FeatureRowDto> = emptyList(),
+    @SerialName("page_total") val pageTotal: String? = null,
     val actions: List<FeatureActionDto> = emptyList(),
     val sections: List<FeatureSectionDto> = emptyList(),
     @SerialName("bottleSources") val bottleSources: List<FeatureBottleSourceDto> = emptyList(),
@@ -215,7 +281,22 @@ data class FeatureRowDto(
     @SerialName("margin_percent") val marginPercent: String? = null,
     @SerialName("round_step") val roundStep: String? = null,
     @SerialName("auto_increase") val autoIncrease: Boolean = false,
-    @SerialName("pending_price") val pendingPrice: String? = null
+    @SerialName("pending_price") val pendingPrice: String? = null,
+    @SerialName("customer_name") val customerName: String? = null,
+    @SerialName("customer_phone") val customerPhone: String? = null,
+    @SerialName("delivery_type") val deliveryType: String? = null,
+    val origin: String? = null,
+    @SerialName("item_count") val itemCount: Int = 0,
+    @SerialName("created_at") val createdAt: String? = null,
+    val items: List<FeatureOrderItemDto> = emptyList()
+)
+
+@Serializable
+data class FeatureOrderItemDto(
+    val name: String = "",
+    val quantity: Int = 0,
+    @SerialName("unit_price") val unitPrice: String = "",
+    @SerialName("line_total") val lineTotal: String = ""
 )
 
 @Serializable
