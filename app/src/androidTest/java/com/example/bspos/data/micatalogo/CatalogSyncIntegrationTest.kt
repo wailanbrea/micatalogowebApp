@@ -6,6 +6,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.example.bspos.core.database.RoomDatabaseTransactor
 import com.example.bspos.data.local.AppDatabase
+import com.example.bspos.data.local.dao.PosSaleOutboxDao
 import com.example.bspos.data.local.entity.InventoryMovementEntity
 import com.example.bspos.data.local.entity.PosSaleOutboxEntity
 import com.example.bspos.data.local.entity.SaleEntity
@@ -229,6 +230,42 @@ class CatalogSyncIntegrationTest {
         assertTrue(salesRepository.syncDueSales() is MiCatalogoResult.Success)
         assertEquals(listOf("first", "operation", "second"), calls)
         assertEquals("SENT", db.posSaleOutboxDao().stateForSale(first))
+    }
+
+    @Test
+    fun acknowledgedSaleRemainsReplaySafeIfProcessStopsBeforeMarkingSent() = runTest {
+        assertTrue(repository.syncCatalog(shopId) is MiCatalogoResult.Success)
+        val calls = mutableListOf<String>()
+        api.saleCalls = calls
+        val saleId = queueSale(at.plusSeconds(1), "ack-before-room-state")
+        val flakyOutbox = CrashBeforeMarkSentOutboxDao(db.posSaleOutboxDao())
+        val operationApi = object : com.example.bspos.data.micatalogo.api.MiCatalogoOperationApi {
+            override suspend fun submit(
+                shopId: String,
+                payload: kotlinx.serialization.json.JsonObject
+            ): Response<kotlinx.serialization.json.JsonObject> = Response.success(payload)
+        }
+        val salesRepository = MiCatalogoPosSaleRepositoryImpl(
+            api,
+            EmptyCustomerApi(),
+            flakyOutbox,
+            db.customerRouteDao(),
+            db.saleDao(),
+            json,
+            db.operationOutboxDao(),
+            OperationSyncRepository(operationApi, db.operationOutboxDao(), json)
+        )
+
+        val interrupted = salesRepository.syncDueSales() as MiCatalogoResult.Success
+        assertEquals(0, interrupted.value.sent)
+        assertTrue(interrupted.value.retried > 0)
+        assertEquals(1, calls.size)
+        assertEquals("RETRY", db.posSaleOutboxDao().stateForSale(saleId))
+
+        val replay = salesRepository.syncDueSales() as MiCatalogoResult.Success
+        assertEquals(1, replay.value.sent)
+        assertEquals(2, calls.size)
+        assertEquals("SENT", db.posSaleOutboxDao().stateForSale(saleId))
     }
 
     @Test
@@ -465,6 +502,21 @@ class CatalogSyncIntegrationTest {
         override suspend fun createCustomer(shopId: String, request: CustomerUploadRequestDto): Response<RemoteCustomerDto> = error("Unused")
         override suspend fun payment(shopId: String, customerId: String, body: com.example.bspos.data.micatalogo.api.CustomerPaymentDto): Response<com.example.bspos.data.micatalogo.api.CustomerPaymentResponseDto> = error("Unused")
     }
+
+    private class CrashBeforeMarkSentOutboxDao(
+        private val delegate: PosSaleOutboxDao
+    ) : PosSaleOutboxDao by delegate {
+        private var crashOnce = true
+
+        override suspend fun markSent(saleId: UUID, invoiceNumber: String?, at: Instant): Int {
+            if (crashOnce) {
+                crashOnce = false
+                error("Simulated process interruption after remote ACK")
+            }
+            return delegate.markSent(saleId, invoiceNumber, at)
+        }
+    }
+
     private class SnapshotApi(var snapshot: CatalogSnapshotDto) : MiCatalogoApi {
         var saleCalls: MutableList<String>? = null
         var saleShopCalls: MutableList<String>? = null
