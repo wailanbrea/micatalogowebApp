@@ -21,7 +21,18 @@ class AppUpdateRepository @Inject constructor(
     @param:Named("update")
     private val client: OkHttpClient
 ) {
+    private val pendingStore = AppUpdatePendingStore(
+        context.getSharedPreferences(PENDING_UPDATES_PREFERENCES, Context.MODE_PRIVATE)
+    )
+
     suspend fun check() = api.androidUpdate()
+
+    fun rememberPendingUpdate(update: AvailableAppUpdate) = pendingStore.save(update)
+
+    fun pendingUpdate(installedVersionCode: Int): AvailableAppUpdate? =
+        pendingStore.load(installedVersionCode)
+
+    fun clearPendingUpdate() = pendingStore.clear()
 
     suspend fun download(update: AvailableAppUpdate, onProgress: (Int) -> Unit): File = withContext(Dispatchers.IO) {
         val request = Request.Builder().url(update.apkUrl).build()
@@ -63,5 +74,6 @@ class AppUpdateRepository @Inject constructor(
 
     private companion object {
         const val MAX_APK_BYTES = 200L * 1024 * 1024
+        const val PENDING_UPDATES_PREFERENCES = "app_update_pending"
     }
 }

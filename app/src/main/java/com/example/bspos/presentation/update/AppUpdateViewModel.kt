@@ -54,7 +54,7 @@ class AppUpdateViewModel @Inject constructor(
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (error: Exception) {
-            _state.value = AppUpdateState.CheckFailed(
+            showPendingOrFailure(
                 error.message?.takeIf(String::isNotBlank)
                     ?: "No se pudo conectar con el servidor de actualizaciones."
             )
@@ -62,23 +62,28 @@ class AppUpdateViewModel @Inject constructor(
         }
 
         if (!response.isSuccessful) {
-            _state.value = AppUpdateState.CheckFailed("El servidor respondió HTTP ${response.code()}.")
+            showPendingOrFailure("El servidor respondió HTTP ${response.code()}.")
             return@launch
         }
 
         val manifest = response.body()
         if (manifest == null) {
-            _state.value = AppUpdateState.CheckFailed("El servidor devolvió una respuesta vacía.")
+            showPendingOrFailure("El servidor devolvió una respuesta vacía.")
             return@launch
         }
         if (manifest.versionCode <= BuildConfig.VERSION_CODE) {
+            repository.clearPendingUpdate()
             _state.value = AppUpdateState.Current
             return@launch
         }
 
         val update = AppUpdatePolicy.available(manifest, BuildConfig.VERSION_CODE)
-        _state.value = update?.let(AppUpdateState::Available)
-            ?: AppUpdateState.CheckFailed("El servidor anunció una versión, pero sus datos no pasaron la validación.")
+        if (update == null) {
+            showPendingOrFailure("El servidor anunció una versión, pero sus datos no pasaron la validación.")
+        } else {
+            repository.rememberPendingUpdate(update)
+            _state.value = AppUpdateState.Available(update)
+        }
     }
 
     fun download(update: AvailableAppUpdate) = viewModelScope.launch {
@@ -107,10 +112,19 @@ class AppUpdateViewModel @Inject constructor(
     }
 
     fun skip(update: AvailableAppUpdate) {
-        if (!update.isRequired) _state.value = AppUpdateState.Current
+        if (!update.isRequired) {
+            repository.clearPendingUpdate()
+            _state.value = AppUpdateState.Current
+        }
     }
 
     fun dismissCheckFailure() {
         _state.value = AppUpdateState.Current
+    }
+
+    private fun showPendingOrFailure(message: String) {
+        val pending = repository.pendingUpdate(BuildConfig.VERSION_CODE)
+        _state.value = pending?.let(AppUpdateState::Available)
+            ?: AppUpdateState.CheckFailed(message)
     }
 }
