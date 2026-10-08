@@ -252,7 +252,7 @@ private fun PeriodSelectorRow(
 }
 
 @Composable
-private fun FinanceSummaryTab(
+fun FinanceSummaryTab(
     summary: FinanceSummaryDto?,
     onNavigateToCash: (() -> Unit)? = null
 ) {
@@ -659,7 +659,7 @@ private fun IncomeStatementTab(
 }
 
 @Composable
-private fun CashFlowTab(
+fun CashFlowTab(
     cashFlow: FinanceCashFlowDto?
 ) {
     if (cashFlow == null) {
