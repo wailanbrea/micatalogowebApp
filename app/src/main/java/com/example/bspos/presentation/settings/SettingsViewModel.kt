@@ -103,10 +103,10 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    fun createSeller(shop: MiCatalogoShop, email: String, commissionType: String, commissionValue: String) = viewModelScope.launch {
+    fun createSeller(shop: MiCatalogoShop, email: String, commissionType: String, commissionValue: String, permissions: List<String>) = viewModelScope.launch {
         if (miCatalogoUi.value.isCreatingSeller) return@launch
         miCatalogoUi.value = miCatalogoUi.value.copy(isCreatingSeller = true, successMessage = null, errorMessage = null)
-        when (val result = connectionRepository.createSeller(shop.id, email, commissionType, commissionValue)) {
+        when (val result = connectionRepository.createSeller(shop.id, email, commissionType, commissionValue, permissions)) {
             is MiCatalogoResult.Success -> {
                 miCatalogoUi.value = miCatalogoUi.value.copy(isCreatingSeller = false, successMessage = result.value)
                 loadShops()

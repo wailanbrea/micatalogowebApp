@@ -690,7 +690,7 @@ fun BSPOSMainScreen(
                                 )
                             }
                         }
-                        TextButton(
+                        if (canSeeMenu("help")) TextButton(
                             onClick = {
                                 if (canSeeMenu("help")) {
                                     navigateTo(Screen.Help)
@@ -842,7 +842,6 @@ fun BSPOSNavHost(
                 onInventory = { if (canSeeMenu("inventory")) navController.navigate(Screen.Inventory.route) },
                 onProducts = { if (canSeeMenu("products")) navController.navigate(Screen.Catalog.route) },
                 onStorefront = { if (canSeeMenu("storefront")) navController.navigate(Screen.Storefront.route) },
-                onCash = { if (canSeeMenu("cash")) navController.navigate(Screen.Cash.route) },
                 onCustomers = { if (canSeeMenu("customers")) navController.navigate(Screen.Customers.route) },
                 onRoutes = { if (routesEnabled) navController.navigate(Screen.Routes.route) },
                 onReturns = { if (canSeeMenu("returns")) navController.navigate(Screen.Returns.route) },
@@ -870,6 +869,9 @@ fun BSPOSNavHost(
                 showCollections = canSeeMenu("collections"),
                 showInventory = canSeeMenu("inventory"),
                 showProducts = canSeeMenu("products"),
+                shopId = shopId,
+                showCustomers = canSeeMenu("customers"),
+                onAllSales = { if (canSeeMenu("sales")) navController.navigate(Screen.SalesHistory.route) },
                 presentation = presentation,
                 businessName = businessName,
                 isExpanded = isTablet
@@ -879,12 +881,13 @@ fun BSPOSNavHost(
             RestrictedMenuDestination(canSeeMenu("sales"), navController) {
                 PosScreen(
                     presentation = presentation.copy(posShowCredit = presentation.posShowCredit && (canSeeMenu("credit") || canSeeMenu("collections"))),
-                    onOpenCash = { if (canSeeMenu("cash")) navController.navigate(Screen.Cash.route) },
                     onOpenQuotes = { if (canSeeMenu("quotes")) navController.navigate(Screen.Quotes.route) },
                     onOpenDayClose = { if (canSeeMenu("day_close")) navController.navigate(Screen.DayClose.route) },
                     onOpenCustomers = { if (canSeeMenu("customers")) navController.navigate(Screen.Customers.route) },
                     onOpenServices = { if (canSeeMenu("services")) navController.navigate(Screen.Services.route) },
                     showServicesAction = canSeeMenu("services"),
+                    showQuoteAction = canSeeMenu("quotes"),
+                    showDayCloseAction = canSeeMenu("day_close"),
                     showCosts = !sellerMode || canSeeMenu("inventory") || canSeeMenu("finance"),
                     onNavigateBack = { navController.popBackStack() }
                 )
@@ -1125,7 +1128,9 @@ fun BSPOSNavHost(
         }
         composable(Screen.Credit.route) {
             RestrictedMenuDestination(canSeeMenu("sales") && canSeeMenu("collections"), navController) {
-                PosScreen(creditOnly = true, presentation = presentation.copy(posShowCredit = true), showCosts = !sellerMode || canSeeMenu("inventory") || canSeeMenu("finance"))
+                PosScreen(creditOnly = true, presentation = presentation.copy(posShowCredit = true),
+                    showQuoteAction = false, showDayCloseAction = false, showServicesAction = false,
+                    showCosts = !sellerMode || canSeeMenu("inventory") || canSeeMenu("finance"))
             }
         }
         composable(Screen.Cash.route) {

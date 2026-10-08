@@ -16,7 +16,7 @@ interface MiCatalogoConnectionRepository {
     suspend fun refreshAccount(): MiCatalogoResult<Unit>
     suspend fun updateProfile(name: String, email: String): MiCatalogoResult<Unit>
     suspend fun updateSellerMenus(shopId: String, sellerId: String, permissions: List<String>): MiCatalogoResult<Unit>
-    suspend fun createSeller(shopId: String, email: String, commissionType: String, commissionValue: String): MiCatalogoResult<String>
+    suspend fun createSeller(shopId: String, email: String, commissionType: String, commissionValue: String, permissions: List<String>): MiCatalogoResult<String>
     suspend fun shops(): MiCatalogoResult<List<MiCatalogoShop>>
     suspend fun activeShopId(): String?
     suspend fun selectShop(shopId: String): MiCatalogoResult<Unit>

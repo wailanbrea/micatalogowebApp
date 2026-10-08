@@ -86,7 +86,6 @@ internal fun ResumenOverview(
     payments: List<PaymentEntity>,
     pendingOrders: List<FeatureRowDto>?,
     ordersError: String?,
-    cashOpen: Boolean,
     showSales: Boolean,
     showCollections: Boolean,
     showInventory: Boolean,
@@ -100,7 +99,6 @@ internal fun ResumenOverview(
     onProducts: () -> Unit,
     onPhotos: () -> Unit,
     onEncargos: () -> Unit,
-    onCash: () -> Unit,
     onDayClose: () -> Unit,
     onStorefront: () -> Unit,
     onProfile: () -> Unit,
@@ -164,7 +162,7 @@ internal fun ResumenOverview(
                 }
             }
         }
-        item { ResumenSetup(active.isNotEmpty(), sales.isNotEmpty(), cashOpen, onProducts, onNewSale, onCash, onStorefront, onProfile, onHelp) }
+        item { ResumenSetup(active.isNotEmpty(), sales.isNotEmpty(), onProducts, onNewSale, onStorefront, onProfile, onHelp) }
         item {
             Surface(shape = RoundedCornerShape(8.dp), border = BorderStroke(1.dp, Line), color = Color.White) {
                 Row(Modifier.padding(3.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -328,15 +326,15 @@ internal fun ResumenOverview(
 }
 
 @Composable
-private fun ResumenSetup(hasProduct: Boolean, hasSale: Boolean, cashOpen: Boolean, onProduct: () -> Unit, onSale: () -> Unit, onCash: () -> Unit, onStorefront: () -> Unit, onProfile: () -> Unit, onHelp: () -> Unit) {
+private fun ResumenSetup(hasProduct: Boolean, hasSale: Boolean, onProduct: () -> Unit, onSale: () -> Unit, onStorefront: () -> Unit, onProfile: () -> Unit, onHelp: () -> Unit) {
     var hidden by rememberSaveable { mutableStateOf(false) }
     var expanded by rememberSaveable { mutableStateOf(false) }
     var guide by remember { mutableStateOf(false) }
-    val steps = listOf(Triple("Cuenta conectada", true, onProfile), Triple("Agrega tu primer producto", hasProduct, onProduct), Triple("Confirma cómo te pagan", cashOpen, onCash), Triple("Haz tu primera venta", hasSale, onSale))
+    val steps = listOf(Triple("Cuenta conectada", true, onProfile), Triple("Agrega tu primer producto", hasProduct, onProduct), Triple("Haz tu primera venta", hasSale, onSale))
     Surface(Modifier.fillMaxWidth(), color = BSPOSTheme.colors.primaryLight, shape = RoundedCornerShape(10.dp), border = BorderStroke(1.dp, ResumenAccent.copy(alpha = .25f))) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("PRIMEROS PASOS ${steps.count { it.second }} de 4", Modifier.weight(1f), color = ResumenMuted, fontSize = 11.sp, letterSpacing = 1.sp, fontFamily = FontFamily.Monospace)
+                Text("PRIMEROS PASOS ${steps.count { it.second }} de ${steps.size}", Modifier.weight(1f), color = ResumenMuted, fontSize = 11.sp, letterSpacing = 1.sp, fontFamily = FontFamily.Monospace)
                 Text(if (hidden) "Mostrar" else "Ocultar", Modifier.clickable { hidden = !hidden }.padding(4.dp), color = ResumenMuted, fontSize = 12.sp)
             }
             if (!hidden) {
@@ -370,7 +368,7 @@ private fun ResumenSetup(hasProduct: Boolean, hasSale: Boolean, cashOpen: Boolea
             }
         }
     }
-    if (guide) AlertDialog(onDismissRequest = { guide = false }, title = { Text("Cómo funciona MiCatalogo") }, text = { Text("1. Agrega tus productos y existencias.\n\n2. Configura tus métodos de pago y abre la caja.\n\n3. Registra una venta desde Terminal.\n\n4. Comparte tu catálogo desde Mi tienda.\n\nEn Resumen puedes consultar ventas, ganancias, inventario y clientes pendientes por periodo.") }, confirmButton = { TextButton(onClick = { guide = false; onHelp() }) { Text("Abrir Ayuda") } }, dismissButton = { TextButton(onClick = { guide = false }) { Text("Cerrar") } })
+    if (guide) AlertDialog(onDismissRequest = { guide = false }, title = { Text("Cómo funciona MiCatalogo") }, text = { Text("1. Agrega tus productos y existencias.\n\n2. Define tus métodos de pago si lo necesitas.\n\n3. Registra una venta desde Terminal; no necesitas abrir Caja.\n\n4. Comparte tu catálogo desde Mi tienda.\n\nEn Resumen puedes consultar ventas, ganancias, inventario y clientes pendientes por periodo.") }, confirmButton = { TextButton(onClick = { guide = false; onHelp() }) { Text("Abrir Ayuda") } }, dismissButton = { TextButton(onClick = { guide = false }) { Text("Cerrar") } })
 }
 
 @Composable

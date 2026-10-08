@@ -334,10 +334,10 @@ class MiCatalogoConnectionRepositoryImpl @Inject constructor(
         }
     }
 
-    override suspend fun createSeller(shopId: String, email: String, commissionType: String, commissionValue: String): MiCatalogoResult<String> = runCatching {
+    override suspend fun createSeller(shopId: String, email: String, commissionType: String, commissionValue: String, permissions: List<String>): MiCatalogoResult<String> = runCatching {
         val response = api.get().createSeller(
             shopId,
-            SellerCreateRequestDto(email.trim(), commissionType, commissionValue.trim())
+            SellerCreateRequestDto(email.trim(), commissionType, commissionValue.trim(), permissions)
         )
         if (!response.isSuccessful) error(response.apiErrorMessage("No se pudo crear el vendedor."))
         response.body()?.message?.ifBlank { "Vendedor creado." } ?: "Vendedor creado."

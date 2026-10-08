@@ -724,7 +724,8 @@ data class MenuPermissionsUpdateDto(
 data class SellerCreateRequestDto(
     val email: String,
     @SerialName("commission_type") val commissionType: String,
-    @SerialName("commission_value") val commissionValue: String
+    @SerialName("commission_value") val commissionValue: String,
+    @SerialName("menu_permissions") val menuPermissions: List<String> = listOf("sales", "products", "printers")
 )
 
 @Serializable

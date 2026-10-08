@@ -104,12 +104,13 @@ import java.util.Locale
 fun PosScreen(
     creditOnly: Boolean = false,
     presentation: MiCatalogoBusinessPresentation = MiCatalogoBusinessPresentation(),
-    onOpenCash: () -> Unit = {},
     onOpenQuotes: () -> Unit = {},
     onOpenDayClose: () -> Unit = {},
     onOpenCustomers: () -> Unit = {},
     onOpenServices: () -> Unit = {},
     showServicesAction: Boolean = true,
+    showQuoteAction: Boolean = true,
+    showDayCloseAction: Boolean = true,
     showCosts: Boolean = false,
     onNavigateBack: () -> Unit = {},
     viewModel: PosViewModel = hiltViewModel()
@@ -313,6 +314,7 @@ fun PosScreen(
                         )
                         Spacer(Modifier.height(8.dp))
                         PunttoKindFilterRow(catalogTab, decantsCount, servicesCount) { catalogTab = it }
+                        CategoryFilterRow(categoryOptions, selectedCategoryId) { selectedCategoryId = it }
                         HorizontalDivider(color = Color(0xFFE4E4E7), modifier = Modifier.padding(top = 10.dp))
                         if (catalogTab == "all" && query.isBlank() && selectedCategoryId == null && recentProducts.isNotEmpty()) {
                             Spacer(Modifier.height(8.dp))
@@ -366,8 +368,9 @@ fun PosScreen(
     if (showingTerminalOptions) {
         TerminalOptionsSheet(
             onDismiss = { showingTerminalOptions = false },
+            showQuote = showQuoteAction,
+            showDayClose = showDayCloseAction,
             onDayClose = { showingTerminalOptions = false; onOpenDayClose() },
-            onCash = { showingTerminalOptions = false; onOpenCash() },
             onQuote = { showingTerminalOptions = false; onOpenQuotes() }
         )
     }
@@ -630,6 +633,7 @@ private fun PunttoKindFilterRow(
     servicesCount: Int,
     onSelected: (String) -> Unit
 ) {
+    if (decantsCount == 0 && servicesCount == 0) return
     Row(
         modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 14.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -914,15 +918,15 @@ private fun TerminalModeRow(onQuote: () -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun TerminalOptionsSheet(onDismiss: () -> Unit, onDayClose: () -> Unit, onCash: () -> Unit, onQuote: () -> Unit) {
+private fun TerminalOptionsSheet(onDismiss: () -> Unit, onDayClose: () -> Unit, onQuote: () -> Unit, showQuote: Boolean, showDayClose: Boolean) {
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = BSPOSTheme.colors.surface) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).navigationBarsPadding(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("Opciones de la terminal", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
             Text("Acciones relacionadas con esta jornada de ventas.", color = BSPOSTheme.colors.textSecondary)
 
-            TextButton(onClick = onQuote, modifier = Modifier.fillMaxWidth()) { Text("Crear cotización", modifier = Modifier.fillMaxWidth()) }
-            TextButton(onClick = onDayClose, modifier = Modifier.fillMaxWidth()) { Text("Cierre de día", modifier = Modifier.fillMaxWidth()) }
-            TextButton(onClick = onCash, modifier = Modifier.fillMaxWidth()) { Text("Abrir o revisar caja del servidor", modifier = Modifier.fillMaxWidth()) }
+            if (showQuote) TextButton(onClick = onQuote, modifier = Modifier.fillMaxWidth()) { Text("Crear cotización", modifier = Modifier.fillMaxWidth()) }
+            if (showDayClose) TextButton(onClick = onDayClose, modifier = Modifier.fillMaxWidth()) { Text("Cierre de día", modifier = Modifier.fillMaxWidth()) }
+            if (!showQuote && !showDayClose) Text("No tienes acciones adicionales habilitadas.", color = BSPOSTheme.colors.textSecondary)
             Spacer(Modifier.height(12.dp))
         }
     }
@@ -1160,7 +1164,7 @@ private fun ProductKindFilterRow(
         FilterChip(
             selected = selected == "all",
             onClick = { onSelected("all") },
-            label = { Text("Todos") }
+            label = { Text("Todos los tipos") }
         )
         FilterChip(
             selected = selected == "products",

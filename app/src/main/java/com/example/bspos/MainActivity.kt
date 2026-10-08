@@ -17,6 +17,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSizeClassApi
@@ -54,7 +55,7 @@ class MainActivity : FragmentActivity() {
             val connection by loginViewModel.connection.collectAsState()
             val appUpdateState by appUpdateViewModel.state.collectAsState()
             var showSplash by remember { mutableStateOf(true) }
-            var sessionUnlocked by remember { mutableStateOf(false) }
+            var sessionUnlocked by rememberSaveable { mutableStateOf(false) }
             var lastBackgroundedAt by remember { mutableStateOf(0L) }
             var requestBiometricOnUnlock by remember { mutableStateOf(false) }
             val lifecycleOwner = LocalLifecycleOwner.current

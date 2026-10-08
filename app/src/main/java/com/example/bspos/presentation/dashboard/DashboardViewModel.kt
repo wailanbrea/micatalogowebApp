@@ -25,6 +25,8 @@ import com.example.bspos.domain.repository.MiCatalogoConnectionRepository
 import dagger.Lazy
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import com.example.bspos.data.micatalogo.dto.SellerSummaryDto
 
 @HiltViewModel
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -38,6 +40,38 @@ class DashboardViewModel @Inject constructor(
     private val api: Lazy<MiCatalogoApi>,
     private val connection: MiCatalogoConnectionRepository
 ) : ViewModel() {
+    private val _sellerSummary = MutableStateFlow<SellerSummaryDto?>(null)
+    val sellerSummary = _sellerSummary.asStateFlow()
+    private val _sellerSummaryError = MutableStateFlow<String?>(null)
+    val sellerSummaryError = _sellerSummaryError.asStateFlow()
+    private val _sellerSummaryLoading = MutableStateFlow(false)
+    val sellerSummaryLoading = _sellerSummaryLoading.asStateFlow()
+    private var summaryJob: Job? = null
+
+    fun loadSellerSummary(shopId: String?, period: String) {
+        summaryJob?.cancel()
+        _sellerSummary.value = null
+        _sellerSummaryError.value = null
+        if (shopId == null) {
+            _sellerSummaryError.value = "Conecta tu tienda para consultar tus ventas y comisiones."
+            return
+        }
+        summaryJob = viewModelScope.launch {
+            _sellerSummaryLoading.value = true
+            try {
+                val response = api.get().sellerSummary(shopId, period)
+                if (!response.isSuccessful) error("No se pudo cargar tu resumen (${response.code()}).")
+                _sellerSummary.value = response.body() ?: error("El resumen está vacío.")
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                _sellerSummaryError.value = "No se pudo actualizar tu resumen. Revisa la conexión y reintenta."
+            } finally {
+                _sellerSummaryLoading.value = false
+            }
+        }
+    }
+
     val sales = saleRepository.observeAll().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val saleItems = saleRepository.observeAllItems().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val costTotals = saleRepository.observeCostTotals().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())

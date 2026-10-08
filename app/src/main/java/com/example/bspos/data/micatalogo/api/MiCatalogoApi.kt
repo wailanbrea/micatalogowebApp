@@ -1,6 +1,7 @@
 package com.example.bspos.data.micatalogo.api
 
 import com.example.bspos.data.micatalogo.dto.LoginRequestDto
+import com.example.bspos.data.micatalogo.dto.SellerSummaryDto
 import com.example.bspos.data.micatalogo.dto.MenuPermissionsUpdateDto
 import com.example.bspos.data.micatalogo.dto.LoginResponseDto
 import com.example.bspos.data.micatalogo.dto.CatalogSnapshotDto
@@ -70,6 +71,9 @@ import retrofit2.http.Query
 import retrofit2.http.Streaming
 
 interface MiCatalogoApi {
+    @GET("api/v1/shops/{shop}/seller-summary")
+    suspend fun sellerSummary(@Path("shop") shopId: String, @Query("period") period: String): Response<SellerSummaryDto>
+
     @GET("api/v1/app-updates/android")
     suspend fun androidUpdate(): Response<AndroidUpdateDto>
 

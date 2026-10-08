@@ -123,11 +123,12 @@ private fun PendingSyncCard(title:String,id:String,error:String?,blocked:Boolean
 private fun SellerCreateCard(
     shop: MiCatalogoShop,
     isCreating: Boolean,
-    onCreate: (MiCatalogoShop, String, String, String) -> Unit
+    onCreate: (MiCatalogoShop, String, String, String, List<String>) -> Unit
 ) {
     var email by remember { mutableStateOf("") }
     var commissionType by remember { mutableStateOf("percentage") }
     var commissionValue by remember { mutableStateOf("") }
+    var permissions by remember(shop.id) { mutableStateOf(setOf("sales", "products", "printers")) }
     Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface)) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("Crear vendedor · ${shop.name}", fontWeight = FontWeight.ExtraBold)
@@ -138,8 +139,9 @@ private fun SellerCreateCard(
                 FilterChip(commissionType == "fixed", { commissionType = "fixed" }, label = { Text("Monto fijo") })
             }
             OutlinedTextField(commissionValue, { commissionValue = it }, Modifier.fillMaxWidth(), label = { Text("Comisión") }, singleLine = true)
+            SellerMenuSelector(permissions, !isCreating, { permissions = it })
             Button(
-                onClick = { onCreate(shop, email, commissionType, commissionValue) },
+                onClick = { onCreate(shop, email, commissionType, commissionValue, SellerMenuOptions.map { it.key }.filter { it in permissions }) },
                 enabled = !isCreating && email.isNotBlank() && commissionValue.isNotBlank(),
                 modifier = Modifier.fillMaxWidth()
             ) {
@@ -159,25 +161,19 @@ private fun SellerMenuPermissionsCard(
     Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface)) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("Menús de vendedores · ${shop.name}", fontWeight = FontWeight.ExtraBold)
-            Text("Decide qué módulos puede ver cada vendedor en la web y en la app.", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodySmall)
+            Text("Marca o desmarca módulos y pulsa Guardar menús. Los cambios se aplican en web y app.", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodySmall)
             shop.sellers.filter { it.isActive }.forEach { seller ->
                 var enabled by remember(seller.id, seller.menuPermissions) { mutableStateOf(seller.menuPermissions.toSet()) }
                 Card(colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.background)) {
                     Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(seller.name, fontWeight = FontWeight.Bold)
                         Text(seller.email, color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodySmall)
-                        SellerMenuOptions.forEach { option ->
-                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                Text(option.label, Modifier.weight(1f))
-                                Switch(
-                                    checked = option.key in enabled,
-                                    onCheckedChange = { checked ->
-                                        enabled = if (checked) enabled + option.key else enabled - option.key
-                                        onUpdate(shop, seller.id, enabled.toList())
-                                    },
-                                    enabled = updatingSellerMenuId == null || updatingSellerMenuId == seller.id
-                                )
-                            }
+                        SellerMenuSelector(enabled, updatingSellerMenuId == null, { enabled = it })
+                        Button(
+                            onClick = { onUpdate(shop, seller.id, SellerMenuOptions.map { it.key }.filter { it in enabled }) },
+                            enabled = updatingSellerMenuId == null && enabled != seller.menuPermissions.toSet()
+                        ) {
+                            Text("Guardar menús")
                         }
                         if (updatingSellerMenuId == seller.id) {
                             CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
@@ -187,6 +183,32 @@ private fun SellerMenuPermissionsCard(
             }
             if (shop.sellers.none { it.isActive }) {
                 Text("No hay vendedores activos asignados a esta tienda.", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodySmall)
+            }
+        }
+    }
+}
+
+@Composable
+private fun SellerMenuSelector(selected: Set<String>, enabled: Boolean, onChange: (Set<String>) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    Text("Menús permitidos (${selected.size})", fontWeight = FontWeight.Bold)
+    Text("Solo podrá abrir los menús seleccionados, según el plan de la tienda. Puedes quitar cualquier acceso después.",
+        color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodySmall)
+    TextButton(onClick = { expanded = !expanded }, enabled = enabled) {
+        Text(if (expanded) "Ocultar selección de menús" else "Seleccionar menús")
+    }
+    if (expanded) {
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            TextButton(onClick = { onChange(setOf("sales", "products", "printers")) }, enabled = enabled) { Text("Básicos") }
+            TextButton(onClick = { onChange(SellerMenuOptions.map { it.key }.toSet()) }, enabled = enabled) { Text("Todos") }
+            TextButton(onClick = { onChange(emptySet()) }, enabled = enabled) { Text("Ninguno") }
+        }
+        SellerMenuOptions.forEach { option ->
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(option.label, Modifier.weight(1f))
+                Switch(checked = option.key in selected, enabled = enabled, onCheckedChange = { checked ->
+                    onChange(if (checked) selected + option.key else selected - option.key)
+                })
             }
         }
     }

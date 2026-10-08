@@ -106,7 +106,6 @@ val SellerMenuOptions = listOf(
     SellerMenuOption("public_catalog", "Compartir catálogo")
 )
 
-private val requiredSellerMenuKeys = setOf("sales", "products", "printers")
 private val ownerOnlyMenuKeys = setOf("settings", "shop_settings", "sellers")
 
 fun canAccessMiCatalogoMenu(
@@ -130,7 +129,7 @@ fun canAccessMiCatalogoMenu(
     }
     if (requiredCapability != null && capabilities.isNotEmpty() && capabilities[requiredCapability] != "enabled") return false
     return isPlatformOwner || canManageShop || (
-    menu !in ownerOnlyMenuKeys && menu in (menuPermissions + requiredSellerMenuKeys)
+    menu !in ownerOnlyMenuKeys && menu in menuPermissions
     )
 }
 

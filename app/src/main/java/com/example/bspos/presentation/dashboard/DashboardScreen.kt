@@ -79,7 +79,6 @@ fun DashboardScreen(
     onInventory: () -> Unit = {},
     onProducts: () -> Unit = {},
     onStorefront: () -> Unit = {},
-    onCash: () -> Unit = {},
     onCustomers: () -> Unit = {},
     onRoutes: () -> Unit = {},
     onReturns: () -> Unit = {},
@@ -97,12 +96,20 @@ fun DashboardScreen(
     showCollections: Boolean = true,
     showInventory: Boolean = true,
     showProducts: Boolean = true,
+    shopId: String? = null,
+    showCustomers: Boolean = false,
+    onAllSales: () -> Unit = {},
     presentation: MiCatalogoBusinessPresentation = MiCatalogoBusinessPresentation(),
     businessName: String = "tu negocio",
     isExpanded: Boolean = false,
     viewModel: DashboardViewModel = hiltViewModel(),
     printerViewModel: PosViewModel = hiltViewModel()
 ) {
+    if (sellerMode) {
+        SellerDashboardScreen(shopId, businessName, showSales, showProducts, showCustomers,
+            onNewSale, onProducts, onCustomers, onAllSales, viewModel)
+        return
+    }
     val sales by viewModel.sales.collectAsState()
     val saleItems by viewModel.saleItems.collectAsState()
     val costTotals by viewModel.costTotals.collectAsState()
@@ -118,7 +125,6 @@ fun DashboardScreen(
     val selectedItems by viewModel.selectedItems.collectAsState()
     val printers by printerViewModel.printers.collectAsState()
     val printerMessage by printerViewModel.printerMessage.collectAsState()
-    val cashSession by printerViewModel.cashSession.collectAsState()
     val context = LocalContext.current
     var showAllSales by remember { mutableStateOf(false) }
     var selectedPeriod by remember { mutableStateOf("Hoy") }
@@ -191,12 +197,12 @@ fun DashboardScreen(
     ResumenOverview(
         businessName = businessName, sales = completed, saleItems = saleItems, costTotals = costTotals,
         customers = customers, products = products, quantities = quantities, payments = payments,
-        pendingOrders = pendingOrders, ordersError = ordersError, cashOpen = cashSession != null,
+        pendingOrders = pendingOrders, ordersError = ordersError,
         showSales = showSales, showCollections = showCollections, showInventory = showInventory,
         showEncargos = showEncargos, showCost = !sellerMode,
         onNewSale = onNewSale, onCollections = onCollections, onInventory = onInventory,
         onStockFilter = onStockFilter, onMovements = onMovements, onProducts = onProducts,
-        onPhotos = onPhotos, onEncargos = onEncargos, onCash = onCash, onDayClose = onDayClose,
+        onPhotos = onPhotos, onEncargos = onEncargos, onDayClose = onDayClose,
         onStorefront = onStorefront, onProfile = onProfile, onHelp = onHelp,
         onAllSales = { showAllSales = true }, onSale = viewModel::selectSale
     )
