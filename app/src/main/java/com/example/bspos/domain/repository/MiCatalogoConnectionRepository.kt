@@ -28,5 +28,8 @@ interface MiCatalogoConnectionRepository {
         rows: List<MiCatalogoInventoryImportRow>,
         sessionId: String? = null,
     ): MiCatalogoResult<MiCatalogoInventoryImportResult>
+    suspend fun logout() {
+        clearConnection()
+    }
     suspend fun clearConnection()
 }

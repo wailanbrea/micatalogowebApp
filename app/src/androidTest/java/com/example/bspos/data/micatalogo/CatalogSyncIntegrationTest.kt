@@ -479,6 +479,7 @@ class CatalogSyncIntegrationTest {
         override suspend fun androidUpdate(): Response<AndroidUpdateDto> = error("Unused")
         override suspend fun login(request: LoginRequestDto): Response<LoginResponseDto> = error("Unused")
         override suspend fun me(): Response<MeDto> = error("Unused")
+        override suspend fun logout(): Response<Unit> = error("Unused")
         override suspend fun updateMe(request: ProfileUpdateDto): Response<MeDto> = error("Unused")
         override suspend fun shops(): Response<List<ShopDto>> = error("Unused")
         override suspend fun sellerSummary(shopId: String, period: String): Response<SellerSummaryDto> = error("Unused")

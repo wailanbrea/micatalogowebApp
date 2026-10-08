@@ -108,6 +108,16 @@ class MiCatalogoConnectionRepositoryImpl @Inject constructor(
         onFailure = { MiCatalogoResult.Failure(it.message ?: "No se pudo actualizar el perfil.") }
     )
 
+    override suspend fun logout() {
+        runCatching {
+            val response = api.get().logout()
+            if (!response.isSuccessful && response.code() != 401) {
+                error("No se pudo revocar la sesion remota.")
+            }
+        }
+        clearConnection()
+    }
+
     override suspend fun updateSellerMenus(shopId: String, sellerId: String, permissions: List<String>): MiCatalogoResult<Unit> = runCatching {
         val response = api.get().updateSellerMenus(shopId, sellerId, MenuPermissionsUpdateDto(permissions))
         if (!response.isSuccessful) error(response.apiErrorMessage("No se pudieron guardar los menus."))

@@ -79,7 +79,7 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun logout() = viewModelScope.launch {
-        connectionRepository.clearConnection()
+        connectionRepository.logout()
         miCatalogoUi.value = MiCatalogoSettingsUiState()
     }
 

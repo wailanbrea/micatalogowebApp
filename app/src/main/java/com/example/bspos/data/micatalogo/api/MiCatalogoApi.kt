@@ -83,6 +83,9 @@ interface MiCatalogoApi {
     @GET("api/v1/me")
     suspend fun me(): Response<MeDto>
 
+    @POST("api/v1/auth/logout")
+    suspend fun logout(): Response<Unit>
+
     @PUT("api/v1/me")
     suspend fun updateMe(@Body request: ProfileUpdateDto): Response<MeDto>
 
