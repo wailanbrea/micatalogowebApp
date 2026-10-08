@@ -52,6 +52,7 @@ import com.example.bspos.data.micatalogo.dto.FeatureRowDto
 @Composable
 fun AutomaticPricesScreen(
     modifier: Modifier = Modifier,
+    showSensitiveFinance: Boolean = true,
     viewModel: FeatureModuleViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsState()
@@ -68,6 +69,7 @@ fun AutomaticPricesScreen(
                 description = state.response!!.feature.description,
                 kpis = state.response!!.module.kpis,
                 rows = state.response!!.module.rows,
+                showSensitiveFinance = showSensitiveFinance,
                 onRefresh = { viewModel.load("pricing") },
                 onRecalculate = viewModel::recalculatePricing,
                 onSave = viewModel::savePricingRule,
@@ -82,6 +84,7 @@ private fun AutomaticPricesContent(
     description: String,
     kpis: List<FeatureKpiDto>,
     rows: List<FeatureRowDto>,
+    showSensitiveFinance: Boolean,
     onRefresh: () -> Unit,
     onRecalculate: () -> Unit,
     onSave: (String, String, String, Boolean) -> Unit,
@@ -98,14 +101,20 @@ private fun AutomaticPricesContent(
                 }
                 IconButton(onClick = onRefresh) { Icon(Icons.Default.Refresh, "Actualizar", tint = BSPOSTheme.colors.primary) }
             }
-                OutlinedButton(onClick = onRecalculate, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)) {
-                    Text("Recalcular ahora")
+                if (showSensitiveFinance) {
+                    OutlinedButton(onClick = onRecalculate, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)) {
+                        Text("Recalcular ahora")
+                    }
                 }
         }
         item {
             Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.primaryLight)) {
                 Text(
-                    "Cada lote conserva su costo. Las subidas automáticas pueden aplicarse al recibir mercancía y las bajadas siempre esperan tu aprobación.",
+                    if (showSensitiveFinance) {
+                        "Cada lote conserva su costo. Las subidas automáticas pueden aplicarse al recibir mercancía y las bajadas siempre esperan tu aprobación."
+                    } else {
+                        "La configuración de márgenes, costos y precios propuestos está reservada al propietario o al equipo financiero."
+                    },
                     Modifier.padding(14.dp),
                     color = BSPOSTheme.colors.textPrimary,
                     style = MaterialTheme.typography.bodySmall
@@ -128,9 +137,24 @@ private fun AutomaticPricesContent(
         } else {
             items(rows, key = { row -> row.productId ?: row.id ?: row.primary }) { row ->
                 AnimatedVisibility(visible = true, enter = fadeIn() + slideInHorizontally { it / 12 }) {
-                    PricingRuleCard(row, onSave, onApprove)
+                    if (showSensitiveFinance) {
+                        PricingRuleCard(row, onSave, onApprove)
+                    } else {
+                        RestrictedPricingRow(row)
+                    }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun RestrictedPricingRow(row: FeatureRowDto) {
+    Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface)) {
+        Column(Modifier.fillMaxWidth().padding(15.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+            Text(row.primary.ifBlank { "Producto" }, fontWeight = FontWeight.ExtraBold, color = BSPOSTheme.colors.textPrimary, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            if (row.value.isNotBlank()) Text(row.value, color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodySmall)
+            Text("Regla financiera administrada por el propietario o finanzas.", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodySmall)
         }
     }
 }

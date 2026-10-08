@@ -27,9 +27,8 @@ class FinancialOutboxTest {
             var status = 500
             val requests = mutableListOf<String>()
             val api = object : MiCatalogoOperationApi {
-                override suspend fun submit(shopId: String, payload: JsonObject): Response<JsonObject> = error("Wrong endpoint")
-                override suspend fun submitFinancial(path: String, payload: JsonObject): Response<JsonObject> {
-                    assertEquals("api/v1/shops/shop-1/expenses/expense-1/payments", path)
+                override suspend fun submit(shopId: String, payload: JsonObject): Response<JsonObject> {
+                    assertEquals("shop-1", shopId)
                     requests.add(payload.toString())
                     return if (status == 200) Response.success(buildJsonObject { put("client_operation_uuid", id) })
                     else Response.error(status, """{"message":"Retry or conflict"}""".toResponseBody())
@@ -41,13 +40,16 @@ class FinancialOutboxTest {
                 assertEquals(OperationSubmission.RETRY, sync.submit(dao.find(id)!!))
                 assertEquals(row.payload, dao.find(id)!!.payload)
             }
-            status = 409
-            assertEquals(OperationSubmission.BLOCKED, sync.submit(dao.find(id)!!))
-            assertEquals("BLOCKED", dao.find(id)!!.state)
-            dao.retryBlocked(id)
+            for (code in listOf(403, 409, 422)) {
+                status = code
+                assertEquals(OperationSubmission.BLOCKED, sync.submit(dao.find(id)!!))
+                assertEquals("BLOCKED", dao.find(id)!!.state)
+                assertEquals(1, dao.retryBlocked(id))
+            }
             status = 200
             assertEquals(OperationSubmission.SENT, sync.submit(dao.find(id)!!))
-            assertNotNull(dao.find(id)!!.serverResponse)
+            assertEquals("SENT", dao.find(id)!!.state)
+            assertEquals(row.payload, dao.find(id)!!.payload)
             assertEquals(1, requests.distinct().size)
         } finally { db.close() }
     }

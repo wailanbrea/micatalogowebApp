@@ -6,8 +6,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.example.bspos.core.ui.theme.BSPOSTheme
@@ -35,6 +36,7 @@ class ProductGridScrollTest {
             }
         }
         compose.onNodeWithText("Terminal product 0").assertIsDisplayed()
-        compose.onNodeWithText("Terminal product 19").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("pos-product-grid").performScrollToIndex(19)
+        compose.onNodeWithText("Terminal product 19").assertIsDisplayed()
     }
 }

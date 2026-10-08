@@ -79,6 +79,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -719,25 +720,27 @@ fun BSPOSMainScreen(
                 },
                 label = "screen-transition",
                 modifier = Modifier.fillMaxSize()
-            ) {
-                BSPOSNavHost(
-                    navController = navController,
-                    isTablet = windowWidthSizeClass == WindowWidthSizeClass.Expanded,
-                    routesEnabled = routesEnabled,
-                    currency = settings?.currency ?: CurrencyUnit.DOP,
-                    sellerMode = sellerMode,
-                    showSettings = canSeeMenu("settings"),
-                    showAdminShops = connection.isAdmin,
-                    remoteShopAvailable = connectedShop != null,
-                    presentation = connectedShop?.presentation ?: MiCatalogoBusinessPresentation(),
-                    businessName = businessName,
-                    productFields = connectedShop?.productFields?.toSet().orEmpty(),
-                    shopName = connectedShop?.name,
-                    shopId = connectedShop?.id,
-                    shopSlug = connectedShop?.slug,
-                    canSeeMenu = canSeeMenu,
-                    modifier = Modifier.padding(paddingValues)
-                )
+            ) { route ->
+                key(route) {
+                    BSPOSNavHost(
+                        navController = navController,
+                        isTablet = windowWidthSizeClass == WindowWidthSizeClass.Expanded,
+                        routesEnabled = routesEnabled,
+                        currency = settings?.currency ?: CurrencyUnit.DOP,
+                        sellerMode = sellerMode,
+                        showSettings = canSeeMenu("settings"),
+                        showAdminShops = connection.isAdmin,
+                        remoteShopAvailable = connectedShop != null,
+                        presentation = connectedShop?.presentation ?: MiCatalogoBusinessPresentation(),
+                        businessName = businessName,
+                        productFields = connectedShop?.productFields?.toSet().orEmpty(),
+                        shopName = connectedShop?.name,
+                        shopId = connectedShop?.id,
+                        shopSlug = connectedShop?.slug,
+                        canSeeMenu = canSeeMenu,
+                        modifier = Modifier.padding(paddingValues)
+                    )
+                }
             }
         }
     }
@@ -938,7 +941,7 @@ fun BSPOSNavHost(
                 CatalogHomeScreen(
                     isTablet = isTablet,
                     presentation = presentation,
-                    showCost = !sellerMode || canSeeMenu("inventory") || canSeeMenu("finance"),
+                    showCost = !sellerMode || canSeeMenu("finance"),
                     showProductCode = productFields.isEmpty() || "sku" in productFields || "barcode" in productFields,
                     photosOnly = true
                 )
@@ -960,15 +963,25 @@ fun BSPOSNavHost(
                 CatalogHomeScreen(
                     isTablet = isTablet,
                     presentation = presentation,
-                    showCost = !sellerMode || canSeeMenu("inventory") || canSeeMenu("finance"),
+                    showCost = !sellerMode || canSeeMenu("finance"),
                     showProductCode = productFields.isEmpty() || "sku" in productFields || "barcode" in productFields,
                     initialServiceMode = true
                 )
             }
         }
-        composable(Screen.PriceHealth.route) { FeatureDestination("price_health", canSeeMenu("price_health"), navController, canSeeMenu) }
+        composable(Screen.PriceHealth.route) {
+            FeatureDestination(
+                feature = "price_health",
+                isAllowed = canSeeMenu("price_health"),
+                navController = navController,
+                canSeeMenu = canSeeMenu,
+                showSensitiveFinance = !sellerMode || canSeeMenu("finance")
+            )
+        }
         composable(Screen.AutomaticPrices.route) {
-            RestrictedMenuDestination(canSeeMenu("pricing"), navController) { AutomaticPricesScreen() }
+            RestrictedMenuDestination(canSeeMenu("pricing"), navController) {
+                AutomaticPricesScreen(showSensitiveFinance = !sellerMode || canSeeMenu("finance"))
+            }
         }
         composable(Screen.Decants.route) {
             // Decants is an operational workspace, not a read-only feature card.
@@ -979,7 +992,7 @@ fun BSPOSNavHost(
                 CatalogHomeScreen(
                     isTablet = isTablet,
                     presentation = presentation,
-                    showCost = !sellerMode || canSeeMenu("inventory") || canSeeMenu("finance"),
+                    showCost = !sellerMode || canSeeMenu("finance"),
                     showProductCode = productFields.isEmpty() || "sku" in productFields || "barcode" in productFields,
                     initialDecantMode = true
                 )
@@ -997,7 +1010,8 @@ fun BSPOSNavHost(
                     onOpenQuickCreate = if (canSeeMenu("products")) {{ navController.navigate(Screen.CatalogCreate.route) }} else null,
                     onOpenPrices = if (canSeeMenu("pricing")) {{ navController.navigate(Screen.AutomaticPrices.route) }} else null,
                     onOpenStore = if (canSeeMenu("storefront")) ::openPublicProduct else null,
-                    initialImport = true
+                    initialImport = true,
+                    showCosts = !sellerMode || canSeeMenu("finance")
                 )
             }
         }
@@ -1007,7 +1021,8 @@ fun BSPOSNavHost(
                     onOpenProducts = if (canSeeMenu("products")) {{ navController.navigate(Screen.Catalog.route) }} else null,
                     onOpenPrices = if (canSeeMenu("pricing")) {{ navController.navigate(Screen.AutomaticPrices.route) }} else null,
                     onOpenStore = if (canSeeMenu("storefront")) ::openPublicProduct else null,
-                    initialAdjustment = true
+                    initialAdjustment = true,
+                    showCosts = !sellerMode || canSeeMenu("finance")
                 )
             }
         }
@@ -1062,7 +1077,7 @@ fun BSPOSNavHost(
                 CatalogHomeScreen(
                     isTablet = isTablet,
                     presentation = presentation,
-                    showCost = !sellerMode || canSeeMenu("inventory") || canSeeMenu("finance"),
+                    showCost = !sellerMode || canSeeMenu("finance"),
                     showProductCode = productFields.isEmpty() || "sku" in productFields || "barcode" in productFields
                 )
             }
@@ -1072,7 +1087,7 @@ fun BSPOSNavHost(
                 CatalogHomeScreen(
                     isTablet = isTablet,
                     presentation = presentation,
-                    showCost = !sellerMode || canSeeMenu("inventory") || canSeeMenu("finance"),
+                    showCost = !sellerMode || canSeeMenu("finance"),
                     showProductCode = productFields.isEmpty() || "sku" in productFields || "barcode" in productFields,
                     startWithForm = true
                 )
@@ -1083,7 +1098,7 @@ fun BSPOSNavHost(
                 CatalogHomeScreen(
                     isTablet = isTablet,
                     presentation = presentation,
-                    showCost = !sellerMode || canSeeMenu("inventory") || canSeeMenu("finance"),
+                    showCost = !sellerMode || canSeeMenu("finance"),
                     showProductCode = productFields.isEmpty() || "sku" in productFields || "barcode" in productFields,
                     initialDecantMode = true,
                     startWithForm = true
@@ -1116,7 +1131,8 @@ fun BSPOSNavHost(
                     onOpenPrices = if (canSeeMenu("pricing")) {{ navController.navigate(Screen.AutomaticPrices.route) }} else null,
                     onOpenImport = if (canSeeMenu("import")) {{ navController.navigate(Screen.Import.route) }} else null,
                     onOpenStore = if (canSeeMenu("storefront")) ::openPublicProduct else null,
-                    initialStockFilter = entry.savedStateHandle.get<String>("summary_stock_filter")
+                    initialStockFilter = entry.savedStateHandle.get<String>("summary_stock_filter"),
+                    showCosts = !sellerMode || canSeeMenu("finance")
                 )
             }
         }
@@ -1168,13 +1184,15 @@ fun BSPOSNavHost(
             RestrictedMenuDestination(showAdminShops, navController) { AdminShopsScreen() }
         }
         composable(Screen.Finance.route) {
-            RestrictedMenuDestination(canSeeMenu("finance") || !sellerMode, navController) {
+            RestrictedMenuDestination(canSeeMenu("finance"), navController) {
                 FinanceScreen(
                     onNavigateBack = { navController.popBackStack() },
                     onNavigateToCash = if (canSeeMenu("cash")) ({ navController.navigate(Screen.Cash.route) }) else null,
                     onNavigateToFiscalReport = if (canSeeMenu("reports")) ({ navController.navigate(Screen.Reports.route) }) else null,
                     onNavigateToDistributions = if (canSeeMenu("partners")) ({ navController.navigate(Screen.Partners.route) }) else null,
-                    onNavigateToReceivables = if (canSeeMenu("collections")) ({ navController.navigate(Screen.CreditLedger.route) }) else null
+                    onNavigateToReceivables = if (canSeeMenu("collections")) ({ navController.navigate(Screen.CreditLedger.route) }) else null,
+                    canMutateExpenses = canSeeMenu("expenses"),
+                    canMutateCash = canSeeMenu("cash")
                 )
             }
         }
@@ -1186,7 +1204,9 @@ fun BSPOSNavHost(
                     onNavigateToFiscalReport = if (canSeeMenu("reports")) ({ navController.navigate(Screen.Reports.route) }) else null,
                     onNavigateToDistributions = if (canSeeMenu("partners")) ({ navController.navigate(Screen.Partners.route) }) else null,
                     onNavigateToReceivables = if (canSeeMenu("collections")) ({ navController.navigate(Screen.CreditLedger.route) }) else null,
-                    initialTab = 3
+                    initialTab = 3,
+                    canMutateExpenses = true,
+                    canMutateCash = canSeeMenu("cash")
                 )
             }
         }
@@ -1522,11 +1542,13 @@ private fun FeatureDestination(
     feature: String,
     isAllowed: Boolean,
     navController: androidx.navigation.NavHostController,
-    canSeeMenu: (String) -> Boolean
+    canSeeMenu: (String) -> Boolean,
+    showSensitiveFinance: Boolean = true
 ) {
     RestrictedMenuDestination(isAllowed, navController) {
         FeatureModuleScreen(
             feature = feature,
+            showSensitiveFinance = showSensitiveFinance,
             onAction = { label ->
                 navigateFeatureAction(label, navController, feature, canSeeMenu)
             }

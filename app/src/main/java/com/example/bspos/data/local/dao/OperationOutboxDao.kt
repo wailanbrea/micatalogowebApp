@@ -37,6 +37,8 @@ interface OperationOutboxDao {
     suspend fun eventsAfter(shopId: String, sequence: Long): List<OperationOutboxEntity>
     @Query("SELECT * FROM operation_outbox WHERE state IN ('PENDING','BLOCKED') ORDER BY queue_sequence")
     fun observeOutstanding(): Flow<List<OperationOutboxEntity>>
+    @Query("SELECT * FROM operation_outbox WHERE id = :id LIMIT 1")
+    suspend fun find(id: String): OperationOutboxEntity?
     @Query("UPDATE operation_outbox SET state = :state, error = :error WHERE id = :id AND state = 'PENDING'")
     suspend fun mark(id: String, state: String, error: String? = null): Int
     @Query("UPDATE operation_outbox SET state = 'PENDING', error = NULL WHERE id = :id AND state = 'BLOCKED'")

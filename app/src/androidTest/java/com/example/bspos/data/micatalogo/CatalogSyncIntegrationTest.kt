@@ -258,6 +258,76 @@ class CatalogSyncIntegrationTest {
     }
 
     @Test
+    fun permissionRevocationBlocksQueuedSaleAndDoesNotReplay() = runTest {
+        assertTrue(repository.syncCatalog(shopId) is MiCatalogoResult.Success)
+        val calls = mutableListOf<String>()
+        api.saleCalls = calls
+        val sale = queueSale(at, "permission-revoked")
+        api.saleStatus = 403
+        val sync = MiCatalogoPosSaleRepositoryImpl(api, EmptyCustomerApi(), db.posSaleOutboxDao(),
+            db.customerRouteDao(), db.saleDao(), json, db.operationOutboxDao(),
+            OperationSyncRepository(
+                object : com.example.bspos.data.micatalogo.api.MiCatalogoOperationApi {
+                    override suspend fun submit(shopId: String, payload: kotlinx.serialization.json.JsonObject): Response<kotlinx.serialization.json.JsonObject> = Response.success(payload)
+                },
+                db.operationOutboxDao(),
+                json
+            ))
+
+        val first = sync.syncDueSales() as MiCatalogoResult.Success<MiCatalogoPosSaleSyncResult>
+        assertEquals(0, first.value.sent)
+        assertEquals(1, first.value.blocked)
+        assertEquals(1, calls.size)
+        assertEquals("BLOCKED", db.posSaleOutboxDao().stateForSale(sale))
+
+        // Restoring the server response must not silently replay a sale whose
+        // permission was revoked; the user must review it explicitly.
+        api.saleStatus = 200
+        val replay = sync.syncDueSales() as MiCatalogoResult.Success<MiCatalogoPosSaleSyncResult>
+        assertEquals(0, replay.value.sent)
+        assertEquals(1, calls.size)
+        assertEquals("BLOCKED", db.posSaleOutboxDao().stateForSale(sale))
+    }
+
+    @Test
+    fun pendingSalesStayBoundToTheirOriginalShopWhenTheActiveShopChanges() = runTest {
+        api.snapshot = api.snapshot.copy(
+            shop = ShopDto(id = "shop-a", name = "Tienda A"),
+            products = listOf(product("product-a"))
+        )
+        assertTrue(repository.syncCatalog("shop-a") is MiCatalogoResult.Success)
+        api.snapshot = api.snapshot.copy(
+            shop = ShopDto(id = "shop-b", name = "Tienda B"),
+            products = listOf(product("product-b"))
+        )
+        assertTrue(repository.syncCatalog("shop-b") is MiCatalogoResult.Success)
+
+        val calls = mutableListOf<String>()
+        api.saleShopCalls = calls
+        val first = queueSaleForShop(at, "shop-a-sale", "shop-a", "product-a")
+        val second = queueSaleForShop(at.plusSeconds(1), "shop-b-sale", "shop-b", "product-b")
+        val sync = MiCatalogoPosSaleRepositoryImpl(
+            api, EmptyCustomerApi(), db.posSaleOutboxDao(), db.customerRouteDao(), db.saleDao(), json,
+            db.operationOutboxDao(), OperationSyncRepository(
+                object : com.example.bspos.data.micatalogo.api.MiCatalogoOperationApi {
+                    override suspend fun submit(shopId: String, payload: kotlinx.serialization.json.JsonObject): Response<kotlinx.serialization.json.JsonObject> = Response.success(payload)
+                },
+                db.operationOutboxDao(),
+                json
+            )
+        )
+
+        val result = sync.syncDueSales() as MiCatalogoResult.Success<MiCatalogoPosSaleSyncResult>
+
+        assertEquals(2, result.value.sent)
+        assertEquals(listOf("shop-a", "shop-b"), calls)
+        assertEquals("SENT", db.posSaleOutboxDao().stateForSale(first))
+        assertEquals("SENT", db.posSaleOutboxDao().stateForSale(second))
+        assertEquals("shop-a", db.posSaleOutboxDao().shopForSale(first))
+        assertEquals("shop-b", db.posSaleOutboxDao().shopForSale(second))
+    }
+
+    @Test
     fun equalOrBackdatedTimesCannotReorderCommittedEvents() = runTest {
         assertTrue(repository.syncCatalog(shopId) is MiCatalogoResult.Success)
         val calls = mutableListOf<String>()
@@ -358,18 +428,27 @@ class CatalogSyncIntegrationTest {
         assertEquals(39L, db.inventoryDao().findStock(decantId, InventoryLocationType.MAIN_WAREHOUSE, "MAIN")!!.quantity)
     }
 
-    private suspend fun queueSale(timestamp: Instant, label: String): UUID {
+    private suspend fun queueSale(timestamp: Instant, label: String): UUID =
+        queueSaleForShop(timestamp, label, shopId, "product-a", label)
+
+    private suspend fun queueSaleForShop(
+        timestamp: Instant,
+        label: String,
+        remoteShopId: String,
+        remoteProductId: String,
+        payloadProductId: String = remoteProductId
+    ): UUID {
         val id = UUID.randomUUID()
         db.saleDao().insertWithItems(SaleEntity(id, label, date = timestamp, subtotal = 100,
             total = 100, paymentType = SalePaymentType.CASH, paidAmount = 100,
             createdAt = timestamp, updatedAt = timestamp), listOf(SaleItemEntity(UUID.randomUUID(), id,
-                MiCatalogoImportMapper.productId(shopId, "product-a"), 1, 100, 50, subtotal = 100)))
+                MiCatalogoImportMapper.productId(remoteShopId, remoteProductId), 1, 100, 50, subtotal = 100)))
         val body = PosSaleUploadRequestDto(
             clientSaleUuid = id.toString(),
             paymentStatus = "paid",
-            items = listOf(PosSaleUploadItemDto(label, 1, "1.00"))
+            items = listOf(PosSaleUploadItemDto(payloadProductId, 1, "1.00"))
         )
-        db.posSaleOutboxDao().insert(PosSaleOutboxEntity(id, shopId, json.encodeToString(body),
+        db.posSaleOutboxDao().insert(PosSaleOutboxEntity(id, remoteShopId, json.encodeToString(body),
             nextAttemptAt = timestamp, createdAt = timestamp, updatedAt = timestamp))
         return id
     }
@@ -388,6 +467,8 @@ class CatalogSyncIntegrationTest {
     }
     private class SnapshotApi(var snapshot: CatalogSnapshotDto) : MiCatalogoApi {
         var saleCalls: MutableList<String>? = null
+        var saleShopCalls: MutableList<String>? = null
+        var saleStatus = 200
         var catalogStatus = 200
         var beforeCatalog: (suspend () -> Unit)? = null
         override suspend fun catalog(shopId: String): Response<CatalogSnapshotDto> {
@@ -400,6 +481,30 @@ class CatalogSyncIntegrationTest {
         override suspend fun me(): Response<MeDto> = error("Unused")
         override suspend fun updateMe(request: ProfileUpdateDto): Response<MeDto> = error("Unused")
         override suspend fun shops(): Response<List<ShopDto>> = error("Unused")
+        override suspend fun sellerSummary(shopId: String, period: String): Response<SellerSummaryDto> = error("Unused")
+        override suspend fun feature(shopId: String, feature: String, period: String?, query: String?, status: String?): Response<FeatureResponseDto> = error("Unused")
+        override suspend fun approveAuthorization(shopId: String, requestId: String): Response<AuthorizationDecisionResponseDto> = error("Unused")
+        override suspend fun rejectAuthorization(shopId: String, requestId: String): Response<AuthorizationDecisionResponseDto> = error("Unused")
+        override suspend fun updateAttribute(shopId: String, attributeId: String, request: AttributeUpdateRequestDto): Response<PricingMutationResponseDto> = error("Unused")
+        override suspend fun savePricingRule(shopId: String, productId: String, request: PricingRuleRequestDto): Response<PricingMutationResponseDto> = error("Unused")
+        override suspend fun recalculatePricing(shopId: String): Response<PricingMutationResponseDto> = error("Unused")
+        override suspend fun approvePricingRule(shopId: String, productId: String, request: PricingApprovalRequestDto): Response<PricingMutationResponseDto> = error("Unused")
+        override suspend fun createPartner(shopId: String, request: PartnerCreateRequestDto): Response<PricingMutationResponseDto> = error("Unused")
+        override suspend fun recordPartnerTransaction(shopId: String, partnerId: String, request: PartnerTransactionRequestDto): Response<PricingMutationResponseDto> = error("Unused")
+        override suspend fun grantAccountantAccess(shopId: String, request: AccountantAccessRequestDto): Response<PricingMutationResponseDto> = error("Unused")
+        override suspend fun shopSettings(shopId: String): Response<ShopSettingsDto> = error("Unused")
+        override suspend fun updateShopSettings(shopId: String, request: ShopSettingsUpdateDto): Response<ShopSettingsDto> = error("Unused")
+        override suspend fun uploadShopLogo(shopId: String, logo: okhttp3.MultipartBody.Part): Response<ShopLogoUploadResponseDto> = error("Unused")
+        override suspend fun exportReport(shopId: String, format: String): Response<okhttp3.ResponseBody> = error("Unused")
+        override suspend fun purchases(shopId: String): Response<PurchaseWorkspaceDto> = error("Unused")
+        override suspend fun suppliers(shopId: String): Response<PurchaseWorkspaceDto> = error("Unused")
+        override suspend fun createSupplier(shopId: String, request: SupplierCreateRequestDto): Response<SupplierActionResponseDto> = error("Unused")
+        override suspend fun previewPurchaseInvoice(shopId: String, file: okhttp3.MultipartBody.Part): Response<PurchaseInvoicePreviewDto> = error("Unused")
+        override suspend fun createPurchase(shopId: String, request: PurchaseCreateRequestDto): Response<PurchaseActionResponseDto> = error("Unused")
+        override suspend fun receivePurchase(shopId: String, documentId: String): Response<PurchaseActionResponseDto> = error("Unused")
+        override suspend fun createQuote(shopId: String, request: QuoteCreateRequestDto): Response<QuoteResponseDto> = error("Unused")
+        override suspend fun convertQuote(shopId: String, quoteId: String): Response<QuoteResponseDto> = error("Unused")
+        override suspend fun confirmOrder(shopId: String, orderId: String, request: OrderConfirmRequestDto): Response<OrderConfirmResponseDto> = error("Unused")
         override suspend fun previewInventoryImport(shopId: String, file: okhttp3.MultipartBody.Part, mapping: Map<String, @JvmSuppressWildcards okhttp3.RequestBody>): Response<InventoryImportPreviewDto> = error("Unused")
         override suspend fun importInventory(shopId: String, request: InventoryImportRequestDto): Response<InventoryImportResponseDto> = error("Unused")
         override suspend fun adminShops(): Response<List<AdminShopDto>> = error("Unused")
@@ -420,7 +525,12 @@ class CatalogSyncIntegrationTest {
         override suspend fun createExpense(shopId: String, request: ExpenseCreateRequestDto): Response<ExpenseActionResponseDto> = error("Unused")
         override suspend fun uploadPosSale(shopId: String, request: PosSaleUploadRequestDto): Response<PosSaleUploadResponseDto> {
             saleCalls?.add(request.items.first().productId)
-            return Response.success(PosSaleUploadResponseDto(clientSaleUuid = request.clientSaleUuid))
+            saleShopCalls?.add(shopId)
+            return if (saleStatus == 200) {
+                Response.success(PosSaleUploadResponseDto(clientSaleUuid = request.clientSaleUuid))
+            } else {
+                Response.error(saleStatus, "{\"message\":\"Permiso revocado\"}".toResponseBody())
+            }
         }
     }
 }

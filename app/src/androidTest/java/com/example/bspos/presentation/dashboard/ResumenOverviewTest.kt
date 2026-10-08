@@ -24,10 +24,10 @@ class ResumenOverviewTest {
                 ResumenOverview(
                     businessName = "Mi negocio", sales = sales, saleItems = emptyList(), costTotals = emptyMap(),
                     customers = emptyList(), products = emptyList(), quantities = emptyMap(), payments = emptyList(),
-                    pendingOrders = emptyList(), ordersError = null, cashOpen = false,
+                    pendingOrders = emptyList(), ordersError = null,
                     showSales = true, showCollections = true, showInventory = true, showEncargos = true, showCost = true,
                     onNewSale = {}, onCollections = {}, onInventory = {}, onStockFilter = {}, onMovements = {},
-                    onProducts = {}, onPhotos = {}, onEncargos = {}, onCash = {}, onDayClose = {},
+                    onProducts = {}, onPhotos = {}, onEncargos = {}, onDayClose = {},
                     onStorefront = {}, onProfile = {}, onHelp = {}, onAllSales = {}, onSale = {}
                 )
             }

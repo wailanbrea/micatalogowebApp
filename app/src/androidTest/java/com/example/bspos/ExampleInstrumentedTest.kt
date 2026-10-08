@@ -19,6 +19,10 @@ class ExampleInstrumentedTest {
     fun useAppContext() {
         // Context of the app under test.
         val appContext = InstrumentationRegistry.getInstrumentation().targetContext
-        assertEquals("com.bsolutions.micatalogo", appContext.packageName)
+        assertTrue(
+            "Unexpected application id: ${appContext.packageName}",
+            appContext.packageName == "com.bsolutions.micatalogo" ||
+                appContext.packageName == "com.bsolutions.micatalogo.offlinecheck",
+        )
     }
 }

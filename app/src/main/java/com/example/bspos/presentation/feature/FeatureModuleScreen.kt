@@ -69,6 +69,7 @@ fun FeatureModuleScreen(
     feature: String,
     modifier: Modifier = Modifier,
     viewModel: FeatureModuleViewModel = hiltViewModel(),
+    showSensitiveFinance: Boolean = true,
     onAction: (String) -> Boolean = { false }
 ) {
     val state by viewModel.state.collectAsState()
@@ -99,6 +100,7 @@ fun FeatureModuleScreen(
                 feature = feature,
                 definition = state.response!!.feature,
                 module = state.response!!.module,
+                showSensitiveFinance = showSensitiveFinance,
                 onAction = onAction,
                 onConfirmOrder = { orderId, request -> viewModel.confirmOrder(orderId, request, feature) },
                 onAuthorizationDecision = { requestId, approve -> viewModel.decideAuthorization(requestId, approve) },
@@ -132,6 +134,7 @@ private fun FeatureContent(
     feature: String,
     definition: FeatureDefinitionDto,
     module: FeatureModuleDto,
+    showSensitiveFinance: Boolean,
     onAction: (String) -> Boolean,
     onConfirmOrder: (String, OrderConfirmRequestDto) -> Unit,
     onAuthorizationDecision: (String, Boolean) -> Unit,
@@ -272,7 +275,8 @@ private fun FeatureContent(
                 PriceHealthControls(
                     selected = priceHealthFilter,
                     onSelect = { priceHealthFilter = it },
-                    onOpenRules = { onAction("Administrar reglas") }
+                    onOpenRules = { onAction("Administrar reglas") },
+                    showSensitiveFinance = showSensitiveFinance
                 )
             }
         }
@@ -530,15 +534,34 @@ private fun SalesPeriodSelector(selected: String, onSelect: (String) -> Unit) {
 }
 
 @Composable
-private fun PriceHealthControls(selected: String, onSelect: (String) -> Unit, onOpenRules: () -> Unit) {
+private fun PriceHealthControls(
+    selected: String,
+    onSelect: (String) -> Unit,
+    onOpenRules: () -> Unit,
+    showSensitiveFinance: Boolean
+) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf("Todos", "Bajo costo", "Margen bajo", "Sin precio", "Sin costo", "Costo dudoso", "Sugerencias").forEach { filter ->
-                FilterChip(selected = selected == filter, onClick = { onSelect(filter) }, label = { Text(filter, maxLines = 1) })
+        if (showSensitiveFinance) {
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf("Todos", "Bajo costo", "Margen bajo", "Sin precio", "Sin costo", "Costo dudoso", "Sugerencias").forEach { filter ->
+                    FilterChip(selected = selected == filter, onClick = { onSelect(filter) }, label = { Text(filter, maxLines = 1) })
+                }
             }
-        }
-        OutlinedButton(onClick = onOpenRules, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp)) {
-            Text("Abrir precios automáticos")
+            OutlinedButton(onClick = onOpenRules, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp)) {
+                Text("Abrir precios automáticos")
+            }
+        } else {
+            Card(
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.primaryLight)
+            ) {
+                Text(
+                    "La revisión de costos, márgenes y sugerencias de precio está reservada al propietario o al equipo financiero.",
+                    Modifier.padding(14.dp),
+                    color = BSPOSTheme.colors.textPrimary,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
         }
     }
 }

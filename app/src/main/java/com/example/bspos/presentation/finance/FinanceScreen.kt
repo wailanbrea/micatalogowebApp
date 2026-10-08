@@ -49,6 +49,8 @@ fun FinanceScreen(
     onNavigateToDistributions: (() -> Unit)? = null,
     onNavigateToReceivables: (() -> Unit)? = null,
     initialTab: Int = 0,
+    canMutateExpenses: Boolean = true,
+    canMutateCash: Boolean = true,
     viewModel: FinanceViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -78,7 +80,7 @@ fun FinanceScreen(
         // Control Financiero” labels and wasted vertical space on mobile.
         topBar = {},
         floatingActionButton = {
-            if (selectedTab == 3) {
+            if (selectedTab == 3 && canMutateExpenses) {
                 FloatingActionButton(
                     onClick = { showExpenseDialog = true },
                     containerColor = BSPOSTheme.colors.primary,
@@ -161,11 +163,12 @@ fun FinanceScreen(
                             )
                             3 -> ExpensesTab(
                                 expenses = uiState.expenses,
-                                onAddExpense = { showExpenseDialog = true }
+                                onAddExpense = { showExpenseDialog = true }.takeIf { canMutateExpenses }
                             )
                             4 -> RemoteCashTab(
                                 cash = uiState.cashSession,
                                 busy = uiState.isCashOperationBusy,
+                                canMutate = canMutateCash,
                                 onOpen = viewModel::openRemoteCash,
                                 onClose = viewModel::closeRemoteCash,
                                 onMovement = viewModel::recordRemoteCashMovement
@@ -767,7 +770,7 @@ private fun CashFlowTab(
 @Composable
 private fun ExpensesTab(
     expenses: List<ExpenseDto>,
-    onAddExpense: () -> Unit
+    onAddExpense: (() -> Unit)?
 ) {
     if (expenses.isEmpty()) {
         Box(
@@ -779,9 +782,11 @@ private fun ExpensesTab(
             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Icon(Icons.Default.ReceiptLong, contentDescription = null, modifier = Modifier.size(56.dp), tint = BSPOSTheme.colors.textSecondary)
                 Text("No hay gastos registrados en este período.", color = BSPOSTheme.colors.textSecondary, textAlign = TextAlign.Center)
-                Button(onClick = onAddExpense, colors = ButtonDefaults.buttonColors(containerColor = BSPOSTheme.colors.primary)) {
-                    Text("Registrar Primer Gasto")
-                }
+                onAddExpense?.let { addExpense ->
+                    Button(onClick = addExpense, colors = ButtonDefaults.buttonColors(containerColor = BSPOSTheme.colors.primary)) {
+                        Text("Registrar Primer Gasto")
+                    }
+                } ?: Text("Tu rol tiene acceso de solo lectura para los gastos.", color = BSPOSTheme.colors.textSecondary, textAlign = TextAlign.Center)
             }
         }
         return
@@ -910,9 +915,10 @@ private fun FinanceValueRow(label: String, value: String, color: Color = BSPOSTh
 }
 
 @Composable
-private fun RemoteCashTab(
+internal fun RemoteCashTab(
     cash: CashCurrentSessionResponseDto?,
     busy: Boolean,
+    canMutate: Boolean = true,
     onOpen: (String, String?) -> Unit,
     onClose: (String, String?) -> Unit,
     onMovement: (String, String, String) -> Unit
@@ -937,18 +943,35 @@ private fun RemoteCashTab(
         Text("Caja de MiCatalogo", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         Text("Esta caja se sincroniza con el panel web. La caja local del POS sigue disponible para ventas sin conexión.",
             style = MaterialTheme.typography.bodySmall, color = BSPOSTheme.colors.textSecondary)
+        if (!canMutate) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.background)
+            ) {
+                Text(
+                    "Consulta de caja en solo lectura. Tu rol no puede abrir, cerrar ni registrar movimientos.",
+                    modifier = Modifier.padding(16.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = BSPOSTheme.colors.textSecondary
+                )
+            }
+        }
 
         if (session == null) {
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text("No hay una sesión de caja abierta", fontWeight = FontWeight.Bold)
-                    OutlinedTextField(openingAmount, { openingAmount = it }, Modifier.fillMaxWidth(),
-                        label = { Text("Fondo inicial") }, prefix = { Text("RD$ ") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true)
-                    OutlinedTextField(openingNotes, { openingNotes = it }, Modifier.fillMaxWidth(),
-                        label = { Text("Nota (opcional)") }, singleLine = true)
-                    Button(onClick = { onOpen(openingAmount, openingNotes) }, enabled = !busy && openingAmount.isNotBlank(), modifier = Modifier.fillMaxWidth()) {
-                        Text(if (busy) "Procesando…" else "Abrir caja")
+                    if (canMutate) {
+                        OutlinedTextField(openingAmount, { openingAmount = it }, Modifier.fillMaxWidth(),
+                            label = { Text("Fondo inicial") }, prefix = { Text("RD$ ") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true)
+                        OutlinedTextField(openingNotes, { openingNotes = it }, Modifier.fillMaxWidth(),
+                            label = { Text("Nota (opcional)") }, singleLine = true)
+                        Button(onClick = { onOpen(openingAmount, openingNotes) }, enabled = !busy && openingAmount.isNotBlank(), modifier = Modifier.fillMaxWidth()) {
+                            Text(if (busy) "Procesando…" else "Abrir caja")
+                        }
+                    } else {
+                        Text("No hay una sesión para consultar en este momento.", color = BSPOSTheme.colors.textSecondary)
                     }
                 }
             }
@@ -972,37 +995,39 @@ private fun RemoteCashTab(
                 }
             }
 
-            Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("Registrar movimiento", fontWeight = FontWeight.Bold)
-                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf("cash_in" to "Entrada", "cash_out" to "Salida", "owner_contribution" to "Aporte", "owner_withdrawal" to "Retiro", "adjustment" to "Ajuste").forEach { (type, label) ->
-                            FilterChip(selected = movementType == type, onClick = { movementType = type }, label = { Text(label) })
+            if (canMutate) {
+                Card(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text("Registrar movimiento", fontWeight = FontWeight.Bold)
+                        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            listOf("cash_in" to "Entrada", "cash_out" to "Salida", "owner_contribution" to "Aporte", "owner_withdrawal" to "Retiro", "adjustment" to "Ajuste").forEach { (type, label) ->
+                                FilterChip(selected = movementType == type, onClick = { movementType = type }, label = { Text(label) })
+                            }
+                        }
+                        OutlinedTextField(movementAmount, { movementAmount = it }, Modifier.fillMaxWidth(),
+                            label = { Text("Monto") }, prefix = { Text("RD$ ") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true)
+                        OutlinedTextField(movementNotes, { movementNotes = it }, Modifier.fillMaxWidth(),
+                            label = { Text("Motivo (requerido)") }, singleLine = true)
+                        OutlinedButton(onClick = { onMovement(movementType, movementAmount, movementNotes) },
+                            enabled = !busy && movementAmount.isNotBlank() && movementNotes.isNotBlank(), modifier = Modifier.fillMaxWidth()) {
+                            Text("Guardar movimiento")
                         }
                     }
-                    OutlinedTextField(movementAmount, { movementAmount = it }, Modifier.fillMaxWidth(),
-                        label = { Text("Monto") }, prefix = { Text("RD$ ") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true)
-                    OutlinedTextField(movementNotes, { movementNotes = it }, Modifier.fillMaxWidth(),
-                        label = { Text("Motivo (requerido)") }, singleLine = true)
-                    OutlinedButton(onClick = { onMovement(movementType, movementAmount, movementNotes) },
-                        enabled = !busy && movementAmount.isNotBlank() && movementNotes.isNotBlank(), modifier = Modifier.fillMaxWidth()) {
-                        Text("Guardar movimiento")
-                    }
                 }
-            }
 
-            Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("Arqueo y cierre", fontWeight = FontWeight.Bold)
-                    OutlinedTextField(countedAmount, { countedAmount = it }, Modifier.fillMaxWidth(),
-                        label = { Text("Efectivo contado") }, prefix = { Text("RD$ ") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true)
-                    OutlinedTextField(closingNotes, { closingNotes = it }, Modifier.fillMaxWidth(),
-                        label = { Text("Nota de cierre (opcional)") }, singleLine = true)
-                    Button(onClick = { onClose(countedAmount, closingNotes) },
-                        enabled = !busy && countedAmount.isNotBlank(), modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD32F2F))) {
-                        Text(if (busy) "Procesando…" else "Cerrar caja")
+                Card(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text("Arqueo y cierre", fontWeight = FontWeight.Bold)
+                        OutlinedTextField(countedAmount, { countedAmount = it }, Modifier.fillMaxWidth(),
+                            label = { Text("Efectivo contado") }, prefix = { Text("RD$ ") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true)
+                        OutlinedTextField(closingNotes, { closingNotes = it }, Modifier.fillMaxWidth(),
+                            label = { Text("Nota de cierre (opcional)") }, singleLine = true)
+                        Button(onClick = { onClose(countedAmount, closingNotes) },
+                            enabled = !busy && countedAmount.isNotBlank(), modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD32F2F))) {
+                            Text(if (busy) "Procesando…" else "Cerrar caja")
+                        }
                     }
                 }
             }

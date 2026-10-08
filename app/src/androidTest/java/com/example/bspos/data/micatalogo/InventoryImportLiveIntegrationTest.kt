@@ -62,7 +62,7 @@ class InventoryImportLiveIntegrationTest {
             sessionId = preview.sessionId, headerRow = preview.headerRow, sheetName = preview.sheet!!.name, sheetIndex = preview.sheet!!.index,
             mappingDetails = preview.mappingConfidence.mapValues { (_, d) -> ImportMappingDetail(d.source, d.header, d.confidence, d.reason, d.examples) }
         )
-        compose.setContent { BSPOSTheme { InventoryImportMappingDialog(ui, false, {}, { _, _ -> }, {}) } }
+        compose.setContent { BSPOSTheme { InventoryImportMappingDialog(ui, false, { _ -> }, {}) } }
         compose.onNodeWithText("Hoja: Existencias · Encabezados: fila 8").assertIsDisplayed()
         compose.onNodeWithText("Código de barras: Código del producto").assertExists()
         compose.onNodeWithText("Costo: Costo unitario").assertExists()

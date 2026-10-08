@@ -1,7 +1,11 @@
 package com.example.bspos.presentation.printer
 
 import android.bluetooth.BluetoothManager
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.bspos.data.printer.BluetoothPrinterRepository
@@ -37,6 +41,11 @@ class BluetoothPrinterViewModel @Inject constructor(
     fun loadPairedDevices() {
         _error.value = null
         runCatching {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+                ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED
+            ) {
+                error("Concede el permiso de dispositivos cercanos para ver las impresoras vinculadas.")
+            }
             val adapter = context.getSystemService(BluetoothManager::class.java)?.adapter
                 ?: error("Este dispositivo no tiene Bluetooth")
             adapter.bondedDevices.map { device ->

@@ -573,7 +573,12 @@ private fun ProductForm(current: Product?, currentQuantity: Long, categories: Li
                                 text = {
                                     Column {
                                         Text(item.name, fontWeight = FontWeight.SemiBold)
-                                        Text("${item.remoteVolumeMl} ml · costo ${money(item.lastPurchaseCost)}", style = MaterialTheme.typography.labelSmall, color = BSPOSTheme.colors.textSecondary)
+                                        Text(
+                                            if (showCost) "${item.remoteVolumeMl} ml · costo ${money(item.lastPurchaseCost)}"
+                                            else "${item.remoteVolumeMl} ml · presentación disponible",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = BSPOSTheme.colors.textSecondary
+                                        )
                                     }
                                 },
                                 onClick = { sourceProduct = item; sourceOpen = false }
@@ -594,7 +599,9 @@ private fun ProductForm(current: Product?, currentQuantity: Long, categories: Li
                             Spacer(Modifier.height(6.dp))
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Text("${source.remoteVolumeMl ?: 0} ml de origen", style = MaterialTheme.typography.labelSmall, color = BSPOSTheme.colors.textSecondary)
-                                Text("Costo ${money(source.lastPurchaseCost)}", style = MaterialTheme.typography.labelSmall, color = BSPOSTheme.colors.textSecondary)
+                                if (showCost) {
+                                    Text("Costo ${money(source.lastPurchaseCost)}", style = MaterialTheme.typography.labelSmall, color = BSPOSTheme.colors.textSecondary)
+                                }
                             }
                             Text(
                                 source.remoteAvailableMl?.let { "$it ml disponibles para decantar" } ?: "Existencia de ml pendiente de sincronizar",
@@ -779,7 +786,7 @@ private fun ProductForm(current: Product?, currentQuantity: Long, categories: Li
             val validCombo = !comboMode || (shopId != null && selectedComboItems.isNotEmpty() && selectedComboItems.size == comboRows.size)
             val validVolume = comboMode || saleUnit == "unit" || saleUnit == "service" || (selectedVolume != null && selectedVolume > 0)
             val validPresentation = if (effectiveDecantMode) {
-                shopId != null && sourceProduct?.remoteProductId != null && sourceCost > 0 && selectedVolume != null && selectedVolume > 0 && sourceVolume != null && selectedVolume <= sourceVolume
+                shopId != null && sourceProduct?.remoteProductId != null && (sourceCost > 0 || !showCost) && selectedVolume != null && selectedVolume > 0 && sourceVolume != null && selectedVolume <= sourceVolume
             } else {
                 validVolume && validCombo && (comboMode || saleUnit != "bottle" || !showInventoryFields || effectivePurchase?.let { it > 0 } == true)
             }

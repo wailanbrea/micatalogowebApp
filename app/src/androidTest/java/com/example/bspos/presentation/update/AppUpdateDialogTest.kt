@@ -54,6 +54,7 @@ class AppUpdateDialogTest {
     private fun update(isRequired: Boolean) = AvailableAppUpdate(
         versionCode = 7,
         versionName = "1.0.6",
+        minimumSupportedVersionCode = 0,
         apkUrl = "https://micatalogo.bsolutions.dev/downloads/bspos-1.0.6.apk",
         apkSha256 = "a".repeat(64),
         releaseNotes = "Actualizacion de seguridad.",

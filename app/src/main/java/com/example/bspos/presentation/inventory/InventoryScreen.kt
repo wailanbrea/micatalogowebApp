@@ -94,6 +94,7 @@ fun InventoryScreen(
     initialImport: Boolean = false,
     initialAdjustment: Boolean = false,
     initialStockFilter: String? = null,
+    showCosts: Boolean = true,
     viewModel: InventoryViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
@@ -148,14 +149,14 @@ fun InventoryScreen(
     val productsWithStock = activeProducts.count { (quantityByProductId[it.id] ?: 0L) > 0L }
     val lowStock = activeProducts.count { product -> product.minimumStock > 0L && (quantityByProductId[product.id] ?: 0L) <= product.minimumStock }
     val totalUnits = stock.sumOf { it.quantity }
-    val capitalAtCost = stock.sumOf { row -> row.quantity * (productById[row.productId]?.averageCost ?: 0L) }
+    val capitalAtCost = if (showCosts) stock.sumOf { row -> row.quantity * (productById[row.productId]?.averageCost ?: 0L) } else 0L
     val productsWithoutPhoto = products.count { it.isActive && it.deletedAt == null && it.imagePath.isNullOrBlank() }
     val stockEditableProducts = products.filter { !it.remoteIsCombo && it.remoteSaleUnit != "decant" && it.remoteSaleUnit != "service" && (it.remoteShopId == null || it.remoteShopId in editableShopIds) }
     val productsWithoutStock = stockEditableProducts.filter { product -> stock.none { it.productId == product.id } }
     val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
         val result = runCatching {
-            val csv = buildInventoryCsv(products, stock)
+            val csv = buildInventoryCsv(products, stock, includeCosts = showCosts)
             context.contentResolver.openOutputStream(uri)?.use { output ->
                 output.write(csv.toByteArray(Charsets.UTF_8))
             } ?: error("No se pudo abrir el destino del archivo.")
@@ -263,7 +264,8 @@ fun InventoryScreen(
                 totalUnits = totalUnits,
                 lowStock = lowStock,
                 exhausted = unavailable,
-                averageMargin = averageMargin(activeProducts)
+                averageMargin = averageMargin(activeProducts).takeIf { showCosts },
+                showCosts = showCosts
             )
         }
         if (productsWithoutPhoto > 0) {
@@ -398,7 +400,8 @@ fun InventoryScreen(
                 productById[id]?.let(viewModel::convertToService)
                 selectedProduct = null
                 viewModel.select(null)
-            }
+            },
+            showCosts = showCosts
         )
     }
     if (showGlobalMovements) {
@@ -513,7 +516,8 @@ private fun InventoryProductDetailDialog(
     onEdit: () -> Unit,
     onOpenStore: ((Product) -> Unit)?,
     onCorrectLot: (() -> Unit)?,
-    onConvertToService: (() -> Unit)?
+    onConvertToService: (() -> Unit)?,
+    showCosts: Boolean
 ) {
     if (product == null) return
     var tab by remember(product.id) { mutableStateOf(0) }
@@ -589,7 +593,7 @@ private fun InventoryProductDetailDialog(
                     }
                 }
                 item {
-                    InventoryDetailMetrics(quantity, inventoryValue, product.averageCost, movements.count { it.type == InventoryMovementType.SALE && it.createdAt.isAfter(java.time.Instant.now().minusSeconds(30L * 24L * 60L * 60L)) })
+                    InventoryDetailMetrics(quantity, inventoryValue, product.averageCost, movements.count { it.type == InventoryMovementType.SALE && it.createdAt.isAfter(java.time.Instant.now().minusSeconds(30L * 24L * 60L * 60L)) }, showCosts)
                 }
                 item {
                     Card(Modifier.fillMaxWidth().padding(horizontal = 20.dp), shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface)) {
@@ -601,14 +605,16 @@ private fun InventoryProductDetailDialog(
                                 Text(MoneyUtils.formatCents(product.salePrice, LocalCurrency.current), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
                             }
                             Spacer(Modifier.height(12.dp))
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-                                InventoryDetailPrice("Costo", product.averageCost, Modifier.weight(1f))
-                                InventoryDetailText("Ganancia", "${MoneyUtils.formatCents(unitProfit, LocalCurrency.current)} · $margin%", Modifier.weight(1f), BSPOSTheme.colors.success)
-                            }
-                            HorizontalDivider(Modifier.padding(vertical = 16.dp), color = BSPOSTheme.colors.outline)
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-                                Column(Modifier.weight(1f)) { Text("Mayoreo", fontWeight = FontWeight.Bold); Text(MoneyUtils.formatCents(wholesale, LocalCurrency.current), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold) }
-                                InventoryDetailText("Ganancia", "${MoneyUtils.formatCents(wholesaleProfit, LocalCurrency.current)} · ${if (wholesale > 0L) ((wholesaleProfit.toDouble() / wholesale) * 100.0).toInt().coerceAtLeast(0) else 0}%", Modifier.weight(1f), BSPOSTheme.colors.success)
+                            if (showCosts) {
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(18.dp)) {
+                                    InventoryDetailPrice("Costo", product.averageCost, Modifier.weight(1f))
+                                    InventoryDetailText("Ganancia", "${MoneyUtils.formatCents(unitProfit, LocalCurrency.current)} · $margin%", Modifier.weight(1f), BSPOSTheme.colors.success)
+                                }
+                                HorizontalDivider(Modifier.padding(vertical = 16.dp), color = BSPOSTheme.colors.outline)
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(18.dp)) {
+                                    Column(Modifier.weight(1f)) { Text("Mayoreo", fontWeight = FontWeight.Bold); Text(MoneyUtils.formatCents(wholesale, LocalCurrency.current), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold) }
+                                    InventoryDetailText("Ganancia", "${MoneyUtils.formatCents(wholesaleProfit, LocalCurrency.current)} · ${if (wholesale > 0L) ((wholesaleProfit.toDouble() / wholesale) * 100.0).toInt().coerceAtLeast(0) else 0}%", Modifier.weight(1f), BSPOSTheme.colors.success)
+                                }
                             }
                         }
                     }
@@ -622,7 +628,7 @@ private fun InventoryProductDetailDialog(
                         }
                         Text("Información del producto", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold)
                         InventoryInfoRow("Existencia mínima", "${product.minimumStock} unidades")
-                        InventoryInfoRow("Último costo", MoneyUtils.formatCents(product.lastPurchaseCost, LocalCurrency.current))
+                        if (showCosts) InventoryInfoRow("Último costo", MoneyUtils.formatCents(product.lastPurchaseCost, LocalCurrency.current))
                         InventoryInfoRow("Unidad de venta", product.remoteSaleUnit ?: "Unidad")
                     }
                 }
@@ -635,7 +641,7 @@ private fun InventoryProductDetailDialog(
                     HorizontalDivider(Modifier.padding(horizontal = 20.dp), color = BSPOSTheme.colors.outline)
                 }
                 when (tab) {
-                    0 -> if (positiveMovements.isEmpty()) item { EmptyInventoryState("No hay lotes registrados", "Añade inventario para ver aquí cada entrada y su costo.") } else items(positiveMovements, key = { it.id }) { movement -> InventoryLotCard(movement, onCorrectLot) }
+                    0 -> if (positiveMovements.isEmpty()) item { EmptyInventoryState("No hay lotes registrados", "Añade inventario para ver aquí cada entrada y su costo.") } else items(positiveMovements, key = { it.id }) { movement -> InventoryLotCard(movement, onCorrectLot, showCosts) }
                     1 -> if (movements.isEmpty()) item { EmptyInventoryState("No hay movimientos", "Las entradas, ventas y ajustes aparecerán aquí.") } else items(movements, key = { it.id }) { movement -> InventoryMovementCard(movement) }
                     else -> if (saleMovements.isEmpty()) {
                         item { EmptyInventoryState("Sin ventas registradas", "Las ventas de este producto aparecerán aquí cuando se registren.") }
@@ -660,16 +666,16 @@ private fun InventoryProductDetailDialog(
 }
 
 @Composable
-private fun InventoryDetailMetrics(quantity: Long, inventoryValue: Long, averageCost: Long, sales30d: Int) {
+private fun InventoryDetailMetrics(quantity: Long, inventoryValue: Long, averageCost: Long, sales30d: Int, showCosts: Boolean) {
     Card(Modifier.fillMaxWidth().padding(horizontal = 20.dp), shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface)) {
         Column {
             Row(Modifier.fillMaxWidth()) {
                 InventoryMetricCell("EXISTENCIA", "$quantity", Modifier.weight(1f), BSPOSTheme.colors.primary)
-                InventoryMetricCell("VALOR INVENTARIO", MoneyUtils.formatCents(inventoryValue, LocalCurrency.current), Modifier.weight(1f), BSPOSTheme.colors.textPrimary)
+                if (showCosts) InventoryMetricCell("VALOR INVENTARIO", MoneyUtils.formatCents(inventoryValue, LocalCurrency.current), Modifier.weight(1f), BSPOSTheme.colors.textPrimary)
             }
             HorizontalDivider(color = BSPOSTheme.colors.outline)
             Row(Modifier.fillMaxWidth()) {
-                InventoryMetricCell("COSTO FIFO PROM.", MoneyUtils.formatCents(averageCost, LocalCurrency.current), Modifier.weight(1f), BSPOSTheme.colors.textPrimary)
+                if (showCosts) InventoryMetricCell("COSTO FIFO PROM.", MoneyUtils.formatCents(averageCost, LocalCurrency.current), Modifier.weight(1f), BSPOSTheme.colors.textPrimary)
                 InventoryMetricCell("VENTAS 30D", sales30d.toString(), Modifier.weight(1f), BSPOSTheme.colors.textPrimary)
             }
         }
@@ -717,7 +723,7 @@ private fun InventoryDetailTab(label: String, selected: Boolean, onClick: () -> 
 }
 
 @Composable
-private fun InventoryLotCard(movement: InventoryMovement, onCorrect: (() -> Unit)?) {
+private fun InventoryLotCard(movement: InventoryMovement, onCorrect: (() -> Unit)?, showCosts: Boolean) {
     Card(Modifier.fillMaxWidth().padding(horizontal = 20.dp), shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface)) {
         Column(Modifier.padding(16.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -727,9 +733,9 @@ private fun InventoryLotCard(movement: InventoryMovement, onCorrect: (() -> Unit
             Spacer(Modifier.height(10.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text("${movement.quantity}/${movement.newQuantity}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold)
-                Text(MoneyUtils.formatCents(movement.totalCost, LocalCurrency.current), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold)
+                if (showCosts) Text(MoneyUtils.formatCents(movement.totalCost, LocalCurrency.current), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold)
             }
-            Text("Costo unitario  ${MoneyUtils.formatCents(movement.unitCost, LocalCurrency.current)}", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
+            if (showCosts) Text("Costo unitario  ${MoneyUtils.formatCents(movement.unitCost, LocalCurrency.current)}", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
             onCorrect?.let {
                 TextButton(onClick = it, modifier = Modifier.align(Alignment.End)) {
                     Text("Corregir")
@@ -756,14 +762,14 @@ private fun InventoryMovementCard(movement: InventoryMovement) {
 }
 
 @Composable
-private fun InventorySummaryRow(capitalAtCost: Long, productCount: Int, productsWithStock: Int, totalUnits: Long, lowStock: Int, exhausted: Int, averageMargin: Int) {
+private fun InventorySummaryRow(capitalAtCost: Long, productCount: Int, productsWithStock: Int, totalUnits: Long, lowStock: Int, exhausted: Int, averageMargin: Int?, showCosts: Boolean) {
     BoxWithConstraints(Modifier.fillMaxWidth()) {
-        val metrics = listOf(
-            InventoryMetric("Capital al costo", MoneyUtils.formatCents(capitalAtCost, LocalCurrency.current), "Valor de tu existencia", BSPOSTheme.colors.primary),
-            InventoryMetric("Productos", productCount.toString(), "$totalUnits unidades · $productsWithStock con existencia", BSPOSTheme.colors.textPrimary),
-            InventoryMetric("Nivel bajo", lowStock.toString(), "$exhausted agotados", if (lowStock > 0) BSPOSTheme.colors.warning else BSPOSTheme.colors.success),
-            InventoryMetric("Margen prom.", "$averageMargin%", "Sobre el precio de venta", BSPOSTheme.colors.success)
-        )
+        val metrics = buildList {
+            if (showCosts) add(InventoryMetric("Capital al costo", MoneyUtils.formatCents(capitalAtCost, LocalCurrency.current), "Valor de tu existencia", BSPOSTheme.colors.primary))
+            add(InventoryMetric("Productos", productCount.toString(), "$totalUnits unidades · $productsWithStock con existencia", BSPOSTheme.colors.textPrimary))
+            add(InventoryMetric("Nivel bajo", lowStock.toString(), "$exhausted agotados", if (lowStock > 0) BSPOSTheme.colors.warning else BSPOSTheme.colors.success))
+            if (showCosts && averageMargin != null) add(InventoryMetric("Margen prom.", "$averageMargin%", "Sobre el precio de venta", BSPOSTheme.colors.success))
+        }
         if (maxWidth < 540.dp) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 metrics.chunked(2).forEach { row ->
@@ -829,7 +835,7 @@ private fun EmptyInventoryState(title: String, subtitle: String) {
 }
 
 @Composable
-private fun InventoryImportMappingDialog(
+internal fun InventoryImportMappingDialog(
     preview: MiCatalogoInventoryImportPreview,
     loading: Boolean,
     onApply: (Map<String, String>) -> Unit,
@@ -842,12 +848,26 @@ private fun InventoryImportMappingDialog(
         title = { Text("Relaciona las columnas") },
         text = {
             DialogScrollableColumn {
+                if (preview.sheetName.isNotBlank()) {
+                    Text(
+                        "Hoja: ${preview.sheetName} · Encabezados: fila ${preview.headerRow}",
+                        fontWeight = FontWeight.Bold,
+                        color = BSPOSTheme.colors.primary
+                    )
+                }
                 Text("Revisamos los encabezados del archivo. Esta selección se guardará para esta tienda.", color = BSPOSTheme.colors.textSecondary)
                 preview.fields.forEach { (field, label) ->
                     var open by remember(field) { mutableStateOf(false) }
                     Box(Modifier.fillMaxWidth()) {
                         OutlinedButton(onClick = { open = true }, modifier = Modifier.fillMaxWidth()) {
-                            Text("$label: ${mapping[field]?.ifBlank { "No importar" } ?: "No importar"}")
+                            val source = mapping[field].orEmpty()
+                            val displaySource = preview.mappingDetails[field]
+                                ?.takeIf { it.source == source }
+                                ?.header
+                                ?.takeIf(String::isNotBlank)
+                                ?: source.takeIf(String::isNotBlank)
+                                ?: "No importar"
+                            Text("$label: $displaySource")
                         }
                         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
                             DropdownMenuItem(text = { Text("No importar") }, onClick = { mapping = mapping + (field to ""); open = false })
@@ -918,23 +938,23 @@ private fun Context.readInventoryFile(uri: Uri): InventoryFile? {
     return InventoryFile(name, contentResolver.getType(uri), bytes)
 }
 
-private fun buildInventoryCsv(products: List<Product>, stock: List<com.example.bspos.domain.model.InventoryStock>): String {
+private fun buildInventoryCsv(products: List<Product>, stock: List<com.example.bspos.domain.model.InventoryStock>, includeCosts: Boolean): String {
     val quantities = stock.groupBy { it.productId }.mapValues { (_, rows) -> rows.sumOf { it.quantity } }
     return buildString {
-        appendLine("nombre,codigo,barras,existencias,precio_venta,costo_promedio,ultimo_costo,stock_minimo,unidad")
+        appendLine(if (includeCosts) "nombre,codigo,barras,existencias,precio_venta,costo_promedio,ultimo_costo,stock_minimo,unidad" else "nombre,codigo,barras,existencias,precio_venta,stock_minimo,unidad")
         products.filter { it.isActive && it.deletedAt == null }.forEach { product ->
             appendLine(
-                listOf(
-                    product.name,
-                    product.internalCode,
-                    product.barcode.orEmpty(),
-                    quantities[product.id]?.toString().orEmpty(),
-                    MoneyUtils.formatCentsCompact(product.salePrice),
-                    MoneyUtils.formatCentsCompact(product.averageCost),
-                    MoneyUtils.formatCentsCompact(product.lastPurchaseCost),
-                    product.minimumStock.toString(),
-                    product.remoteSaleUnit.orEmpty()
-                ).joinToString(",", transform = ::escapeCsv)
+                buildList {
+                    addAll(listOf(
+                        product.name,
+                        product.internalCode,
+                        product.barcode.orEmpty(),
+                        quantities[product.id]?.toString().orEmpty(),
+                        MoneyUtils.formatCentsCompact(product.salePrice)
+                    ))
+                    if (includeCosts) addAll(listOf(MoneyUtils.formatCentsCompact(product.averageCost), MoneyUtils.formatCentsCompact(product.lastPurchaseCost)))
+                    addAll(listOf(product.minimumStock.toString(), product.remoteSaleUnit.orEmpty()))
+                }.joinToString(",", transform = ::escapeCsv)
             )
         }
     }
