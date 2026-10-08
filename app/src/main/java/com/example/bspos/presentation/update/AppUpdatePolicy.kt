@@ -16,6 +16,9 @@ data class AvailableAppUpdate(
 object AppUpdatePolicy {
     private val sha256Pattern = Regex("^[a-fA-F0-9]{64}$")
 
+    /** Production releases must never be offered to a debug installation. */
+    fun shouldCheckProductionUpdates(isDebugBuild: Boolean): Boolean = !isDebugBuild
+
     fun available(update: AndroidUpdateDto, installedVersionCode: Int): AvailableAppUpdate? {
         if (update.versionCode <= installedVersionCode) return null
         val apkUrl = update.apkUrl.toHttpUrlOrNull()?.takeIf { it.isHttps } ?: return null

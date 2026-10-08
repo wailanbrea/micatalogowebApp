@@ -41,6 +41,13 @@ class AppUpdateViewModel @Inject constructor(
 
     fun checkForUpdate() = viewModelScope.launch {
         lastCheckStartedAt = SystemClock.elapsedRealtime()
+        if (!AppUpdatePolicy.shouldCheckProductionUpdates(BuildConfig.DEBUG)) {
+            // Debug builds are reserved for the emulator/QA runner. They must
+            // not download a production-signed APK that Android cannot install
+            // over the debug certificate.
+            _state.value = AppUpdateState.Current
+            return@launch
+        }
         _state.value = AppUpdateState.Checking
         val response = try {
             repository.check()

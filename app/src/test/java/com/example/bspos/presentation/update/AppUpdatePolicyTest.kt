@@ -8,6 +8,12 @@ import org.junit.Test
 
 class AppUpdatePolicyTest {
     @Test
+    fun `debug builds do not check production update manifest`() {
+        assertFalse(AppUpdatePolicy.shouldCheckProductionUpdates(isDebugBuild = true))
+        assertTrue(AppUpdatePolicy.shouldCheckProductionUpdates(isDebugBuild = false))
+    }
+
+    @Test
     fun `published release prompts installed version 17 to update to version 18`() {
         val publishedRelease = AndroidUpdateDto(
             versionCode = 18,
