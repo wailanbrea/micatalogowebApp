@@ -36,6 +36,14 @@ val hasReleaseSigning = listOf(
 android {
     sourceSets.getByName("test").resources.srcDir("$rootDir/docs/api-contracts")
     sourceSets.getByName("androidTest").assets.srcDir("$rootDir/docs/api-contracts")
+    if (providers.gradleProperty("miCatalogoSummaryUiCheck").orNull == "true") {
+        sourceSets.getByName("androidTest").java.setSrcDirs(
+            listOf("src/androidTest/java/com/example/bspos/presentation/dashboard", "src/androidTest/java/com/example/bspos/presentation/sales", "src/androidTest/java/com/example/bspos/presentation/pos", "src/androidTest/java/com/example/bspos/presentation/quote", "src/androidTest/java/com/example/bspos/presentation/dayclose")
+        )
+        sourceSets.getByName("androidTest").kotlin.setSrcDirs(
+            listOf("src/androidTest/java/com/example/bspos/presentation/dashboard", "src/androidTest/java/com/example/bspos/presentation/sales", "src/androidTest/java/com/example/bspos/presentation/pos", "src/androidTest/java/com/example/bspos/presentation/quote", "src/androidTest/java/com/example/bspos/presentation/dayclose")
+        )
+    }
     namespace = "com.example.bspos"
     compileSdk = 37
 
@@ -43,8 +51,8 @@ android {
         applicationId = "com.bsolutions.micatalogo"
         minSdk = 26
         targetSdk = 37
-        versionCode = 67
-        versionName = "1.0.66"
+        versionCode = 75
+        versionName = "1.0.74"
         buildConfigField("String", "MICATALOGO_API_BASE_URL", "\"${miCatalogoApiBaseUrl.get()}\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"

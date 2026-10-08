@@ -36,12 +36,18 @@ import java.math.RoundingMode
 import java.text.DecimalFormat
 import java.text.DecimalFormatSymbols
 import java.util.Locale
+import java.time.LocalDate
+import java.time.Instant
+import java.time.ZoneOffset
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FinanceScreen(
     onNavigateBack: (() -> Unit)? = null,
     onNavigateToCash: (() -> Unit)? = null,
+    onNavigateToFiscalReport: (() -> Unit)? = null,
+    onNavigateToDistributions: (() -> Unit)? = null,
+    onNavigateToReceivables: (() -> Unit)? = null,
     initialTab: Int = 0,
     viewModel: FinanceViewModel = hiltViewModel()
 ) {
@@ -99,6 +105,12 @@ fun FinanceScreen(
                     PeriodSelectorRow(
                         currentFilter = uiState.periodFilter,
                         onFilterSelected = { viewModel.selectPeriod(it) }
+                    )
+
+                    FinancePunttoLinks(
+                        onFiscalReport = onNavigateToFiscalReport,
+                        onDistributions = onNavigateToDistributions,
+                        onReceivables = onNavigateToReceivables
                     )
 
                     // Pestañas Principales
@@ -170,11 +182,43 @@ fun FinanceScreen(
             categories = uiState.expenseCategories,
             isSaving = uiState.isRegisteringExpense,
             onDismiss = { showExpenseDialog = false },
-            onConfirm = { desc, amt, catId, method, notes ->
-                viewModel.registerExpense(desc, amt, catId, method, notes)
+            onConfirm = { desc, amt, catId, method, occurredAt, notes ->
+                viewModel.registerExpense(desc, amt, catId, method, occurredAt, notes)
                 showExpenseDialog = false
             }
         )
+    }
+}
+
+@Composable
+private fun FinancePunttoLinks(
+    onFiscalReport: (() -> Unit)?,
+    onDistributions: (() -> Unit)?,
+    onReceivables: (() -> Unit)?
+) {
+    val links = listOfNotNull(
+        onFiscalReport?.let { "Reporte fiscal" to it },
+        onDistributions?.let { "Repartos" to it },
+        onReceivables?.let { "Cartera" to it }
+    )
+    if (links.isEmpty()) return
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp, vertical = 2.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        links.forEach { (label, action) ->
+            OutlinedButton(
+                onClick = action,
+                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 4.dp),
+                shape = RoundedCornerShape(14.dp)
+            ) {
+                Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
     }
 }
 
@@ -1089,14 +1133,17 @@ private fun ExpenseCreateDialog(
     categories: List<ExpenseCategoryDto>,
     isSaving: Boolean,
     onDismiss: () -> Unit,
-    onConfirm: (String, String, Int?, String, String?) -> Unit
+    onConfirm: (String, String, Int?, String, String, String?) -> Unit
 ) {
     var description by remember { mutableStateOf("") }
     var amount by remember { mutableStateOf("") }
     var selectedCategoryId by remember { mutableStateOf<Int?>(categories.firstOrNull()?.id) }
     var paymentMethod by remember { mutableStateOf("cash") }
+    var occurredAt by remember { mutableStateOf(LocalDate.now().toString()) }
     var notes by remember { mutableStateOf("") }
     var amountError by remember { mutableStateOf(false) }
+    var datePickerOpen by remember { mutableStateOf(false) }
+    val datePickerState = androidx.compose.material3.rememberDatePickerState()
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1168,6 +1215,16 @@ private fun ExpenseCreateDialog(
                 }
 
                 OutlinedTextField(
+                    value = occurredAt,
+                    onValueChange = {},
+                    modifier = Modifier.fillMaxWidth(),
+                    readOnly = true,
+                    singleLine = true,
+                    label = { Text("Fecha") },
+                    trailingIcon = { TextButton(onClick = { datePickerOpen = true }) { Text("Cambiar") } }
+                )
+
+                OutlinedTextField(
                     value = notes,
                     onValueChange = { notes = it },
                     label = { Text("Notas / Referencia") },
@@ -1183,7 +1240,7 @@ private fun ExpenseCreateDialog(
                     if (description.isBlank() || parsed == null || parsed <= 0.0) {
                         amountError = true
                     } else {
-                        onConfirm(description, cleanAmount, selectedCategoryId, paymentMethod, notes)
+                        onConfirm(description, cleanAmount, selectedCategoryId, paymentMethod, occurredAt, notes)
                     }
                 },
                 enabled = !isSaving
@@ -1201,6 +1258,22 @@ private fun ExpenseCreateDialog(
             }
         }
     )
+    if (datePickerOpen) {
+        androidx.compose.material3.DatePickerDialog(
+            onDismissRequest = { datePickerOpen = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    datePickerState.selectedDateMillis?.let { millis ->
+                        occurredAt = Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate().toString()
+                    }
+                    datePickerOpen = false
+                }) { Text("Aplicar") }
+            },
+            dismissButton = { TextButton(onClick = { datePickerOpen = false }) { Text("Cancelar") } }
+        ) {
+            androidx.compose.material3.DatePicker(state = datePickerState, title = { Text("Selecciona la fecha del gasto") })
+        }
+    }
 }
 
 @Composable

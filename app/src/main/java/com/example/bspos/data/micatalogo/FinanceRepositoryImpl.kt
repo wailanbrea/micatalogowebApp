@@ -45,6 +45,23 @@ class FinanceRepositoryImpl @Inject constructor(
         response.body() ?: error("MiCatalogo devolvió una respuesta vacía.")
     }.toMiCatalogoResult("No se pudo cargar el flujo de efectivo.")
 
+    override suspend fun getDailyClose(shopId: String, date: String): MiCatalogoResult<DailyCloseDto> = runCatching {
+        val response = api.dailyClose(shopId, date)
+        if (!response.isSuccessful) error(response.apiErrorMessage("No se pudo cargar el cierre diario."))
+        response.body() ?: error("MiCatalogo devolvió una respuesta vacía.")
+    }.toMiCatalogoResult("No se pudo cargar el cierre diario.")
+
+    override suspend fun closeDay(
+        shopId: String,
+        date: String,
+        countedCash: String?,
+        notes: String?
+    ): MiCatalogoResult<DailyCloseDto> = runCatching {
+        val response = api.closeDay(shopId, DailyCloseRequestDto(date, countedCash, notes))
+        if (!response.isSuccessful) error(response.apiErrorMessage("No se pudo guardar el cierre diario."))
+        response.body() ?: error("MiCatalogo devolvió una respuesta vacía.")
+    }.toMiCatalogoResult("No se pudo guardar el cierre diario.")
+
     override suspend fun getCurrentCashSession(shopId: String): MiCatalogoResult<CashCurrentSessionResponseDto> = runCatching {
         val response = api.currentCashSession(shopId)
         if (!response.isSuccessful) error(response.apiErrorMessage("No se pudo consultar la sesión de caja."))
@@ -65,7 +82,7 @@ class FinanceRepositoryImpl @Inject constructor(
     override suspend fun closeCashSession(
         shopId: String,
         sessionId: String,
-        countedAmount: String,
+        countedAmount: String?,
         notes: String?,
         clientOperationUuid: String
     ): MiCatalogoResult<CashSessionActionResponseDto> = runCatching {

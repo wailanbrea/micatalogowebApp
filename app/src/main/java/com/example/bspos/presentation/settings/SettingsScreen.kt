@@ -54,7 +54,10 @@ import com.example.bspos.domain.model.SellerMenuOptions
 import com.example.bspos.domain.model.MiCatalogoSeller
 
 @Composable
-fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
+fun SettingsScreen(
+    teamOnly: Boolean = false,
+    viewModel: SettingsViewModel = hiltViewModel()
+) {
     val settings by viewModel.settings.collectAsState()
     val miCatalogoConnection by viewModel.miCatalogoConnection.collectAsState()
     val miCatalogoUi by viewModel.miCatalogoUi.collectAsState()
@@ -69,9 +72,12 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(46.dp).clip(RoundedCornerShape(15.dp)).background(BSPOSTheme.colors.primaryLight), contentAlignment = Alignment.Center) { Icon(Icons.Default.Settings, null, tint = BSPOSTheme.colors.primary) }
             Spacer(Modifier.width(12.dp))
-            Column { Text("Preferencias operativas", color = BSPOSTheme.colors.textSecondary) }
+            Column {
+                Text(if (teamOnly) "Equipo" else "Preferencias operativas", fontWeight = FontWeight.ExtraBold)
+                if (teamOnly) Text("Administra usuarios, vendedores y permisos por tienda.", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodySmall)
+            }
         }
-        settings?.let { current ->
+        if (!teamOnly) settings?.let { current ->
             Text("Moneda", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelLarge)
             CurrencyCard(current.currency, viewModel::setCurrency)
             Text("Factura y PDF", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelLarge)
@@ -85,7 +91,7 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
             SellerCreateCard(shop, miCatalogoUi.isCreatingSeller, viewModel::createSeller)
             SellerMenuPermissionsCard(shop, miCatalogoUi.updatingSellerMenuId, viewModel::updateSellerMenus)
         }
-        MiCatalogoConnectionCard(miCatalogoConnection, miCatalogoUi, viewModel::connectMiCatalogo, viewModel::logout, viewModel::loadShops, viewModel::syncShop, viewModel::syncPosSales)
+        if (!teamOnly) MiCatalogoConnectionCard(miCatalogoConnection, miCatalogoUi, viewModel::connectMiCatalogo, viewModel::logout, viewModel::loadShops, viewModel::syncShop, viewModel::syncPosSales)
         if (pendingOperations.isNotEmpty() || pendingSales.isNotEmpty() || pendingPayments.isNotEmpty()) {
             Text("Sincronización pendiente", fontWeight = FontWeight.Bold)
             Text("Un conflicto detiene las operaciones posteriores de esa tienda. Reintentar conserva el identificador y los importes originales; no corrige ni descarta un conteo o precio en conflicto.", style = MaterialTheme.typography.bodySmall)

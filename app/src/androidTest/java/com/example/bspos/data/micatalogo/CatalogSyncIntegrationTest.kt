@@ -409,6 +409,8 @@ class CatalogSyncIntegrationTest {
         override suspend fun financeSummary(shopId: String, from: String?, to: String?, sort: String?, direction: String?): Response<FinanceSummaryDto> = error("Unused")
         override suspend fun incomeStatement(shopId: String, from: String?, to: String?): Response<FinanceIncomeStatementDto> = error("Unused")
         override suspend fun cashFlow(shopId: String, from: String?, to: String?): Response<FinanceCashFlowDto> = error("Unused")
+        override suspend fun dailyClose(shopId: String, date: String): Response<DailyCloseDto> = error("Unused")
+        override suspend fun closeDay(shopId: String, request: DailyCloseRequestDto): Response<DailyCloseDto> = error("Unused")
         override suspend fun currentCashSession(shopId: String): Response<CashCurrentSessionResponseDto> = error("Unused")
         override suspend fun openCashSession(shopId: String, request: CashSessionOpenRequestDto): Response<CashSessionActionResponseDto> = error("Unused")
         override suspend fun closeCashSession(shopId: String, sessionId: String, request: CashSessionCloseRequestDto): Response<CashSessionActionResponseDto> = error("Unused")

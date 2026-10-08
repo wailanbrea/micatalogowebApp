@@ -26,6 +26,30 @@ class FingerprintLoginUiTest {
     }
 
     @Test
+    fun doesNotRequestFingerprintAutomaticallyOnInitialLaunch() {
+        assertFalse(
+            shouldAutomaticallyRequestFingerprint(
+                autoRequestBiometric = false,
+                hasAccessToken = true,
+                isRemembered = true,
+                biometricAvailable = true
+            )
+        )
+    }
+
+    @Test
+    fun requestsFingerprintAutomaticallyOnlyAfterTheSessionWasLocked() {
+        assertTrue(
+            shouldAutomaticallyRequestFingerprint(
+                autoRequestBiometric = true,
+                hasAccessToken = true,
+                isRemembered = true,
+                biometricAvailable = true
+            )
+        )
+    }
+
+    @Test
     fun keepsRememberMeCheckedWhenTheSavedEmailIsAvailable() {
         assertTrue(shouldKeepRememberMeChecked(isRemembered = false, savedEmail = "seller@example.test"))
         assertFalse(shouldKeepRememberMeChecked(isRemembered = false, savedEmail = ""))

@@ -26,15 +26,20 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Inventory2
+import androidx.compose.material.icons.filled.HelpOutline
+import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Print
 import androidx.compose.material.icons.filled.QrCodeScanner
@@ -56,21 +61,28 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.animateContentSize
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -95,6 +107,11 @@ fun PosScreen(
     onOpenCash: () -> Unit = {},
     onOpenQuotes: () -> Unit = {},
     onOpenDayClose: () -> Unit = {},
+    onOpenCustomers: () -> Unit = {},
+    onOpenServices: () -> Unit = {},
+    showServicesAction: Boolean = true,
+    showCosts: Boolean = false,
+    onNavigateBack: () -> Unit = {},
     viewModel: PosViewModel = hiltViewModel()
 ) {
     val products by viewModel.products.collectAsState()
@@ -103,11 +120,13 @@ fun PosScreen(
     val stock by viewModel.stock.collectAsState()
     val cart by viewModel.cart.collectAsState()
     val cartTotal by viewModel.cartTotal.collectAsState()
+    val cartSubtotal by viewModel.cartSubtotal.collectAsState()
+    val discount by viewModel.discount.collectAsState()
+    val saleDate by viewModel.saleDate.collectAsState()
     val customers by viewModel.customers.collectAsState()
     val customer by viewModel.customer.collectAsState()
     val isProcessing by viewModel.isProcessing.collectAsState()
     val settings by viewModel.settings.collectAsState()
-    val cashSession by viewModel.cashSession.collectAsState()
     val checkoutResult by viewModel.checkoutResult.collectAsState()
     val printers by viewModel.printers.collectAsState()
     val printerMessage by viewModel.printerMessage.collectAsState()
@@ -119,6 +138,9 @@ fun PosScreen(
     var showCart by rememberSaveable { mutableStateOf(false) }
     var showingSplitDialog by remember { mutableStateOf(false) }
     var showingTerminalGuide by remember { mutableStateOf(false) }
+    // Puntto keeps the help available from the terminal header without
+    // occupying the catalog on every visit. The guide remains one tap away.
+    var showingQuickGuide by rememberSaveable { mutableStateOf(false) }
     var showingTerminalOptions by remember { mutableStateOf(false) }
     var showingBarcodeScanner by rememberSaveable { mutableStateOf(false) }
     var reviewMethod by remember { mutableStateOf<CheckoutReviewMethod?>(null) }
@@ -140,6 +162,8 @@ fun PosScreen(
     val categoryOptions = categories.filter { category -> products.any { product -> product.categoryId == category.id } }
     val hasDecants = products.any { it.remoteSaleUnit == "decant" }
     val hasServices = products.any { it.remoteSaleUnit == "service" }
+    val decantsCount = products.count { it.isActive && it.deletedAt == null && it.remoteSaleUnit == "decant" }
+    val servicesCount = products.count { it.isActive && it.deletedAt == null && it.remoteSaleUnit == "service" }
     val recentProducts = recentProductIds.mapNotNull { id -> products.firstOrNull { it.id == id } }
     LaunchedEffect(categoryOptions) {
         if (selectedCategoryId != null && categoryOptions.none { it.id == selectedCategoryId }) {
@@ -152,12 +176,12 @@ fun PosScreen(
     LaunchedEffect(hasServices) {
         if (!hasServices && catalogTab == "services") catalogTab = "all"
     }
-    val cashAction = {
-        if (cashSession == null) onOpenCash() else reviewMethod = CheckoutReviewMethod.CASH
-    }
-    val cardAction = { reviewMethod = CheckoutReviewMethod.CARD }
-    val transferAction = { reviewMethod = CheckoutReviewMethod.TRANSFER }
-    val creditAction = { if (customer == null) choosingCustomer = true else reviewMethod = CheckoutReviewMethod.CREDIT }
+    // The cash register is owned by the server. POS sales are stored locally
+    // and queued for synchronization when the connection is unavailable.
+    val cashAction = { showCart = false; reviewMethod = CheckoutReviewMethod.CASH }
+    val cardAction = { showCart = false; reviewMethod = CheckoutReviewMethod.CARD }
+    val transferAction = { showCart = false; reviewMethod = CheckoutReviewMethod.TRANSFER }
+    val creditAction = { if (customer == null) choosingCustomer = true else { showCart = false; reviewMethod = CheckoutReviewMethod.CREDIT } }
 
     LaunchedEffect(checkoutResult) {
         checkoutResult?.let { result ->
@@ -187,6 +211,12 @@ fun PosScreen(
         if (tablet) {
             Column(Modifier.fillMaxSize().padding(28.dp)) {
                 TerminalHeader(creditOnly, { showingTerminalGuide = true }, { showingTerminalOptions = true })
+                if (!creditOnly && showingQuickGuide) {
+                    TerminalQuickGuideCard(onDismiss = { showingQuickGuide = false })
+                }
+                if (!creditOnly) {
+                    TerminalModeRow(onQuote = onOpenQuotes)
+                }
                 if (presentation.posShowWholesale) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         FilterChip(selected = !wholesaleMode, onClick = { viewModel.setWholesaleMode(false) }, label = { Text("Detalle") }, enabled = !isProcessing)
@@ -195,51 +225,110 @@ fun PosScreen(
                 }
                 Spacer(Modifier.height(14.dp))
                 SearchField(query, { query = it }, presentation.posSearchPlaceholder) { showingBarcodeScanner = true }
+                ProductKindFilterRow(catalogTab, hasDecants, hasServices) { catalogTab = it }
+                if (!creditOnly && showServicesAction) {
+                    ServiceQuickAction(onOpenServices = onOpenServices)
+                }
+                CategoryFilterRow(categoryOptions, selectedCategoryId) { selectedCategoryId = it }
                 if (catalogTab == "all" && query.isBlank() && selectedCategoryId == null && recentProducts.isNotEmpty()) {
                     RecentProductsRow(recentProducts, quantities, settings.allowNegativeStock, { viewModel.add(it) })
                 }
-                ProductKindFilterRow(catalogTab, hasDecants, hasServices) { catalogTab = it }
-                CategoryFilterRow(categoryOptions, selectedCategoryId) { selectedCategoryId = it }
                 Spacer(Modifier.height(14.dp))
                 Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                     ProductGrid(catalog, quantities, selectedQuantities, settings.allowNegativeStock, { viewModel.add(it) }, 4, wholesaleMode, Modifier.weight(1f))
-                     CartPanel(cart, cartTotal, customer, { choosingCustomer = true }, { viewModel.change(it.product.id, it.quantity - 1) }, { viewModel.change(it.product.id, it.quantity + 1) }, { viewModel.change(it.product.id, 0) }, viewModel::clearCart, cashAction, cardAction, transferAction, creditAction, { showingSplitDialog = true }, isProcessing, creditOnly, presentation.posShowCredit || creditOnly, cashSession != null, Modifier.widthIn(min = 340.dp, max = 400.dp).fillMaxHeight())
+                     ProductGrid(catalog, quantities, selectedQuantities, settings.allowNegativeStock, { viewModel.add(it) }, { product, quantity -> viewModel.change(product.id, quantity) }, 4, wholesaleMode, Modifier.weight(1f))
+                     CartPanel(cart, cartTotal, customer, { choosingCustomer = true }, { viewModel.change(it.product.id, it.quantity - 1) }, { viewModel.change(it.product.id, it.quantity + 1) }, { viewModel.change(it.product.id, 0) }, viewModel::clearCart, cashAction, cardAction, transferAction, creditAction, { showingSplitDialog = true }, isProcessing, creditOnly, presentation.posShowCredit || creditOnly, Modifier.widthIn(min = 340.dp, max = 400.dp).fillMaxHeight())
                 }
             }
         } else {
             Scaffold(
                     modifier = Modifier.fillMaxSize(),
+                    contentWindowInsets = WindowInsets(0, 0, 0, 0),
                     containerColor = androidx.compose.ui.graphics.Color.Transparent,
                     bottomBar = {
-                        if (cart.isNotEmpty()) {
-                            Surface(color = BSPOSTheme.colors.surface, shadowElevation = 6.dp) {
-                                Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Default.ShoppingCart, null, tint = BSPOSTheme.colors.primary)
-                                    Spacer(Modifier.width(8.dp))
-                                    Column(Modifier.weight(1f)) { Text("$cartQuantity productos", fontWeight = FontWeight.Bold); Text(money(cartTotal), color = BSPOSTheme.colors.textSecondary) }
-                                    Button(onClick = { showCart = true }, shape = RoundedCornerShape(14.dp)) { Text("Ver carrito") }
+                        Surface(color = Color.White, shadowElevation = 6.dp) {
+                            if (cart.isEmpty()) {
+                                Surface(
+                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp).dashedRoundedBorder(Color(0xFFD4D4D8)),
+                                    shape = RoundedCornerShape(18.dp),
+                                    color = Color.White
+                                ) {
+                                    Row(
+                                        Modifier.fillMaxWidth().padding(vertical = 18.dp),
+                                        horizontalArrangement = Arrangement.Center,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text("+", color = Color(0xFF71717A), style = MaterialTheme.typography.titleLarge)
+                                        Spacer(Modifier.width(10.dp))
+                                        Text("Toca un producto para empezar la venta", color = Color(0xFF71717A))
+                                    }
+                                }
+                            } else {
+                                Surface(
+                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp).clickable { reviewMethod = if (creditOnly) CheckoutReviewMethod.CREDIT else CheckoutReviewMethod.CASH },
+                                    shape = RoundedCornerShape(18.dp),
+                                    color = Color(0xFF2563EB)
+                                ) {
+                                    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(Icons.Default.ShoppingCart, null, tint = Color.White)
+                                        Spacer(Modifier.width(10.dp))
+                                        Column(Modifier.weight(1f)) {
+                                            Text("Cobrar", color = Color.White, fontWeight = FontWeight.ExtraBold)
+                                            Text("$cartQuantity ${if (cartQuantity == 1L) "artículo" else "artículos"}", color = Color.White.copy(alpha = .82f), style = MaterialTheme.typography.bodySmall)
+                                        }
+                                        Text(money(cartTotal), color = Color.White, fontWeight = FontWeight.ExtraBold)
+                                        Spacer(Modifier.width(8.dp))
+                                        Icon(Icons.Default.ChevronRight, null, tint = Color.White)
+                                    }
                                 }
                             }
                         }
                     }
                 ) { contentPadding ->
-                    Column(Modifier.fillMaxSize().padding(contentPadding).padding(horizontal = 18.dp)) {
-                        TerminalHeader(creditOnly, { showingTerminalGuide = true }, { showingTerminalOptions = true })
-                        if (presentation.posShowWholesale) {
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                FilterChip(selected = !wholesaleMode, onClick = { viewModel.setWholesaleMode(false) }, label = { Text("Detalle") }, enabled = !isProcessing)
-                                FilterChip(selected = wholesaleMode, onClick = { viewModel.setWholesaleMode(true) }, label = { Text("Mayoreo") }, enabled = !isProcessing)
-                            }
+                    val mobileCatalog = catalog.filter { product ->
+                        when (catalogTab) {
+                            "decants" -> product.remoteSaleUnit == "decant"
+                            "services" -> product.remoteSaleUnit == "service"
+                            else -> product.remoteSaleUnit != "decant" && product.remoteSaleUnit != "service"
                         }
-                        Spacer(Modifier.height(14.dp))
-                        SearchField(query, { query = it }, presentation.posSearchPlaceholder) { showingBarcodeScanner = true }
+                    }
+                    Column(Modifier.fillMaxSize().background(Color.White).padding(contentPadding)) {
+                        PunttoTerminalHeader(
+                            creditOnly = creditOnly,
+                            wholesaleMode = wholesaleMode,
+                            wholesaleEnabled = true,
+                            onBack = onNavigateBack,
+                            onWholesaleChanged = { viewModel.setWholesaleMode(it) },
+                            onGuide = { showingTerminalGuide = true },
+                            onOptions = { showingTerminalOptions = true },
+                            isProcessing = isProcessing
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        PunttoSearchRow(
+                            query = query,
+                            placeholder = "Buscar o escanear...",
+                            onQueryChange = { query = it },
+                            onScan = { showingBarcodeScanner = true },
+                            onService = onOpenServices,
+                            showService = !creditOnly && showServicesAction
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        PunttoKindFilterRow(catalogTab, decantsCount, servicesCount) { catalogTab = it }
+                        HorizontalDivider(color = Color(0xFFE4E4E7), modifier = Modifier.padding(top = 10.dp))
                         if (catalogTab == "all" && query.isBlank() && selectedCategoryId == null && recentProducts.isNotEmpty()) {
-                            RecentProductsRow(recentProducts, quantities, settings.allowNegativeStock, { viewModel.add(it) })
+                            Spacer(Modifier.height(8.dp))
+                            PunttoRecentGrid(recentProducts.filter { !wholesaleMode || (it.wholesalePrice ?: 0L) > 0L }, quantities, selectedQuantities, settings.allowNegativeStock, { viewModel.add(it) }, wholesaleMode)
                         }
-                    ProductKindFilterRow(catalogTab, hasDecants, hasServices) { catalogTab = it }
-                        CategoryFilterRow(categoryOptions, selectedCategoryId) { selectedCategoryId = it }
-                        Spacer(Modifier.height(14.dp))
-                         ProductGrid(catalog, quantities, selectedQuantities, settings.allowNegativeStock, { viewModel.add(it) }, 2, wholesaleMode, Modifier.weight(1f).fillMaxWidth())
+                        Spacer(Modifier.height(8.dp))
+                        PunttoProductList(
+                            products = mobileCatalog,
+                            quantities = quantities,
+                            selectedQuantities = selectedQuantities,
+                            allowNegativeStock = settings.allowNegativeStock,
+                            wholesaleMode = wholesaleMode,
+                            onAdd = { viewModel.add(it) },
+                            onChangeQuantity = { product, quantity -> viewModel.change(product.id, quantity) },
+                            modifier = Modifier.weight(1f).fillMaxWidth()
+                        )
                     }
             }
         }
@@ -263,12 +352,11 @@ fun PosScreen(
                 onCard = cardAction,
                 onTransfer = transferAction,
                 onCredit = creditAction,
-                onSplit = { showingSplitDialog = true },
+                onSplit = { showCart = false; showingSplitDialog = true },
                 isProcessing = isProcessing,
                 creditOnly = creditOnly,
                 creditEnabled = presentation.posShowCredit || creditOnly,
-                cashSessionOpen = cashSession != null,
-                 modifier = Modifier.fillMaxWidth().heightIn(max = 720.dp).padding(horizontal = 12.dp).imePadding().navigationBarsPadding()
+                 modifier = Modifier.fillMaxWidth().fillMaxHeight(0.9f).padding(horizontal = 12.dp).imePadding().navigationBarsPadding()
             )
         }
     }
@@ -278,16 +366,15 @@ fun PosScreen(
     if (showingTerminalOptions) {
         TerminalOptionsSheet(
             onDismiss = { showingTerminalOptions = false },
-            onQuote = { showingTerminalOptions = false; onOpenQuotes() },
             onDayClose = { showingTerminalOptions = false; onOpenDayClose() },
-            onCash = { showingTerminalOptions = false; onOpenCash() }
+            onCash = { showingTerminalOptions = false; onOpenCash() },
+            onQuote = { showingTerminalOptions = false; onOpenQuotes() }
         )
     }
     if (showingSplitDialog) {
         SplitPaymentDialog(
             totalCents = cartTotal,
             customerName = customer?.fullName,
-            cashSessionOpen = cashSession != null,
             onDismiss = { showingSplitDialog = false },
             onConfirm = { payments, dueDate ->
                 viewModel.completeSplit(payments, dueDate)
@@ -297,18 +384,43 @@ fun PosScreen(
     reviewMethod?.let { method ->
         CheckoutReviewSheet(
             cart = cart,
-            total = cartTotal,
+            subtotal = cartSubtotal,
+            discount = discount,
             customer = customer,
             method = method,
+            wholesaleMode = wholesaleMode,
+            saleDate = saleDate,
+            quantities = quantities,
+            creditEnabled = presentation.posShowCredit || creditOnly,
+            showCosts = showCosts,
             isProcessing = isProcessing,
             onDismiss = { if (!isProcessing) reviewMethod = null },
-            onConfirm = {
+            onCustomer = { if (!isProcessing) choosingCustomer = true },
+            onNewCustomer = { if (!isProcessing) { reviewMethod = null; onOpenCustomers() } },
+            onQuantity = viewModel::change,
+            onUnitPrice = viewModel::changeUnitPrice,
+            onClear = viewModel::clearCart,
+            onDiscount = viewModel::setDiscount,
+            onDate = viewModel::setSaleDate,
+            onMethodChange = { next ->
+                if (!isProcessing) {
+                    reviewMethod = next
+                    if (next == CheckoutReviewMethod.CREDIT && customer == null) choosingCustomer = true
+                }
+            },
+            onMixed = {
+                if (!isProcessing) {
+                    reviewMethod = null
+                    showingSplitDialog = true
+                }
+            },
+            onConfirm = { notes, reference, dueDate ->
                 reviewMethod = null
                 when (method) {
-                    CheckoutReviewMethod.CASH -> viewModel.completeCash()
-                    CheckoutReviewMethod.CARD -> viewModel.completeCard()
-                    CheckoutReviewMethod.TRANSFER -> viewModel.completeTransfer()
-                    CheckoutReviewMethod.CREDIT -> viewModel.completeCredit()
+                    CheckoutReviewMethod.CASH -> viewModel.completeCash(notes)
+                    CheckoutReviewMethod.CARD -> viewModel.completeCard(notes)
+                    CheckoutReviewMethod.TRANSFER -> viewModel.completeTransfer(reference, notes)
+                    CheckoutReviewMethod.CREDIT -> viewModel.completeCredit(dueDate, notes)
                 }
             }
         )
@@ -325,7 +437,18 @@ fun PosScreen(
             }
         )
     }
-    if (choosingCustomer) CustomerDialog(customers.filter { it.isActive && it.deletedAt == null && it.creditLimit > it.balance }, { viewModel.selectCustomer(it); choosingCustomer = false }, { viewModel.selectCustomer(null); choosingCustomer = false })
+    if (choosingCustomer) {
+        CustomerDialog(
+            customers = customers.filter { it.isActive && it.deletedAt == null },
+            requiresCredit = reviewMethod == CheckoutReviewMethod.CREDIT || creditOnly,
+            onSelect = { viewModel.selectCustomer(it); choosingCustomer = false },
+            onClear = { viewModel.selectCustomer(null); choosingCustomer = false },
+            onOpenCustomers = {
+                choosingCustomer = false
+                onOpenCustomers()
+            }
+        )
+    }
     checkoutResult?.takeIf { it.success && it.sale != null }?.let { result ->
         SaleCompleteDialog(
             result = result,
@@ -361,7 +484,6 @@ private fun TerminalHeader(creditOnly: Boolean, onGuide: () -> Unit, onOptions: 
         if (maxWidth >= 560.dp) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
                 Column(Modifier.weight(1f)) {
-                    Text(if (creditOnly) "Venta a crédito" else "Nueva venta", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.ExtraBold)
                     Text(if (creditOnly) "Asigna un cliente y los productos para registrar el saldo" else "Selecciona los productos para agregarlos al carrito", color = BSPOSTheme.colors.textSecondary)
                 }
                 TextButton(onClick = onGuide) { Text("Cómo hacer una venta") }
@@ -369,7 +491,6 @@ private fun TerminalHeader(creditOnly: Boolean, onGuide: () -> Unit, onOptions: 
             }
         } else {
             Column(Modifier.fillMaxWidth()) {
-                Text(if (creditOnly) "Venta a crédito" else "Nueva venta", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.ExtraBold)
                 Text(if (creditOnly) "Asigna un cliente y los productos para registrar el saldo" else "Selecciona los productos para agregarlos al carrito", color = BSPOSTheme.colors.textSecondary)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                     TextButton(onClick = onGuide) { Text("Ayuda") }
@@ -378,6 +499,280 @@ private fun TerminalHeader(creditOnly: Boolean, onGuide: () -> Unit, onOptions: 
             }
         }
     }
+}
+
+/**
+ * Compact terminal shell based on Puntto's mobile terminal. The mobile POS
+ * deliberately avoids the desktop-style page heading and keeps the first
+ * viewport focused on selecting a product.
+ */
+@Composable
+private fun PunttoTerminalHeader(
+    creditOnly: Boolean,
+    wholesaleMode: Boolean,
+    wholesaleEnabled: Boolean,
+    onBack: () -> Unit,
+    onWholesaleChanged: (Boolean) -> Unit,
+    onGuide: () -> Unit,
+    onOptions: () -> Unit,
+    isProcessing: Boolean
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().height(58.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        IconButton(onClick = onBack, enabled = !isProcessing, modifier = Modifier.size(40.dp)) {
+            Icon(Icons.Default.ArrowBack, contentDescription = "Volver", tint = BSPOSTheme.colors.textSecondary)
+        }
+        Surface(
+            modifier = Modifier.widthIn(max = 210.dp).weight(1f, fill = false).height(42.dp),
+            shape = RoundedCornerShape(12.dp),
+            color = Color(0xFFF0F0F2)
+        ) {
+            Row(Modifier.fillMaxSize()) {
+                Box(
+                    modifier = Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(10.dp)).clickable(enabled = !isProcessing) { onWholesaleChanged(false) },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = if (!wholesaleMode) Color.White else Color.Transparent,
+                        shadowElevation = if (!wholesaleMode) 1.dp else 0.dp
+                    ) {
+                        Text("Contado", modifier = Modifier.padding(horizontal = 18.dp, vertical = 7.dp), fontWeight = if (!wholesaleMode) FontWeight.Bold else FontWeight.Normal, color = Color(0xFF18181B))
+                    }
+                }
+                Box(
+                    modifier = Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(10.dp)).clickable(enabled = wholesaleEnabled && !isProcessing) { onWholesaleChanged(true) },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = if (wholesaleMode) Color.White else Color.Transparent,
+                        shadowElevation = if (wholesaleMode) 1.dp else 0.dp
+                    ) {
+                        Text("Mayoreo", modifier = Modifier.padding(horizontal = 18.dp, vertical = 7.dp), fontWeight = if (wholesaleMode) FontWeight.Bold else FontWeight.Normal, color = if (wholesaleMode) Color(0xFF18181B) else Color(0xFF71717A))
+                    }
+                }
+            }
+        }
+        IconButton(onClick = onGuide, enabled = !isProcessing, modifier = Modifier.size(40.dp)) {
+            Icon(Icons.Default.HelpOutline, contentDescription = "Ayuda", tint = Color(0xFF3F3F46))
+        }
+        IconButton(onClick = onOptions, enabled = !isProcessing, modifier = Modifier.size(40.dp)) {
+            Icon(Icons.Default.MoreHoriz, contentDescription = "Más opciones", tint = Color(0xFF3F3F46))
+        }
+    }
+}
+
+@Composable
+internal fun PunttoSearchRow(
+    query: String,
+    placeholder: String,
+    onQueryChange: (String) -> Unit,
+    onScan: () -> Unit,
+    onService: () -> Unit,
+    showService: Boolean
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Surface(
+            modifier = Modifier.weight(1f).height(50.dp),
+            shape = RoundedCornerShape(17.dp),
+            color = Color.White,
+            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE4E4E7))
+        ) {
+            Row(Modifier.fillMaxSize().padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Search, contentDescription = null, tint = Color(0xFFA1A1AA), modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(10.dp))
+                Box(Modifier.weight(1f)) {
+                    BasicTextField(
+                        value = query,
+                        onValueChange = onQueryChange,
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        textStyle = MaterialTheme.typography.bodyMedium.copy(color = Color(0xFF18181B), fontSize = 13.5.sp),
+                        decorationBox = { field ->
+                            if (query.isBlank()) Text(placeholder, color = Color(0xFFA1A1AA), fontSize = 13.5.sp)
+                            field()
+                        }
+                    )
+                }
+                IconButton(onClick = onScan, modifier = Modifier.size(30.dp)) {
+                    Icon(Icons.Default.QrCodeScanner, contentDescription = "Escanear código", tint = Color(0xFF3F3F46), modifier = Modifier.size(18.dp))
+                }
+            }
+        }
+        if (showService) {
+            Button(
+                onClick = onService,
+                modifier = Modifier.height(50.dp),
+                shape = RoundedCornerShape(16.dp),
+                contentPadding = PaddingValues(horizontal = 12.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E1E20))
+            ) {
+                Icon(Icons.Default.Build, contentDescription = null, modifier = Modifier.size(17.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("Servicio", maxLines = 1)
+            }
+        }
+    }
+}
+
+@Composable
+private fun PunttoKindFilterRow(
+    selected: String,
+    decantsCount: Int,
+    servicesCount: Int,
+    onSelected: (String) -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 14.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        PunttoTerminalChip(selected == "all" || selected == "products", "Productos", onClick = { onSelected("products") })
+        if (decantsCount > 0) PunttoTerminalChip(selected == "decants", "Decants ($decantsCount)", onClick = { onSelected("decants") })
+        if (servicesCount > 0) PunttoTerminalChip(selected == "services", "Servicios ($servicesCount)", onClick = { onSelected("services") })
+    }
+}
+
+@Composable
+internal fun PunttoTerminalChip(selected: Boolean, label: String, onClick: () -> Unit) {
+    Surface(
+        modifier = Modifier.clip(RoundedCornerShape(18.dp)).clickable { onClick() },
+        shape = RoundedCornerShape(18.dp),
+        color = if (selected) Color(0xFF212124) else Color.White,
+        border = if (selected) null else androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE4E4E7))
+    ) {
+        Text(
+            label,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 9.dp),
+            color = if (selected) Color.White else Color(0xFF52525B),
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+            style = MaterialTheme.typography.bodySmall
+        )
+    }
+}
+
+@Composable
+private fun PunttoProductList(
+    products: List<Product>,
+    quantities: Map<java.util.UUID, Long>,
+    selectedQuantities: Map<java.util.UUID, Long>,
+    allowNegativeStock: Boolean,
+    wholesaleMode: Boolean,
+    onAdd: (Product) -> Unit,
+    onChangeQuantity: (Product, Long) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    if (products.isEmpty()) {
+        Box(modifier, contentAlignment = Alignment.Center) {
+            Text(if (wholesaleMode) "No hay productos con precio por mayor para esta búsqueda." else "Sin productos para mostrar", modifier = Modifier.padding(20.dp), color = BSPOSTheme.colors.textSecondary)
+        }
+        return
+    }
+    LazyColumn(
+        modifier = modifier.testTag("pos-product-list").background(Color.White),
+        contentPadding = PaddingValues(bottom = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(0.dp)
+    ) {
+        lazyItems(products, key = { it.id }) { product ->
+            val available = quantities[product.id] ?: 0L
+            val selected = selectedQuantities[product.id] ?: 0L
+            val canIncrease = product.remoteSaleUnit == "service" || selected < available
+            Row(
+                modifier = Modifier.fillMaxWidth().clickable(enabled = canIncrease) { onAdd(product) }.padding(horizontal = 14.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                TerminalProductThumbnail(product)
+                Spacer(Modifier.width(14.dp))
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(product.name, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.Medium, color = Color(0xFF18181B), fontSize = 13.5.sp)
+                }
+                Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(money(if (wholesaleMode) product.wholesalePrice ?: product.salePrice else product.salePrice), fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace, fontSize = 13.sp, color = Color(0xFF18181B))
+                    if (selected > 0) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(onClick = { onChangeQuantity(product, selected - 1) }, modifier = Modifier.size(27.dp)) {
+                                Icon(Icons.Default.Remove, contentDescription = "Disminuir", modifier = Modifier.size(17.dp))
+                            }
+                            Text(selected.toString(), fontWeight = FontWeight.Bold, modifier = Modifier.widthIn(min = 18.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                            IconButton(onClick = { if (canIncrease) onAdd(product) }, enabled = canIncrease, modifier = Modifier.size(27.dp)) {
+                                Icon(Icons.Default.Add, contentDescription = "Aumentar", modifier = Modifier.size(17.dp))
+                            }
+                        }
+                    }
+                }
+            }
+            HorizontalDivider(color = Color(0xFFF4F4F5))
+        }
+    }
+}
+
+@Composable
+private fun PunttoRecentGrid(
+    products: List<Product>,
+    quantities: Map<java.util.UUID, Long>,
+    selectedQuantities: Map<java.util.UUID, Long>,
+    allowNegativeStock: Boolean,
+    onAdd: (Product) -> Unit,
+    wholesaleMode: Boolean = false
+) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text("RECIENTES", color = Color(0xFF71717A), fontSize = 11.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.2.sp)
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            products.take(2).forEach { product ->
+                val quantity = quantities[product.id] ?: 0L
+                val selected = selectedQuantities[product.id] ?: 0L
+                val canAdd = product.remoteSaleUnit == "service" || selected < quantity
+                Surface(
+                    modifier = Modifier.weight(1f).clickable(enabled = canAdd) { onAdd(product) },
+                    shape = RoundedCornerShape(16.dp),
+                    color = Color.White,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE4E4E7)),
+                    shadowElevation = 1.dp
+                ) {
+                    Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+                        Text(product.name, maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF18181B))
+                        Text(money(if (wholesaleMode) product.wholesalePrice ?: product.salePrice else product.salePrice), color = Color(0xFF71717A), fontSize = 11.5.sp, fontFamily = FontFamily.Monospace, modifier = Modifier.padding(top = 4.dp))
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun productInitials(name: String): String = name.trim().split(Regex("\\s+")).filter { it.isNotBlank() }.take(2).joinToString("") { it.first().uppercase() }.ifBlank { "PR" }
+
+@Composable
+private fun TerminalProductThumbnail(product: Product) {
+    Surface(
+        modifier = Modifier.size(40.dp),
+        shape = RoundedCornerShape(10.dp),
+        color = Color(0xFFF2F2F4),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE4E4E7))
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Text(productInitials(product.name), color = Color(0xFF71717A), fontSize = 11.sp, fontWeight = FontWeight.Medium)
+            val image = product.thumbnailPath?.takeIf { it.isNotBlank() } ?: product.imagePath?.takeIf { it.isNotBlank() }
+            if (image != null) AsyncImage(image, product.name, Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
+        }
+    }
+}
+
+private fun Modifier.dashedRoundedBorder(color: Color, strokeWidth: Dp = 1.dp, cornerRadius: Dp = 18.dp): Modifier = drawBehind {
+    val stroke = strokeWidth.toPx()
+    drawRoundRect(
+        color = color,
+        topLeft = Offset(stroke / 2, stroke / 2),
+        size = Size(size.width - stroke, size.height - stroke),
+        cornerRadius = CornerRadius(cornerRadius.toPx()),
+        style = Stroke(width = stroke, pathEffect = PathEffect.dashPathEffect(floatArrayOf(8.dp.toPx(), 6.dp.toPx()), 0f))
+    )
 }
 
 @Composable
@@ -445,6 +840,30 @@ private fun TerminalGuideDialog(onDismiss: () -> Unit) {
     )
 }
 
+@Composable
+private fun TerminalQuickGuideCard(onDismiss: () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth().animateContentSize(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.primaryLight),
+        border = androidx.compose.foundation.BorderStroke(1.dp, BSPOSTheme.colors.primary.copy(alpha = .28f))
+    ) {
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("OPERACIÓN · GUÍA RÁPIDA", color = BSPOSTheme.colors.primary, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.ExtraBold, modifier = Modifier.weight(1f))
+                TextButton(onClick = onDismiss) { Text("Ocultar") }
+            }
+            Text("Vende en pocos pasos", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold, color = BSPOSTheme.colors.textPrimary)
+            Text("Busca productos, agrégalos al carrito y cobra sin perder el control del inventario.", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodySmall)
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                GuideStep("1", "Busca o escanea", "Filtra por nombre, categoría o código y toca un producto para agregarlo.")
+                GuideStep("2", "Revisa el carrito", "Ajusta cantidades, cliente, precio detalle o mayorista y tipo de venta.")
+                GuideStep("3", "Cobra o cotiza", "El cobro descuenta inventario; la cotización prepara una propuesta sin tocarlo.")
+            }
+        }
+    }
+}
+
 private data class GuideStep(
     val title: String,
     val description: String
@@ -466,40 +885,44 @@ private fun GuideStep(number: String, title: String, description: String) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun TerminalOptionsSheet(onDismiss: () -> Unit, onQuote: () -> Unit, onDayClose: () -> Unit, onCash: () -> Unit) {
-    var quoteMode by rememberSaveable { mutableStateOf(false) }
+private fun TerminalModeRow(onQuote: () -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text("MODO", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.ExtraBold)
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Surface(
+                shape = RoundedCornerShape(50),
+                color = BSPOSTheme.colors.primary,
+                modifier = Modifier.weight(1f)
+            ) {
+                Text(
+                    "Cobrar",
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+            FilterChip(
+                selected = false,
+                onClick = onQuote,
+                label = { Text("Cotizar", modifier = Modifier.fillMaxWidth(), textAlign = androidx.compose.ui.text.style.TextAlign.Center) },
+                modifier = Modifier.weight(1f)
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun TerminalOptionsSheet(onDismiss: () -> Unit, onDayClose: () -> Unit, onCash: () -> Unit, onQuote: () -> Unit) {
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = BSPOSTheme.colors.surface) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).navigationBarsPadding(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("Opciones de la terminal", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
             Text("Acciones relacionadas con esta jornada de ventas.", color = BSPOSTheme.colors.textSecondary)
 
-            Text("MODO", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.ExtraBold)
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(
-                    selected = !quoteMode,
-                    onClick = { quoteMode = false },
-                    label = { Text("Cobrar", modifier = Modifier.fillMaxWidth(), textAlign = androidx.compose.ui.text.style.TextAlign.Center) },
-                    modifier = Modifier.weight(1f)
-                )
-                FilterChip(
-                    selected = quoteMode,
-                    onClick = { quoteMode = true },
-                    label = { Text("Cotizar", modifier = Modifier.fillMaxWidth(), textAlign = androidx.compose.ui.text.style.TextAlign.Center) },
-                    modifier = Modifier.weight(1f)
-                )
-            }
-            Text(
-                if (quoteMode) "Prepara un precio por escrito sin descontar existencias."
-                else "Registra la venta y el pago al cobrar.",
-                color = BSPOSTheme.colors.textSecondary,
-                style = MaterialTheme.typography.bodySmall
-            )
-            Button(
-                onClick = { if (quoteMode) onQuote() else onDismiss() },
-                modifier = Modifier.fillMaxWidth()
-            ) { Text(if (quoteMode) "Abrir cotizaciones" else "Volver a la terminal") }
+            TextButton(onClick = onQuote, modifier = Modifier.fillMaxWidth()) { Text("Crear cotización", modifier = Modifier.fillMaxWidth()) }
             TextButton(onClick = onDayClose, modifier = Modifier.fillMaxWidth()) { Text("Cierre de día", modifier = Modifier.fillMaxWidth()) }
-            TextButton(onClick = onCash, modifier = Modifier.fillMaxWidth()) { Text("Abrir o revisar caja", modifier = Modifier.fillMaxWidth()) }
+            TextButton(onClick = onCash, modifier = Modifier.fillMaxWidth()) { Text("Abrir o revisar caja del servidor", modifier = Modifier.fillMaxWidth()) }
             Spacer(Modifier.height(12.dp))
         }
     }
@@ -726,6 +1149,10 @@ private fun ProductKindFilterRow(
     hasServices: Boolean,
     onSelected: (String) -> Unit
 ) {
+    // When the catalog only contains normal products, the category row below
+    // is the single filter Puntto presents. Showing another "Todos" row in
+    // that case made the terminal look duplicated and added no behavior.
+    if (!hasDecants && !hasServices) return
     Row(
         modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
         horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -753,6 +1180,24 @@ private fun ProductKindFilterRow(
                 onClick = { onSelected("services") },
                 label = { Text("Servicios") }
             )
+        }
+    }
+}
+
+@Composable
+private fun ServiceQuickAction(onOpenServices: () -> Unit) {
+    OutlinedButton(
+        onClick = onOpenServices,
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp)
+    ) {
+        Icon(Icons.Default.ReceiptLong, contentDescription = null, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(8.dp))
+        Text("Servicio")
+        Spacer(Modifier.weight(1f))
+        Surface(shape = RoundedCornerShape(6.dp), color = BSPOSTheme.colors.primaryLight) {
+            Text("F4", modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.ExtraBold, color = BSPOSTheme.colors.primary)
         }
     }
 }
@@ -800,7 +1245,7 @@ private fun RecentProductsRow(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun BarcodeScannerSheet(onDismiss: () -> Unit, onCode: (String) -> Unit) {
+internal fun BarcodeScannerSheet(onDismiss: () -> Unit, onCode: (String) -> Unit) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val previewView = remember { PreviewView(context) }
@@ -899,8 +1344,8 @@ private fun analyzeBarcode(
 }
 
 @Composable
-private fun ProductGrid(products: List<Product>, quantities: Map<java.util.UUID, Long>, selectedQuantities: Map<java.util.UUID, Long>, allowNegativeStock: Boolean, onAdd: (Product) -> Unit, columns: Int, wholesaleMode: Boolean = false, modifier: Modifier = Modifier) {
-    if (products.isEmpty()) Box(modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { Text("Sin productos para mostrar", color = BSPOSTheme.colors.textSecondary) } else LazyVerticalGrid(GridCells.Fixed(columns), modifier, horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+internal fun ProductGrid(products: List<Product>, quantities: Map<java.util.UUID, Long>, selectedQuantities: Map<java.util.UUID, Long>, allowNegativeStock: Boolean, onAdd: (Product) -> Unit, onChangeQuantity: (Product, Long) -> Unit, columns: Int, wholesaleMode: Boolean = false, modifier: Modifier = Modifier) {
+    if (products.isEmpty()) Box(modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { Text("Sin productos para mostrar", color = BSPOSTheme.colors.textSecondary) } else LazyVerticalGrid(GridCells.Fixed(columns), modifier.testTag("pos-product-grid"), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         items(products, key = { it.id }) { product ->
             val quantity = quantities[product.id] ?: 0L
             val selected = selectedQuantities[product.id] ?: 0L
@@ -911,7 +1356,35 @@ private fun ProductGrid(products: List<Product>, quantities: Map<java.util.UUID,
                         val image = product.thumbnailPath ?: product.imagePath
                         if (image != null) AsyncImage(image, product.name, Modifier.fillMaxSize(), contentScale = ContentScale.Crop) else Icon(Icons.Default.Inventory2, null, tint = BSPOSTheme.colors.primary, modifier = Modifier.size(38.dp))
                          IconButton({ if (canAdd) onAdd(product) }, Modifier.align(Alignment.TopEnd), enabled = canAdd) { Icon(Icons.Default.Add, "Agregar", tint = BSPOSTheme.colors.primary) }
-                        if (selected > 0) Surface(Modifier.align(Alignment.BottomStart).padding(6.dp), shape = RoundedCornerShape(50), color = BSPOSTheme.colors.primary) { Text("En carrito: $selected", color = androidx.compose.ui.graphics.Color.White, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold) }
+                        if (selected > 0) {
+                            Surface(
+                                Modifier.align(Alignment.BottomCenter).padding(6.dp),
+                                shape = RoundedCornerShape(50),
+                                color = BSPOSTheme.colors.surface,
+                                shadowElevation = 2.dp
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(2.dp)
+                                ) {
+                                    IconButton(
+                                        onClick = { onChangeQuantity(product, selected - 1) },
+                                        modifier = Modifier.size(32.dp)
+                                    ) {
+                                        Icon(Icons.Default.Remove, "Disminuir cantidad de ${product.name}", tint = BSPOSTheme.colors.primary)
+                                    }
+                                    Text(selected.toString(), fontWeight = FontWeight.ExtraBold, color = BSPOSTheme.colors.textPrimary)
+                                    IconButton(
+                                        onClick = { onAdd(product) },
+                                        modifier = Modifier.size(32.dp),
+                                        enabled = canAdd
+                                    ) {
+                                        Icon(Icons.Default.Add, "Aumentar cantidad de ${product.name}", tint = BSPOSTheme.colors.primary)
+                                    }
+                                }
+                            }
+                        }
                     }
                     Spacer(Modifier.height(9.dp))
                     Text(product.name, fontWeight = FontWeight.Bold, maxLines = 2, minLines = 2, overflow = TextOverflow.Ellipsis)
@@ -928,7 +1401,7 @@ private fun CartPanel(
     cart: List<PosCartLine>, total: Long, customer: Customer?, onCustomer: () -> Unit,
     onMinus: (PosCartLine) -> Unit, onPlus: (PosCartLine) -> Unit, onRemove: (PosCartLine) -> Unit, onClear: () -> Unit,
     onCash: () -> Unit, onCard: () -> Unit, onTransfer: () -> Unit, onCredit: () -> Unit,
-    onSplit: () -> Unit, isProcessing: Boolean, creditOnly: Boolean, creditEnabled: Boolean, cashSessionOpen: Boolean,
+    onSplit: () -> Unit, isProcessing: Boolean, creditOnly: Boolean, creditEnabled: Boolean,
     modifier: Modifier = Modifier
 ) {
     var confirmClear by remember { mutableStateOf(false) }
@@ -960,7 +1433,6 @@ private fun CartPanel(
                 isProcessing = isProcessing,
                 creditSelected = creditSelected,
                 hasCustomer = customer != null,
-                cashSessionOpen = cashSessionOpen,
                 onCash = onCash,
                 onCredit = onCredit,
                 onCard = onCard,
@@ -988,218 +1460,6 @@ private fun CartPanel(
     )
 }
 
-private enum class CheckoutReviewMethod(val title: String, val subtitle: String) {
-    CASH("Efectivo", "Se registra en la caja abierta"),
-    CARD("Tarjeta", "Se concilia contra el banco"),
-    TRANSFER("Transferencia", "Se concilia contra el banco"),
-    CREDIT("A crédito", "Queda pendiente de cobro")
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun CheckoutReviewSheet(
-    cart: List<PosCartLine>,
-    total: Long,
-    customer: Customer?,
-    method: CheckoutReviewMethod,
-    isProcessing: Boolean,
-    onDismiss: () -> Unit,
-    onConfirm: () -> Unit
-) {
-    var cashReceivedText by remember(total, method) {
-        mutableStateOf(if (method == CheckoutReviewMethod.CASH) MoneyUtils.formatCents(total).removePrefix("RD$ ").trim() else "")
-    }
-    val cashReceivedCents = MoneyUtils.parsePesosStringToCents(cashReceivedText)
-    val cashChangeCents = cashReceivedCents - total
-    val cashAmountIsValid = method != CheckoutReviewMethod.CASH || cashReceivedCents >= total
-
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        containerColor = BSPOSTheme.colors.surface,
-        tonalElevation = 8.dp,
-        scrimColor = Color.Black.copy(alpha = 0.52f)
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(max = 760.dp)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp)
-                .navigationBarsPadding(),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.Top,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Surface(
-                        modifier = Modifier.size(44.dp),
-                        shape = RoundedCornerShape(15.dp),
-                        color = BSPOSTheme.colors.primary
-                    ) {
-                        Icon(Icons.Default.ReceiptLong, contentDescription = null, tint = Color.White, modifier = Modifier.padding(10.dp))
-                    }
-                    Column {
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Text("Cobrar", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
-                            Surface(shape = RoundedCornerShape(50), color = BSPOSTheme.colors.primaryLight) {
-                                Text("VENTA", modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp), color = BSPOSTheme.colors.primary, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.ExtraBold)
-                            }
-                        }
-                        Text("${cart.sumOf { it.quantity }} artículo(s) · revisa antes de confirmar", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodySmall)
-                    }
-                }
-                IconButton(onClick = onDismiss, enabled = !isProcessing) { Icon(Icons.Default.Close, "Cerrar cobro") }
-            }
-
-            Text(money(total), style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.ExtraBold, color = BSPOSTheme.colors.textPrimary)
-
-            Surface(
-                shape = RoundedCornerShape(20.dp),
-                color = BSPOSTheme.colors.background,
-                border = androidx.compose.foundation.BorderStroke(1.dp, BSPOSTheme.colors.outline),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        Column {
-                            Text("Detalle de la venta", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.ExtraBold, color = BSPOSTheme.colors.textSecondary)
-                            Text("El inventario se actualiza al confirmar.", style = MaterialTheme.typography.bodySmall, color = BSPOSTheme.colors.textSecondary)
-                        }
-                        Surface(shape = RoundedCornerShape(50), color = BSPOSTheme.colors.surface) {
-                            Text("${cart.sumOf { it.quantity }} unidad(es)", modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
-                        }
-                    }
-                    cart.forEach { line ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(14.dp))
-                                .background(BSPOSTheme.colors.surface)
-                                .padding(9.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Box(Modifier.size(42.dp).clip(RoundedCornerShape(11.dp)).background(BSPOSTheme.colors.primaryLight), contentAlignment = Alignment.Center) {
-                                val image = line.product.thumbnailPath ?: line.product.imagePath
-                                if (image != null) AsyncImage(image, line.product.name, Modifier.fillMaxSize(), contentScale = ContentScale.Fit) else Icon(Icons.Default.Inventory2, null, tint = BSPOSTheme.colors.primary)
-                            }
-                            Spacer(Modifier.width(10.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text(line.product.name, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                Text("${line.quantity} × ${money(line.unitPrice)}", style = MaterialTheme.typography.bodySmall, color = BSPOSTheme.colors.textSecondary)
-                            }
-                            Text(money(Math.multiplyExact(line.quantity, line.unitPrice)), fontWeight = FontWeight.ExtraBold)
-                        }
-                    }
-                }
-            }
-
-            Surface(
-                shape = RoundedCornerShape(20.dp),
-                color = BSPOSTheme.colors.primaryLight,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(40.dp).clip(RoundedCornerShape(12.dp)).background(BSPOSTheme.colors.primary), contentAlignment = Alignment.Center) { Icon(Icons.Default.Person, null, tint = Color.White) }
-                    Spacer(Modifier.width(10.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text("Cliente", style = MaterialTheme.typography.labelSmall, color = BSPOSTheme.colors.textSecondary)
-                        Text(customer?.fullName ?: "Consumidor final", fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text(if (customer == null) "Venta de mostrador" else "Cliente seleccionado", style = MaterialTheme.typography.bodySmall, color = BSPOSTheme.colors.textSecondary)
-                    }
-                    Icon(Icons.Default.CheckCircle, null, tint = BSPOSTheme.colors.success)
-                }
-            }
-
-            Surface(
-                shape = RoundedCornerShape(20.dp),
-                color = BSPOSTheme.colors.surface,
-                border = androidx.compose.foundation.BorderStroke(1.dp, BSPOSTheme.colors.outline),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Surface(shape = RoundedCornerShape(12.dp), color = BSPOSTheme.colors.successLight) {
-                        Icon(if (method == CheckoutReviewMethod.CREDIT) Icons.Default.ReceiptLong else Icons.Default.CheckCircle, null, tint = BSPOSTheme.colors.success, modifier = Modifier.padding(9.dp))
-                    }
-                    Spacer(Modifier.width(10.dp))
-                    Column {
-                        Text("Método de pago", style = MaterialTheme.typography.labelSmall, color = BSPOSTheme.colors.textSecondary)
-                        Text(method.title, fontWeight = FontWeight.Bold)
-                        Text(method.subtitle, style = MaterialTheme.typography.bodySmall, color = BSPOSTheme.colors.textSecondary)
-                    }
-                }
-            }
-
-            if (method == CheckoutReviewMethod.CASH) {
-                Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
-                    OutlinedTextField(
-                        value = cashReceivedText,
-                        onValueChange = { cashReceivedText = it },
-                        label = { Text("Recibido (${LocalCurrency.current.symbol})") },
-                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal),
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                        isError = !cashAmountIsValid,
-                        supportingText = {
-                            if (!cashAmountIsValid) Text("El efectivo recibido no puede ser menor que el total.")
-                        }
-                    )
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf("Exacto" to total, "1,000" to 100_000L, "2,000" to 200_000L, "5,000" to 500_000L)
-                            .forEach { (label, amount) ->
-                                AssistChip(
-                                    onClick = { cashReceivedText = MoneyUtils.formatCents(amount).removePrefix("RD$ ").trim() },
-                                    label = { Text(label) },
-                                    enabled = amount >= total && !isProcessing
-                                )
-                            }
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                        Surface(
-                            shape = RoundedCornerShape(16.dp),
-                            color = BSPOSTheme.colors.surfaceVariant,
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Column(Modifier.padding(13.dp)) {
-                                Text("Recibido", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelMedium)
-                                Text(money(cashReceivedCents), fontWeight = FontWeight.ExtraBold)
-                            }
-                        }
-                        Surface(
-                            shape = RoundedCornerShape(16.dp),
-                            color = if (cashChangeCents >= 0) BSPOSTheme.colors.successLight else BSPOSTheme.colors.warningLight,
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Column(Modifier.padding(13.dp)) {
-                                Text("Devolver", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelMedium)
-                                Text(money(cashChangeCents.coerceAtLeast(0)), fontWeight = FontWeight.ExtraBold)
-                            }
-                        }
-                    }
-                }
-            }
-
-            Surface(shape = RoundedCornerShape(20.dp), color = BSPOSTheme.colors.textPrimary, modifier = Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(15.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text("Subtotal", color = BSPOSTheme.colors.surface.copy(alpha = 0.72f)); Text(money(total), color = BSPOSTheme.colors.surface, fontWeight = FontWeight.Bold) }
-                    HorizontalDivider(color = BSPOSTheme.colors.surface.copy(alpha = 0.18f))
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) { Text("Total", color = BSPOSTheme.colors.surface, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold); Text(money(total), color = BSPOSTheme.colors.surface, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold) }
-                }
-            }
-
-            Button(onClick = onConfirm, enabled = !isProcessing && cashAmountIsValid, modifier = Modifier.fillMaxWidth().height(56.dp), shape = RoundedCornerShape(16.dp)) {
-                if (isProcessing) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp) else {
-                    Text(if (method == CheckoutReviewMethod.CREDIT) "Registrar venta a crédito" else "Confirmar venta · ${money(total)}", fontWeight = FontWeight.ExtraBold)
-                    Spacer(Modifier.weight(1f))
-                    Icon(Icons.Default.ChevronRight, null)
-                }
-            }
-            Spacer(Modifier.height(8.dp))
-        }
-    }
-}
 
 @Composable
 private fun SelectedCustomerCard(customer: Customer?, onClick: () -> Unit) {
@@ -1219,23 +1479,21 @@ private fun SelectedCustomerCard(customer: Customer?, onClick: () -> Unit) {
 @Composable
 private fun CartProductItem(line: PosCartLine, onMinus: (PosCartLine) -> Unit, onPlus: (PosCartLine) -> Unit, onRemove: (PosCartLine) -> Unit, processing: Boolean) {
     val price = line.unitPrice
-    Row(Modifier.fillMaxWidth().animateContentSize().padding(vertical = 4.dp), verticalAlignment = Alignment.Top) {
-        Box(Modifier.size(56.dp).clip(RoundedCornerShape(12.dp)).background(BSPOSTheme.colors.primaryLight), contentAlignment = Alignment.Center) {
-            val image = line.product.thumbnailPath ?: line.product.imagePath
-            if (image != null) AsyncImage(image, line.product.name, Modifier.fillMaxSize(), contentScale = ContentScale.Fit) else Icon(Icons.Default.Inventory2, null, tint = BSPOSTheme.colors.primary)
-        }
+    Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        TerminalProductThumbnail(line.product)
         Spacer(Modifier.width(10.dp)); Column(Modifier.weight(1f)) {
-            Row(verticalAlignment = Alignment.Top) {
-                Column(Modifier.weight(1f)) { Text(line.product.name, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis); Text(money(price), color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodySmall) }
-                IconButton(onClick = { onRemove(line) }, enabled = !processing, modifier = Modifier.size(44.dp)) { Icon(Icons.Default.DeleteOutline, "Eliminar ${line.product.name}", tint = BSPOSTheme.colors.error) }
-            }
+            Text(line.product.name, fontWeight = FontWeight.Medium, fontSize = 13.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(money(price), color = BSPOSTheme.colors.textSecondary, fontFamily = FontFamily.Monospace, fontSize = 11.sp)
+        }
+        Column(horizontalAlignment = Alignment.End) {
+            Text(money(Math.multiplyExact(line.quantity, price)), fontFamily = FontFamily.Monospace, fontSize = 13.sp, fontWeight = FontWeight.Bold)
             Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = { onMinus(line) }, enabled = !processing, modifier = Modifier.size(44.dp)) { Icon(Icons.Default.Remove, "Disminuir cantidad de ${line.product.name}") }
-                Text(line.quantity.toString(), fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 6.dp))
-                IconButton(onClick = { onPlus(line) }, enabled = !processing, modifier = Modifier.size(44.dp)) { Icon(Icons.Default.Add, "Aumentar cantidad de ${line.product.name}") }
-                Spacer(Modifier.weight(1f)); Text(money(Math.multiplyExact(line.quantity, price)), fontWeight = FontWeight.Bold)
+                IconButton(onClick = { onMinus(line) }, enabled = !processing, modifier = Modifier.size(30.dp)) { Icon(Icons.Default.Remove, "Disminuir cantidad de ${line.product.name}", modifier = Modifier.size(17.dp)) }
+                Text(line.quantity.toString(), fontWeight = FontWeight.Bold, fontSize = 13.sp, modifier = Modifier.widthIn(min = 18.dp))
+                IconButton(onClick = { onPlus(line) }, enabled = !processing, modifier = Modifier.size(30.dp)) { Icon(Icons.Default.Add, "Aumentar cantidad de ${line.product.name}", modifier = Modifier.size(17.dp)) }
             }
         }
+        IconButton(onClick = { onRemove(line) }, enabled = !processing, modifier = Modifier.size(30.dp)) { Icon(Icons.Default.DeleteOutline, "Eliminar ${line.product.name}", tint = BSPOSTheme.colors.error, modifier = Modifier.size(17.dp)) }
     }
 }
 
@@ -1262,17 +1520,48 @@ private fun PaymentTypeSelector(creditSelected: Boolean, onChange: (Boolean) -> 
 }
 
 @Composable
-private fun CartActions(cartIsEmpty: Boolean, isProcessing: Boolean, creditSelected: Boolean, hasCustomer: Boolean, cashSessionOpen: Boolean, onCash: () -> Unit, onCredit: () -> Unit, onCard: () -> Unit, onTransfer: () -> Unit, onSplit: () -> Unit, creditOnly: Boolean) {
+private fun CartActions(cartIsEmpty: Boolean, isProcessing: Boolean, creditSelected: Boolean, hasCustomer: Boolean, onCash: () -> Unit, onCredit: () -> Unit, onCard: () -> Unit, onTransfer: () -> Unit, onSplit: () -> Unit, creditOnly: Boolean) {
     val enabled = !cartIsEmpty && !isProcessing && (!creditSelected || hasCustomer)
-    Button(onClick = { if (creditSelected || creditOnly) onCredit() else onCash() }, enabled = enabled, modifier = Modifier.fillMaxWidth().height(58.dp), shape = RoundedCornerShape(16.dp)) { if (isProcessing) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp) else { Text(if (creditSelected || creditOnly) "Vender a crédito" else if (cashSessionOpen) "Cobrar" else "Abrir caja para cobrar", fontWeight = FontWeight.Bold); Spacer(Modifier.weight(1f)); Icon(Icons.Default.ChevronRight, null) } }
-    if (!creditOnly && !creditSelected) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) { OutlinedButton(onCard, enabled = !cartIsEmpty && !isProcessing, modifier = Modifier.weight(1f)) { Text("Tarjeta") }; OutlinedButton(onTransfer, enabled = !cartIsEmpty && !isProcessing, modifier = Modifier.weight(1f)) { Text("Transferencia") }; OutlinedButton(onSplit, enabled = !cartIsEmpty && !isProcessing, modifier = Modifier.weight(1f)) { Text("Mixto") } }
+    Button(onClick = { if (creditSelected || creditOnly) onCredit() else onCash() }, enabled = enabled, modifier = Modifier.fillMaxWidth().height(58.dp), shape = RoundedCornerShape(16.dp)) { if (isProcessing) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp) else { Text(if (creditSelected || creditOnly) "Vender a crédito" else "Cobrar", fontWeight = FontWeight.Bold); Spacer(Modifier.weight(1f)); Icon(Icons.Default.ChevronRight, null) } }
+    if (!creditOnly && !creditSelected) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedButton(
+                    onClick = onCard,
+                    enabled = !cartIsEmpty && !isProcessing,
+                    modifier = Modifier.weight(1f).heightIn(min = 56.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp)
+                ) {
+                    Text("Tarjeta", maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
+                }
+                OutlinedButton(
+                    onClick = onTransfer,
+                    enabled = !cartIsEmpty && !isProcessing,
+                    modifier = Modifier.weight(1f).heightIn(min = 56.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp)
+                ) {
+                    Text("Transferencia", maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
+                }
+            }
+            OutlinedButton(
+                onClick = onSplit,
+                enabled = !cartIsEmpty && !isProcessing,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp)
+            ) {
+                Text("Mixto", maxLines = 1, softWrap = false)
+            }
+        }
+    }
 }
 
 @Composable
 private fun SplitPaymentDialog(
     totalCents: Long,
     customerName: String?,
-    cashSessionOpen: Boolean,
     onDismiss: () -> Unit,
     onConfirm: (List<com.example.bspos.domain.usecase.PosPaymentSplitInput>, String?) -> Unit
 ) {
@@ -1291,7 +1580,7 @@ private fun SplitPaymentDialog(
     val sumCents = cashCents + cardCents + transferCents + creditCents
     val diffCents = totalCents - sumCents
     val isBalanced = diffCents == 0L && totalCents > 0L
-    val canSubmit = isBalanced && (creditCents == 0L || customerName != null) && (cashCents == 0L || cashSessionOpen)
+    val canSubmit = isBalanced && (creditCents == 0L || customerName != null)
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1352,14 +1641,6 @@ private fun SplitPaymentDialog(
                             )
                         }
                     }
-                }
-
-                if (cashCents > 0L && !cashSessionOpen) {
-                    Text(
-                        "Advertencia: La caja está cerrada para cobrar efectivo.",
-                        color = Color(0xFFD32F2F),
-                        style = MaterialTheme.typography.bodySmall
-                    )
                 }
 
                 if (creditCents > 0L && customerName == null) {
@@ -1451,7 +1732,14 @@ private fun SplitPaymentDialog(
 }
 
 @Composable
-private fun CustomerDialog(customers: List<com.example.bspos.domain.model.Customer>, onSelect: (com.example.bspos.domain.model.Customer) -> Unit, onClear: () -> Unit) {
+private fun CustomerDialog(
+    customers: List<com.example.bspos.domain.model.Customer>,
+    requiresCredit: Boolean,
+    onSelect: (com.example.bspos.domain.model.Customer) -> Unit,
+    onClear: () -> Unit,
+    onOpenCustomers: () -> Unit
+) {
+    val selectableCustomers = customers.filter { !requiresCredit || it.creditLimit > it.balance }
     AlertDialog(
         onDismissRequest = onClear,
         modifier = Modifier.padding(8.dp),
@@ -1465,19 +1753,30 @@ private fun CustomerDialog(customers: List<com.example.bspos.domain.model.Custom
         },
         title = { Text("Seleccionar cliente") },
         text = {
-            if (customers.isEmpty()) {
-                Text("No hay clientes activos con crédito disponible. Registra o actualiza uno desde Clientes.")
+            if (selectableCustomers.isEmpty()) {
+                Text(
+                    if (requiresCredit) "No hay clientes activos con crédito disponible. Registra o actualiza uno desde Clientes."
+                    else "No hay clientes activos. Registra uno desde Clientes."
+                )
             } else {
                 LazyColumn {
-                    lazyItems(customers, key = { it.id }) { customer ->
+                    lazyItems(selectableCustomers, key = { it.id }) { customer ->
                         TextButton({ onSelect(customer) }, Modifier.fillMaxWidth()) {
-                            Text("${customer.fullName} - Disponible: ${money(customer.creditLimit - customer.balance)}")
+                            Text(
+                                if (requiresCredit) "${customer.fullName} - Disponible: ${money(customer.creditLimit - customer.balance)}"
+                                else customer.fullName
+                            )
                         }
                     }
                 }
             }
         },
-        confirmButton = { TextButton(onClear) { Text("Cancelar") } }
+        confirmButton = {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = onOpenCustomers) { Text("Nuevo cliente") }
+                TextButton(onClick = onClear) { Text("Cancelar") }
+            }
+        }
     )
 }
 

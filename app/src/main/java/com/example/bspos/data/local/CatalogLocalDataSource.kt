@@ -42,6 +42,7 @@ class CatalogLocalDataSource @Inject constructor(
             miCatalogoSourceProductId = existing.miCatalogoSourceProductId,
             miCatalogoVolumeMl = existing.miCatalogoVolumeMl,
             miCatalogoAvailableMl = existing.miCatalogoAvailableMl,
+            miCatalogoOpenedBottles = existing.miCatalogoOpenedBottles,
             miCatalogoSaleUnit = existing.miCatalogoSaleUnit)) == 1
     }
     suspend fun deleteProduct(id: UUID, at: Instant) = products.softDelete(id, at) == 1

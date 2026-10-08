@@ -1,5 +1,6 @@
 package com.example.bspos.presentation.navigation
 
+import android.net.Uri
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Download
@@ -40,7 +41,7 @@ sealed class Screen(
 ) {
     data object Dashboard : Screen(
         route = "dashboard",
-        title = "Inicio",
+        title = "Resumen",
         selectedIcon = Icons.Filled.Dashboard,
         unselectedIcon = Icons.Outlined.Dashboard
     )
@@ -66,6 +67,13 @@ sealed class Screen(
         unselectedIcon = Icons.Outlined.Inventory2
     )
 
+    data object CatalogCreate : Screen(
+        route = "catalog_create",
+        title = "Crear producto",
+        selectedIcon = Icons.Filled.Inventory2,
+        unselectedIcon = Icons.Outlined.Inventory2
+    )
+
     data object DecantCreate : Screen(
         route = "decant_create",
         title = "Nueva presentación decant",
@@ -87,14 +95,18 @@ sealed class Screen(
         unselectedIcon = Icons.Outlined.Route
     )
 
-    data object Suppliers : Screen("suppliers", "Proveedores", Icons.Filled.People, Icons.Outlined.People)
+    data object Suppliers : Screen("suppliers", "Suplidores", Icons.Filled.People, Icons.Outlined.People)
     data object Inventory : Screen("inventory", "Inventario", Icons.Filled.Inventory2, Icons.Outlined.Inventory2)
     data object Collections : Screen("collections", "Cobros", Icons.Filled.ReceiptLong, Icons.Outlined.ReceiptLong)
     data object Credit : Screen("credit", "Credito", Icons.Filled.AccountBalanceWallet, Icons.Outlined.AccountBalanceWallet)
     data object CreditLedger : Screen("credit_ledger", "Crédito", Icons.Filled.AccountBalanceWallet, Icons.Outlined.AccountBalanceWallet)
     data object Cash : Screen("cash", "Caja", Icons.Filled.AccountBalanceWallet, Icons.Outlined.AccountBalanceWallet)
     data object Returns : Screen("returns", "Devoluciones", Icons.Filled.Replay, Icons.Outlined.Replay)
-    data object RouteLoads : Screen("route_loads", "Cargas", Icons.Filled.LocalShipping, Icons.Outlined.LocalShipping)
+    // Puntto's Compras > Cargas is the logistics/cost layer for imported
+    // shipments. Keep the existing route-transfer workflow available under a
+    // distinct label so the two concepts cannot open the wrong screen.
+    data object Loads : Screen("loads", "Cargas", Icons.Filled.LocalShipping, Icons.Outlined.LocalShipping)
+    data object RouteLoads : Screen("route_loads", "Cargas de ruta", Icons.Filled.LocalShipping, Icons.Outlined.LocalShipping)
     data object Printers : Screen("printers", "Impresoras", Icons.Filled.Print, Icons.Filled.Print)
     // Puntto names the financial analysis destination “Ganancias” inside the
     // “Finanzas” group. Keeping the destination label specific also makes it
@@ -132,11 +144,19 @@ sealed class Screen(
     data object Support : Screen("support", "Soporte", Icons.Filled.MoreHoriz, Icons.Outlined.MoreHoriz)
     data object Metrics : Screen("metrics", "Métricas y QR", Icons.Filled.BarChart, Icons.Outlined.BarChart)
     data object PublicCatalog : Screen("public_catalog", "Compartir catálogo", Icons.Filled.Store, Icons.Filled.Store)
-    data object ShopSettings : Screen("shop_settings", "Configuración de tienda", Icons.Filled.Settings, Icons.Outlined.Settings)
+    data object Categories : Screen("categories", "Categorías", Icons.Filled.Inventory2, Icons.Outlined.Inventory2)
+    data object ShopSettings : Screen("shop_settings", "Configuración", Icons.Filled.Settings, Icons.Outlined.Settings) {
+        fun routeFor(section: String?): String = section?.takeIf { it.isNotBlank() }
+            ?.let { "$route?section=${Uri.encode(it)}" }
+            ?: route
+    }
 
     data object Settings : Screen(
         route = "settings",
-        title = "Ajustes",
+        // The shop configuration already lives in Ajustes > Configuración.
+        // Keep the device/offline preferences discoverable in Más herramientas
+        // without presenting two drawer entries with the same label.
+        title = "Ajustes de la app",
         selectedIcon = Icons.Filled.Settings,
         unselectedIcon = Icons.Outlined.Settings
     )

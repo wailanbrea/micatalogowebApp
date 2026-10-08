@@ -1,13 +1,11 @@
 package com.example.bspos.domain.usecase
 
 import com.example.bspos.core.database.AppDatabaseTransactor
-import com.example.bspos.data.local.dao.CashSessionDao
 import com.example.bspos.data.local.dao.CustomerRouteDao
 import com.example.bspos.data.local.dao.InventoryDao
 import com.example.bspos.data.local.dao.ProductDao
 import com.example.bspos.data.local.dao.PosSaleOutboxDao
 import com.example.bspos.data.local.dao.SaleDao
-import com.example.bspos.data.local.entity.CashMovementEntity
 import com.example.bspos.data.local.entity.InventoryMovementEntity
 import com.example.bspos.data.local.entity.SaleEntity
 import com.example.bspos.data.local.entity.SaleItemEntity
@@ -25,7 +23,12 @@ import java.util.UUID
 import javax.inject.Inject
 
 data class SaleLineInput(val productId:UUID,val quantity:Long,val unitPrice:Long,val discount:Long=0,val tax:Long=0)
-data class PosPaymentSplitInput(val method: String, val amountCents: Long, val reference: String? = null)
+data class PosPaymentSplitInput(
+    val method: String,
+    val amountCents: Long,
+    val reference: String? = null,
+    val notes: String? = null
+)
 data class CompleteSaleRequest(
     val invoiceNumber: String,
     val customerId: UUID? = null,
@@ -38,13 +41,14 @@ data class CompleteSaleRequest(
     val discount: Long = 0,
     val tax: Long = 0,
     val notes: String? = null,
+    val paymentReference: String? = null,
     val cashSessionId: UUID? = null,
     val splitPayments: List<PosPaymentSplitInput>? = null,
     val dueDate: String? = null,
     val saleMode: String = "retail"
 )
 
-class CompleteSaleUseCase @Inject constructor(private val transactor:AppDatabaseTransactor,private val sales:SaleDao,private val inventory:InventoryDao,private val products:ProductDao,private val customers:CustomerRouteDao,private val cash:CashSessionDao,private val outbox:PosSaleOutboxDao,private val settings:SettingsRepository,private val json:Json,private val posSaleSyncScheduler:PosSaleSyncScheduler) {
+class CompleteSaleUseCase @Inject constructor(private val transactor:AppDatabaseTransactor,private val sales:SaleDao,private val inventory:InventoryDao,private val products:ProductDao,private val customers:CustomerRouteDao,private val outbox:PosSaleOutboxDao,private val settings:SettingsRepository,private val json:Json,private val posSaleSyncScheduler:PosSaleSyncScheduler) {
  suspend operator fun invoke(request:CompleteSaleRequest):Sale {
   require(request.paymentType != SalePaymentType.MIXED || !request.splitPayments.isNullOrEmpty()) { "Mixed sales require explicit payment methods" }
   require(request.paymentType != SalePaymentType.CREDIT || request.paidAmount == 0L || !request.splitPayments.isNullOrEmpty()) { "Credit down payments require an explicit payment method" }
@@ -52,16 +56,6 @@ class CompleteSaleUseCase @Inject constructor(private val transactor:AppDatabase
   val sale = transactor.runInTransaction {
    require(request.invoiceNumber.isNotBlank()&&request.lines.isNotEmpty()&&request.lines.map{it.productId}.distinct().size==request.lines.size)
    require(request.saleMode in setOf("retail", "wholesale"))
-   val cashAmount = if (request.splitPayments != null) {
-       request.splitPayments.filter { it.method == "cash" }.fold(0L) { sum, payment -> Math.addExact(sum, payment.amountCents) }
-   } else if (request.paymentType == SalePaymentType.CASH) {
-       request.paidAmount
-   } else 0L
-
-   val cashSessionId = if (cashAmount > 0L) {
-       checkNotNull(request.cashSessionId ?: cash.findOpenId()) { "Open cash session required" }
-   } else null
-
   val saleId=UUID.randomUUID();val location=if(request.routeId==null) InventoryLocation.MAIN else InventoryLocation.route(request.routeId)
    val resolvedLines=request.lines.map { line ->
    require(line.quantity>0&&line.unitPrice>=0&&line.discount>=0&&line.tax>=0)
@@ -89,14 +83,12 @@ class CompleteSaleUseCase @Inject constructor(private val transactor:AppDatabase
   val sale=SaleEntity(saleId,request.invoiceNumber,request.customerId,request.routeId,request.date,subtotal,request.discount,request.tax,total,request.paymentType,request.paidAmount,request.pendingAmount,notes=request.notes,createdAt=request.date,updatedAt=request.date,saleMode=request.saleMode)
   sales.insertWithItems(sale,items)
    LinkedInventorySaleRecorder.record(items,saleId,request.date,location,products,inventory,settings.observe().first().allowNegativeStock)
-   if (cashAmount > 0L && cashSessionId != null) {
-       cash.recordMovement(CashMovementEntity(UUID.randomUUID(),cashSessionId,CashMovementType.SALE,cashAmount,"Sale ${request.invoiceNumber}",request.date))
-   }
    val splitDtos = request.splitPayments?.map {
        com.example.bspos.data.micatalogo.dto.PosPaymentSplitDto(
            method = it.method,
            amount = MiCatalogoPosSaleOutboxMapper.decimalPrice(it.amountCents),
-           reference = it.reference
+           reference = it.reference,
+           notes = it.notes
        )
    } ?: when (request.paymentType) {
        SalePaymentType.CASH -> "cash"
@@ -106,7 +98,9 @@ class CompleteSaleUseCase @Inject constructor(private val transactor:AppDatabase
    }?.takeIf { request.paidAmount > 0L }?.let { method ->
        listOf(com.example.bspos.data.micatalogo.dto.PosPaymentSplitDto(
            method = method,
-           amount = MiCatalogoPosSaleOutboxMapper.decimalPrice(request.paidAmount)
+           amount = MiCatalogoPosSaleOutboxMapper.decimalPrice(request.paidAmount),
+           reference = request.paymentReference,
+           notes = request.notes
        ))
    }
     MiCatalogoPosSaleOutboxMapper.snapshot(saleId,sale.paidAmount,sale.pendingAmount,resolvedLines.map{it.second},splitDtos,request.dueDate,request.saleMode)?.let { snapshot ->

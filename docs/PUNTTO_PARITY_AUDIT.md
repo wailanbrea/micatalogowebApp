@@ -59,9 +59,9 @@ autorización del dueño.
 
 La inspección del emulador confirmó los bloques `VENTAS COBRADAS`, `ABONOS RECIBIDOS`,
 `GASTOS`, `DEVOLUCIONES` y `EFECTIVO EN CAJA`, con el monto esperado separado de los
-medios no efectivos. MiCatalogo Android ahora permite elegir la fecha con un selector
-nativo y consulta el mismo resumen remoto para ese día, sin crear ni cerrar ninguna sesión
-automáticamente.
+medios no efectivos. MiCatalogo usa ahora un cierre diario por fecha: permite consultar
+el día, guardar un arqueo opcional y no exige abrir una sesión de caja para vender o
+registrar gastos. Las sesiones remotas permanecen como control avanzado opcional.
 
 En `Operación / Pedidos`, Puntto muestra el estado de la bandeja, el total recibido y
 una tarjeta guiada cuando todavía no hay órdenes. Cuando existe una orden pendiente, el
@@ -181,12 +181,11 @@ MiCatalogo Android ahora presenta esos indicadores con datos locales: capital ca
 - Editar y anular una venta requieren un flujo de dominio y contabilidad completo; no se debe simular con un botón que no revierta inventario/caja.
 - Térmico ya está enlazado desde el detalle histórico y el dashboard; queda validar el
   recorrido físico con una impresora Bluetooth real, además de la prueba sin impresora.
-- `Cierre de día` móvil ahora une el período de hoy con ventas cobradas, abonos, gastos,
-  devoluciones y la sesión remota de caja. Permite abrir caja, mostrar entradas/salidas,
-  calcular el efectivo esperado y cerrar registrando el efectivo contado, con el mismo
-  mecanismo idempotente de operaciones financieras.
-- El selector de fecha del cierre móvil consulta períodos de un solo día como Puntto y no
-  modifica la caja hasta que el usuario confirma una apertura o cierre.
+- `Cierre de día` móvil consulta un solo día, separa efectivo de tarjetas/transferencias,
+  muestra entradas/salidas y guarda un arqueo opcional. El backend conserva el cierre por
+  tienda y fecha; las sesiones remotas quedan disponibles como control avanzado.
+- El selector de fecha del cierre móvil no abre ni cierra sesiones de caja. Ninguna venta
+  o gasto depende de una sesión abierta para aparecer en el esperado diario.
 - El detalle histórico de ventas y el dashboard ahora exponen `Térmico` y reutilizan el
   motor Bluetooth configurado para enviar la factura. Sin impresora registrada se muestra
   una instrucción explícita para configurarla desde `Impresoras`.
@@ -214,3 +213,98 @@ vendor/bin/pest.bat tests/Feature/BusinessRemediationTest.php  PASS (9 tests, 67
 ```
 
 La variante aislada se puede instalar como `com.bsolutions.micatalogo.offlinecheck` sin desinstalar ni tocar la aplicación oficial firmada.
+
+### Continuación solicitada desde Resumen
+
+En Puntto se continuó el recorrido hacia las pantallas siguientes de Operación:
+
+- Terminal: se verificaron Detalle/Mayoreo, lector, Servicio, pestañas de productos,
+  carrito fijo, controles de cantidad, opciones Cobrar/Cotizar y la hoja de cobro
+  con cliente, fecha, métodos, importes recibidos/cambio, montos rápidos, mixto,
+  crédito y nota. La venta de demostración se dejó sin confirmar.
+- Ventas: períodos, exportación, resumen, búsqueda, filtros, filas y detalle.
+  El filtro avanzado ofrece rango de total, pago y origen. El detalle mantiene
+  recibo, compartir, térmico, editar, devolver y anular.
+- Cotizaciones: resumen de vigentes/por convertir/vencidas, lista, detalle de
+  artículos, PDF y acceso a venta.
+- Pedidos: bandeja vacía guiada y enlace para compartir la tienda.
+- Encargos: contadores de hoy/mañana/atrasados y pestañas abiertos/entregados/cancelados.
+- Envíos: totales por modalidad y estados todos/preparando/en camino/entregado/problema.
+- Cierre de día: fecha, cobros, abonos, gastos, devoluciones, efectivo entrado/salido,
+  esperado y conteo; no se cerró ni alteró la caja de demostración.
+
+En MiCatalogo se verificó que Terminal, Cotizaciones, Pedidos, Encargos, Envíos y
+Cierre de día tienen rutas nativas y conservan funciones previamente implementadas.
+Se corrigió Ventas para evitar el resumen de 3 columnas que se cortaba en el móvil:
+ahora usa cuatro métricas en 2×2, con importe pendiente dividido entre ventas para
+el porcentaje a crédito. El filtro avanzado ofrece rango de importes, estado de pago
+y origen. La exportación ofrece CSV de la selección filtrada o ventas locales
+completadas; no se presenta como el Excel completo de Puntto (no inventa pagos ni
+devoluciones que no estén disponibles localmente).
+
+La comprobación del shell/navegación entre Resumen e Inventario confirmó un único
+encabezado y barra inferior en ambas rutas. Ventas ahora muestra la cuadrícula móvil
+2×2, filtros por total/pago/origen y exportación CSV declarada con el alcance de datos
+locales. `compileDebugKotlin`, `testDebugUnitTest` y las pruebas UI aisladas de Resumen
+y Ventas pasan. La release firmada 1.0.72 (código 73) quedó instalada y su APK extraída
+del móvil coincide por SHA-256 con el artefacto compilado. Tras actualizar, MiCatalogo
+presenta el bloqueo normal de sesión y requiere que su usuario vuelva a autenticarse
+antes de verificar rutas autenticadas en el teléfono.
+
+También se inspeccionó sin guardar ni confirmar operaciones el grupo `Compras`:
+
+- `Contenedores` presenta órdenes por suplidor, borrador y recepción; la captura de
+  factura (imagen/PDF/Excel) solo prepara un borrador revisable. El formulario incluye
+  moneda del suplidor, tasa FX, courier/naviera, guía/BL, llegada estimada, libras y notas.
+- `Cargas` describe agrupación de contenedores del exterior y asignación de libraje,
+  flete y aduana al costo real; el formulario captura moneda, tasa, courier, guía/BL,
+  fecha estimada, peso y notas.
+- `Suplidores` muestra el estado vacío y formulario de nombre, contacto, teléfono y
+  moneda de factura.
+- `Facturas de suplidor` muestra saldo pendiente y permite registrar deuda histórica.
+
+Los formularios de Compras no se enviaron. MiCatalogo ya dispone de módulos nativos de
+compra/recepción y suplidores; queda una comparación UI individual y autenticada del
+recorrido completo después de volver a iniciar sesión en el teléfono.
+
+`Catálogo / Fotos` también se recorrió hasta las acciones por foto: búsqueda en la
+biblioteca, estados `Seguras`, `Revisar` y `Sin foto`, revisión de coincidencia por
+producto, aceptar la foto, buscar otra o saltar. No se aceptó ninguna foto ni se
+alteró el catálogo Puntto durante la revisión. En MiCatalogo la ruta Fotos es nativa;
+verificar en una sesión autenticada el resultado del buscador de imágenes y los flujos
+de subir/cambiar foto en el editor.
+
+### Ventas — corrección e instalación 1.0.72
+
+- `SalesHistoryScreen` presenta el resumen de ventas en dos filas por dos columnas y
+  usa importe pendiente/ventas como proporción a crédito.
+- Se añadió filtro avanzado de mínimo/máximo, estado de pago (incluidas parciales y
+  anuladas) y origen terminal/ruta, sin alterar la consulta base local.
+- Exportar permite CSV con columnas de factura, fecha, cliente, método, estado, total,
+  producto, cantidad, precio unitario y subtotal por línea; admite el filtro visible o
+  ventas completadas locales. No inventa pagos o devoluciones exportables no presentes
+  en la base local.
+- Prueba unitaria CSV: pasa con comillas, líneas e importes en centavos. Pruebas UI
+  aisladas de Resumen y KPIs de Ventas: pasan en el emulador. `compileDebugKotlin` y
+  `testDebugUnitTest`: PASS.
+- Release `1.0.72` / `versionCode 73`: firma, certificado y paquete verificados; SHA-256
+  `503e31108e16be213c7d9b5a68dd1284bf6a066897204cd568dee98c0c2d5c47`. APK instalada
+  con `adb install -r` y confirmada por versión y hash extraído del teléfono. No se
+  publicó el manifiesto OTA ni la APK en el VPS.
+- Al volver a abrir en el teléfono, la aplicación exige iniciar sesión. La inspección
+  visual de rutas autenticadas en la versión nueva queda pendiente del desbloqueo de
+  sesión por el usuario; no se intentó introducir ni restablecer credenciales.
+
+### Terminal — corrección solicitada
+
+- Eliminado el encabezado interno duplicado `Nueva venta` / `Venta a crédito` para que
+  el shell `Operación / Terminal` sea el único título y permanezca una sola etiqueta.
+- La cuadrícula móvil conserva dos columnas y obtiene una altura mínima desplazable
+  incluso si los controles del encabezado ocupan más espacio.
+- Nueva prueba instrumental con 20 productos: verifica que se puede desplazar hasta
+  `Terminal product 19`; pasa en el emulador aislado.
+- Se conserva el comportamiento existente de detalle/mayoreo, categorías, productos
+  recientes, lector, servicio, carrito fijo y cobro.
+- Release firmada 1.0.73 / código 74 instalada en el móvil; la app abre su pantalla
+  de inicio de sesión. La verificación visual de la Terminal en el móvil debe
+  completarse después de que el usuario autentique la sesión.

@@ -33,6 +33,8 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
 import java.util.UUID
 import javax.inject.Inject
 
@@ -95,11 +97,17 @@ class PosViewModel @Inject constructor(
     val customer = _customer.asStateFlow()
     private val _wholesaleMode = MutableStateFlow(false)
     val wholesaleMode = _wholesaleMode.asStateFlow()
-    val cartTotal = _cart.combine(_wholesaleMode) { lines, _ ->
+    private val _discount = MutableStateFlow(0L)
+    val discount = _discount.asStateFlow()
+    private val _saleDate = MutableStateFlow(LocalDate.now())
+    val saleDate = _saleDate.asStateFlow()
+    val cartSubtotal = _cart.map { lines ->
         lines.fold(0L) { total, line ->
             Math.addExact(total, Math.multiplyExact(line.quantity, line.unitPrice))
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0L)
+    val cartTotal = cartSubtotal.combine(_discount) { subtotal, discount -> subtotal - discount.coerceIn(0L, subtotal) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0L)
     private val _isProcessing = MutableStateFlow(false)
     val isProcessing = _isProcessing.asStateFlow()
     private val _checkoutResult = MutableStateFlow<CheckoutResult?>(null)
@@ -111,6 +119,23 @@ class PosViewModel @Inject constructor(
     fun selectCustomer(value: Customer?) {
         _customer.value = value
     }
+
+    fun setDiscount(cents: Long) { if (!_isProcessing.value) _discount.value = cents.coerceAtLeast(0L) }
+    fun setSaleDate(date: LocalDate) {
+        // The mobile API currently timestamps synchronized sales on the server.
+        // Never show a different accounting date only in the local database.
+        if (_cart.value.any { !it.product.remoteProductId.isNullOrBlank() } && date != LocalDate.now()) return
+        if (!_isProcessing.value && !date.isAfter(LocalDate.now())) _saleDate.value = date
+    }
+    fun changeUnitPrice(productId: UUID, cents: Long) {
+        if (_isProcessing.value || cents < 0L) return
+        val line = _cart.value.firstOrNull { it.product.id == productId } ?: return
+        // The server rejects prices different from the current catalog price.
+        if (!line.product.remoteProductId.isNullOrBlank() && cents != price(line.product)) return
+        _cart.value = _cart.value.map { if (it.product.id == productId) it.copy(unitPrice = cents) else it }
+    }
+    private fun saleInstant(): Instant = if (_saleDate.value == LocalDate.now()) Instant.now()
+        else _saleDate.value.atStartOfDay(ZoneId.systemDefault()).toInstant()
 
     fun setWholesaleMode(enabled: Boolean) {
         if (enabled && _cart.value.any { (it.product.wholesalePrice ?: 0L) <= 0L }) {
@@ -124,8 +149,9 @@ class PosViewModel @Inject constructor(
     private fun price(product: Product): Long = if (_wholesaleMode.value) product.wholesalePrice ?: product.salePrice else product.salePrice
 
     fun add(product: Product) {
+        if (_isProcessing.value) return
         val available = stock.value.firstOrNull { it.productId == product.id }?.quantity ?: 0L
-        val maximum = if (product.remoteSaleUnit == "service" || settings.value.allowNegativeStock) Long.MAX_VALUE else available
+        val maximum = if (product.remoteSaleUnit == "service") Long.MAX_VALUE else available.coerceAtLeast(0L)
         _cart.value = _cart.value.toMutableList().also { lines ->
             val index = lines.indexOfFirst { it.product.id == product.id }
             val current = if (index < 0) 0 else lines[index].quantity
@@ -136,9 +162,11 @@ class PosViewModel @Inject constructor(
     }
 
     fun change(productId: UUID, quantity: Long) {
+        if (_isProcessing.value) return
         val product = products.value.firstOrNull { it.id == productId }
+            ?: _cart.value.firstOrNull { it.product.id == productId }?.product
         val available = stock.value.firstOrNull { it.productId == productId }?.quantity ?: 0L
-        val maximum = if (product?.remoteSaleUnit == "service" || settings.value.allowNegativeStock) Long.MAX_VALUE else available
+        val maximum = if (product?.remoteSaleUnit == "service") Long.MAX_VALUE else available.coerceAtLeast(0L)
         val next = quantity.coerceIn(0, maximum)
         _cart.value = _cart.value.mapNotNull {
             if (it.product.id != productId) it
@@ -150,18 +178,21 @@ class PosViewModel @Inject constructor(
     fun clearCart() {
         if (_isProcessing.value) return
         _cart.value = emptyList()
+        _discount.value = 0L
+        _saleDate.value = LocalDate.now()
     }
 
-    fun completeCash() = complete(SalePaymentType.CASH, null)
-    fun completeCard() = complete(SalePaymentType.CARD, null)
-    fun completeTransfer() = complete(SalePaymentType.TRANSFER, null)
-    fun completeCredit() = _customer.value?.let { complete(SalePaymentType.CREDIT, it) }
+    fun completeCash(notes: String? = null) = complete(SalePaymentType.CASH, null, notes = notes)
+    fun completeCard(notes: String? = null) = complete(SalePaymentType.CARD, null, notes = notes)
+    fun completeTransfer(reference: String? = null, notes: String? = null) = complete(SalePaymentType.TRANSFER, null, reference = reference, notes = notes)
+    fun completeCredit(dueDate: String? = null, notes: String? = null) = _customer.value?.let { complete(SalePaymentType.CREDIT, it, dueDate = dueDate, notes = notes) }
 
     fun completeSplit(payments: List<com.example.bspos.domain.usecase.PosPaymentSplitInput>, dueDate: String? = null) {
         val lines = _cart.value
         if (lines.isEmpty() || _isProcessing.value) return
         val total = try {
-            lines.sumOf { Math.multiplyExact(it.quantity, price(it.product)) }
+            val subtotal = lines.sumOf { Math.multiplyExact(it.quantity, it.unitPrice) }
+            subtotal - _discount.value.coerceIn(0L, subtotal)
         } catch (_: ArithmeticException) {
             _checkoutResult.value = CheckoutResult(false, "El total de la venta excede el límite permitido")
             return
@@ -199,8 +230,9 @@ class PosViewModel @Inject constructor(
                     CompleteSaleRequest(
                         invoiceNumber = "POS-${System.currentTimeMillis()}",
                         customerId = customer?.id,
-                        date = Instant.now(),
-                        lines = lines.map { SaleLineInput(it.product.id, it.quantity, price(it.product)) },
+                        date = saleInstant(),
+                        lines = lines.map { SaleLineInput(it.product.id, it.quantity, it.unitPrice) },
+                        discount = _discount.value.coerceIn(0L, lines.sumOf { Math.multiplyExact(it.quantity, it.unitPrice) }),
                         paymentType = if (payments.size > 1) SalePaymentType.MIXED else when (payments.firstOrNull()?.method) {
                             "cash" -> SalePaymentType.CASH
                             "card" -> SalePaymentType.CARD
@@ -216,6 +248,8 @@ class PosViewModel @Inject constructor(
                     )
                 )
                 _cart.value = emptyList()
+                _discount.value = 0L
+                _saleDate.value = LocalDate.now()
                 _customer.value = null
                 _checkoutResult.value = CheckoutResult(
                     success = true,
@@ -270,11 +304,18 @@ class PosViewModel @Inject constructor(
         _printerMessage.value = null
     }
 
-    private fun complete(type: SalePaymentType, customer: Customer?) {
+    private fun complete(
+        type: SalePaymentType,
+        customer: Customer?,
+        reference: String? = null,
+        dueDate: String? = null,
+        notes: String? = null
+    ) {
         val lines = _cart.value
         if (lines.isEmpty() || _isProcessing.value) return
         val total = try {
-            lines.sumOf { Math.multiplyExact(it.quantity, price(it.product)) }
+            val subtotal = lines.sumOf { Math.multiplyExact(it.quantity, it.unitPrice) }
+            subtotal - _discount.value.coerceIn(0L, subtotal)
         } catch (_: ArithmeticException) {
             _checkoutResult.value = CheckoutResult(false, "El total de la venta excede el límite permitido")
             return
@@ -286,16 +327,22 @@ class PosViewModel @Inject constructor(
                 val sale = completeSale(
                     CompleteSaleRequest(
                         invoiceNumber = "POS-${System.currentTimeMillis()}",
-                        customerId = customer?.id,
-                        date = Instant.now(),
-                        lines = lines.map { SaleLineInput(it.product.id, it.quantity, price(it.product)) },
+                        customerId = (customer ?: _customer.value)?.id,
+                        date = saleInstant(),
+                        lines = lines.map { SaleLineInput(it.product.id, it.quantity, it.unitPrice) },
+                        discount = _discount.value.coerceIn(0L, lines.sumOf { Math.multiplyExact(it.quantity, it.unitPrice) }),
                         paymentType = type,
                         paidAmount = if (type == SalePaymentType.CREDIT) 0 else total,
                         pendingAmount = if (type == SalePaymentType.CREDIT) total else 0,
+                        notes = notes,
+                        paymentReference = reference,
+                        dueDate = dueDate,
                         saleMode = if (_wholesaleMode.value) "wholesale" else "retail"
                     )
                 )
                 _cart.value = emptyList()
+                _discount.value = 0L
+                _saleDate.value = LocalDate.now()
                 _customer.value = null
                 _checkoutResult.value = CheckoutResult(
                     success = true,

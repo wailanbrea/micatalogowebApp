@@ -42,6 +42,7 @@ fun CustomerScreen(
     var query by remember { mutableStateOf("") }
     var creating by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<Customer?>(null) }
+    var deleting by remember { mutableStateOf<Customer?>(null) }
     val filtered = customers.filter { it.fullName.contains(query, true) || it.documentNumber.orEmpty().contains(query, true) || it.phone.orEmpty().contains(query) }
     val totalBalance = customers.sumOf { it.balance }
     Column(Modifier.fillMaxSize().background(BSPOSTheme.colors.background).padding(20.dp)) {
@@ -57,11 +58,39 @@ fun CustomerScreen(
         Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), color = BSPOSTheme.colors.surface, border = androidx.compose.foundation.BorderStroke(1.dp, BSPOSTheme.colors.outline)) { Row(Modifier.padding(horizontal = 14.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.Search, null, tint = BSPOSTheme.colors.primary); OutlinedTextField(query, { query = it }, Modifier.weight(1f), placeholder = { Text("Buscar negocio, contacto o telefono") }, singleLine = true, colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = androidx.compose.ui.graphics.Color.Transparent, unfocusedBorderColor = androidx.compose.ui.graphics.Color.Transparent)) } }
         Spacer(Modifier.height(12.dp))
         if (filtered.isEmpty()) Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) { Text(if (query.isBlank()) "Aun no hay clientes" else "Sin coincidencias", color = BSPOSTheme.colors.textSecondary) } else LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            items(filtered, key = { it.id }) { customer -> CustomerCard(customer, presentation.customersShowCredit, { editing = customer }, { viewModel.delete(customer) }) }
+            items(filtered, key = { it.id }) { customer ->
+                CustomerCard(
+                    customer,
+                    presentation.customersShowCredit,
+                    { editing = customer },
+                    { deleting = customer }
+                )
+            }
         }
     }
     if (creating) CustomerForm(null, presentation.customersShowCredit, { viewModel.add(it); creating = false }, { creating = false })
     editing?.let { current -> CustomerForm(current, presentation.customersShowCredit, { viewModel.update(current, it); editing = null }, { editing = null }) }
+    deleting?.let { customer ->
+        AlertDialog(
+            onDismissRequest = { deleting = null },
+            title = { Text("Eliminar cliente") },
+            text = {
+                Text(
+                    if (customer.balance > 0L) {
+                        "${customer.fullName} tiene un saldo pendiente. No se puede eliminar hasta registrar el cobro."
+                    } else {
+                        "¿Quieres retirar a ${customer.fullName} del directorio? Sus ventas históricas se conservarán."
+                    }
+                )
+            },
+            confirmButton = {
+                if (customer.balance <= 0L) {
+                    TextButton(onClick = { viewModel.delete(customer); deleting = null }) { Text("Eliminar") }
+                }
+            },
+            dismissButton = { TextButton(onClick = { deleting = null }) { Text("Cancelar") } }
+        )
+    }
     message?.let { text -> AlertDialog(onDismissRequest = viewModel::consumeMessage, title = { Text("No se pudo completar") }, text = { Text(text) }, confirmButton = { TextButton(onClick = viewModel::consumeMessage) { Text("Cerrar") } }) }
 }
 

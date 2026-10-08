@@ -18,6 +18,8 @@ import com.example.bspos.domain.usecase.RegisterInitialInventoryUseCase
 import com.example.bspos.domain.usecase.RegisterInventoryAdjustmentUseCase
 import com.example.bspos.domain.usecase.RegisterInventoryReceiptUseCase
 import com.example.bspos.domain.usecase.RegisterPhysicalInventoryCountUseCase
+import com.example.bspos.domain.usecase.ProductInput
+import com.example.bspos.domain.usecase.ProductUseCases
 import com.example.bspos.presentation.common.UiErrorBus
 import com.example.bspos.presentation.common.toUiMessage
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -43,13 +45,16 @@ class InventoryViewModel @Inject constructor(
     private val receipt: RegisterInventoryReceiptUseCase,
     private val count: RegisterPhysicalInventoryCountUseCase,
     private val connection: MiCatalogoConnectionRepository,
-    private val catalog: MiCatalogoCatalogRepository
+    private val catalog: MiCatalogoCatalogRepository,
+    private val productUseCases: ProductUseCases
 ) : ViewModel() {
     private val selected = MutableStateFlow<UUID?>(null)
     val stock = repository.observeStock(InventoryLocation.MAIN).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val productNames = products.observeAll().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val reasons = reasonsUseCases.observe().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val movements = selected.flatMapLatest { id -> if (id == null) flowOf(emptyList()) else repository.observeMovements(id, InventoryLocation.MAIN) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    val allMovements = repository.observeAllMovements(InventoryLocation.MAIN)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     private val _message = MutableStateFlow<String?>(null)
     val message = _message.asStateFlow()
@@ -97,6 +102,30 @@ class InventoryViewModel @Inject constructor(
     fun count(productId: UUID, quantity: Long, notes: String) = runOperation("No se pudo registrar el conteo") { count.invoke(productId, quantity, notes) }
     fun addReason(name: String, direction: AdjustmentDirection) = runOperation("No se pudo guardar el motivo") { reasonsUseCases.create(name, direction) }
     fun adjust(productId: UUID, type: InventoryMovementType, quantity: Long, cost: Long, reasonId: UUID, notes: String) = runOperation("No se pudo registrar el ajuste") { registerAdjustment(InventoryAdjustmentInput(productId, type, quantity, cost, reasonId, notes)) }
+    fun convertToService(product: com.example.bspos.domain.model.Product) = runOperation("No se pudo convertir el producto en servicio") {
+        productUseCases.update(
+            product,
+            ProductInput(
+                name = product.name,
+                internalCode = product.internalCode,
+                categoryId = product.categoryId,
+                unitId = product.unitId,
+                salePrice = product.salePrice,
+                purchasePrice = product.lastPurchaseCost,
+                wholesalePrice = null,
+                description = product.description,
+                minimumStock = 0,
+                tracksExpiration = product.tracksExpiration,
+                imagePath = product.imagePath,
+                thumbnailPath = product.thumbnailPath,
+                remoteShopId = product.remoteShopId,
+                remoteSaleUnit = "service",
+                isCombo = false,
+                comboItems = emptyList(),
+                isActive = product.isActive
+            )
+        )
+    }
     fun consumeMessage() { _message.value = null }
 
     fun dismissImportPreview() { _importPreview.value = null }

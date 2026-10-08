@@ -25,7 +25,9 @@ data class OrdersUiState(
     val customers: List<RemoteCustomerDto> = emptyList(),
     val confirmingId: String? = null,
     val message: String? = null,
-    val error: String? = null
+    val error: String? = null,
+    val search: String = "",
+    val status: String = "all"
 )
 
 @HiltViewModel
@@ -37,10 +39,14 @@ class OrdersViewModel @Inject constructor(
     private val _state = MutableStateFlow(OrdersUiState())
     val state = _state.asStateFlow()
     private var activeFeature: String = "orders"
+    private var activeSearch: String = ""
+    private var activeStatus: String = "all"
 
-    fun load(feature: String = activeFeature, refresh: Boolean = false) {
+    fun load(feature: String = activeFeature, refresh: Boolean = false, search: String = activeSearch, status: String = activeStatus) {
         viewModelScope.launch {
             activeFeature = feature
+            activeSearch = search.trim()
+            activeStatus = status
             val shopId = connection.activeShopId()
             if (shopId.isNullOrBlank()) {
                 _state.value = OrdersUiState(loading = false, error = "Selecciona una tienda activa para consultar los pedidos.")
@@ -53,7 +59,12 @@ class OrdersViewModel @Inject constructor(
                 error = null
             )
             runCatching {
-                val moduleResponse = api.get().feature(shopId, feature)
+                val moduleResponse = api.get().feature(
+                    shopId,
+                    feature,
+                    query = activeSearch.ifBlank { null },
+                    status = activeStatus.takeIf { it != "all" }
+                )
                 if (!moduleResponse.isSuccessful) error("No se pudieron cargar los pedidos.")
                 val module = moduleResponse.body()?.module ?: error("MiCatalogo devolvió una respuesta vacía.")
                 val customers = runCatching {
@@ -68,6 +79,8 @@ class OrdersViewModel @Inject constructor(
                     rows = module.rows,
                     note = module.note,
                     customers = customers,
+                    search = activeSearch,
+                    status = activeStatus,
                     error = null
                 )
             }.onFailure {

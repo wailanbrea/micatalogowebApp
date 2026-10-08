@@ -3,6 +3,7 @@ package com.example.bspos.domain.repository
 import com.example.bspos.data.micatalogo.dto.CashCurrentSessionResponseDto
 import com.example.bspos.data.micatalogo.dto.CashMovementActionResponseDto
 import com.example.bspos.data.micatalogo.dto.CashSessionActionResponseDto
+import com.example.bspos.data.micatalogo.dto.DailyCloseDto
 import com.example.bspos.data.micatalogo.dto.ExpenseActionResponseDto
 import com.example.bspos.data.micatalogo.dto.ExpenseCategoryDto
 import com.example.bspos.data.micatalogo.dto.ExpenseCreateRequestDto
@@ -33,6 +34,18 @@ interface FinanceRepository {
         to: String? = null
     ): MiCatalogoResult<FinanceCashFlowDto>
 
+    suspend fun getDailyClose(
+        shopId: String,
+        date: String
+    ): MiCatalogoResult<DailyCloseDto>
+
+    suspend fun closeDay(
+        shopId: String,
+        date: String,
+        countedCash: String? = null,
+        notes: String? = null
+    ): MiCatalogoResult<DailyCloseDto>
+
     suspend fun getCurrentCashSession(
         shopId: String
     ): MiCatalogoResult<CashCurrentSessionResponseDto>
@@ -47,7 +60,7 @@ interface FinanceRepository {
     suspend fun closeCashSession(
         shopId: String,
         sessionId: String,
-        countedAmount: String,
+        countedAmount: String? = null,
         notes: String? = null,
         clientOperationUuid: String
     ): MiCatalogoResult<CashSessionActionResponseDto>

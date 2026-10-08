@@ -56,6 +56,7 @@ class MainActivity : FragmentActivity() {
             var showSplash by remember { mutableStateOf(true) }
             var sessionUnlocked by remember { mutableStateOf(false) }
             var lastBackgroundedAt by remember { mutableStateOf(0L) }
+            var requestBiometricOnUnlock by remember { mutableStateOf(false) }
             val lifecycleOwner = LocalLifecycleOwner.current
             DisposableEffect(lifecycleOwner) {
                 val observer = LifecycleEventObserver { _, event ->
@@ -63,6 +64,7 @@ class MainActivity : FragmentActivity() {
                         Lifecycle.Event.ON_STOP -> lastBackgroundedAt = SystemClock.elapsedRealtime()
                         Lifecycle.Event.ON_START -> if (shouldLockSession(lastBackgroundedAt, SystemClock.elapsedRealtime())) {
                             sessionUnlocked = false
+                            requestBiometricOnUnlock = true
                         }
                         Lifecycle.Event.ON_RESUME -> appUpdateViewModel.onActivityResumed()
                         else -> Unit
@@ -72,7 +74,10 @@ class MainActivity : FragmentActivity() {
                 onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
             }
             LaunchedEffect(connection.isConfigured) {
-                if (!connection.isConfigured) sessionUnlocked = false
+                if (!connection.isConfigured) {
+                    sessionUnlocked = false
+                    requestBiometricOnUnlock = false
+                }
             }
             LaunchedEffect(connection.isConfigured, sessionUnlocked) {
                 if (connection.isConfigured && sessionUnlocked) loginViewModel.syncCatalogs()
@@ -82,7 +87,17 @@ class MainActivity : FragmentActivity() {
                     when {
                         showSplash || !dataReady -> MiCatalogoSplash { showSplash = false }
                         connection.isConfigured && sessionUnlocked -> BSPOSMainScreen(windowWidthSizeClass = windowSizeClass.widthSizeClass)
-                        else -> LoginScreen(connection, loginViewModel.uiState.collectAsState().value, loginViewModel::login, { sessionUnlocked = true }, loginViewModel::consumeAuthenticated)
+                        else -> LoginScreen(
+                            connection = connection,
+                            state = loginViewModel.uiState.collectAsState().value,
+                            onLogin = loginViewModel::login,
+                            onAuthenticated = {
+                                sessionUnlocked = true
+                                requestBiometricOnUnlock = false
+                            },
+                            onAuthenticatedConsumed = loginViewModel::consumeAuthenticated,
+                            autoRequestBiometric = requestBiometricOnUnlock
+                        )
                     }
                     when (appUpdateState) {
                         is AppUpdateState.Available,

@@ -24,8 +24,10 @@ import com.example.bspos.domain.model.InventoryLocationType
 import com.example.bspos.domain.model.InventoryMovementType
 import com.example.bspos.domain.model.MiCatalogoCatalogSyncResult
 import com.example.bspos.domain.model.MiCatalogoResult
+import com.example.bspos.domain.model.ProductComboComponent
 import com.example.bspos.domain.repository.MiCatalogoCatalogRepository
 import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -203,10 +205,14 @@ class MiCatalogoCatalogRepositoryImpl @Inject constructor(
                 wholesalePrice = remote.wholesalePrice?.let(MiCatalogoImportMapper::cents),
                 miCatalogoShopId = shopId,
                 miCatalogoProductId = remote.id,
+                miCatalogoProductSlug = remote.slug,
                 miCatalogoSourceProductId = remote.sourceProductId,
                 miCatalogoVolumeMl = remote.volumeMl,
                 miCatalogoAvailableMl = if (remote.id in pendingRemoteProductIds) existing?.miCatalogoAvailableMl else remote.inventory.availableMl,
+                miCatalogoOpenedBottles = if (remote.id in pendingRemoteProductIds) existing?.miCatalogoOpenedBottles else remote.inventory.openedBottles,
                 miCatalogoSaleUnit = remote.saleUnit,
+                miCatalogoIsCombo = remote.isCombo,
+                miCatalogoComboItemsJson = json.encodeToString(remote.comboItems.map { ProductComboComponent(it.productId, it.quantity) }),
                 averageCost = MiCatalogoImportMapper.cents(remote.inventory.costPrice),
                 lastPurchaseCost = MiCatalogoImportMapper.cents(remote.inventory.costPrice),
                 minimumStock = remote.inventory.lowStockThreshold?.toLong() ?: 0L,

@@ -26,7 +26,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.Lock
@@ -93,6 +93,13 @@ internal fun shouldShowFingerprintButton(
     biometricAvailable: Boolean
 ): Boolean = hasAccessToken && isRemembered && biometricAvailable
 
+internal fun shouldAutomaticallyRequestFingerprint(
+    autoRequestBiometric: Boolean,
+    hasAccessToken: Boolean,
+    isRemembered: Boolean,
+    biometricAvailable: Boolean
+): Boolean = autoRequestBiometric && shouldShowFingerprintButton(hasAccessToken, isRemembered, biometricAvailable)
+
 internal fun shouldKeepRememberMeChecked(isRemembered: Boolean, savedEmail: String): Boolean =
     isRemembered || savedEmail.isNotBlank()
 
@@ -109,7 +116,8 @@ fun LoginScreen(
     state: LoginUiState,
     onLogin: (String, String, Boolean) -> Unit,
     onAuthenticated: () -> Unit,
-    onAuthenticatedConsumed: () -> Unit
+    onAuthenticatedConsumed: () -> Unit,
+    autoRequestBiometric: Boolean = false
 ) {
     val context = LocalContext.current
     val activity = context as? FragmentActivity
@@ -119,7 +127,7 @@ fun LoginScreen(
     var rememberMe by remember(connection.isRemembered, savedEmail) { mutableStateOf(shouldKeepRememberMeChecked(connection.isRemembered, savedEmail)) }
     var biometricMessage by remember { mutableStateOf<String?>(null) }
     var fingerprintAccepted by remember { mutableStateOf(false) }
-    var biometricRequested by remember(connection.isRemembered) { mutableStateOf(false) }
+    var biometricRequested by remember(connection.isRemembered, autoRequestBiometric) { mutableStateOf(false) }
     val biometricAvailable = activity != null && BiometricManager.from(context)
         .canAuthenticate(BIOMETRIC_AUTHENTICATORS) == BiometricManager.BIOMETRIC_SUCCESS
     val prompt = remember(activity) {
@@ -150,8 +158,8 @@ fun LoginScreen(
             fingerprintAccepted = false
         }
     }
-    LaunchedEffect(connection.hasAccessToken, connection.isRemembered, biometricAvailable, prompt) {
-        if (shouldShowFingerprintButton(connection.hasAccessToken, connection.isRemembered, biometricAvailable) && prompt != null && !biometricRequested) {
+    LaunchedEffect(connection.hasAccessToken, connection.isRemembered, biometricAvailable, prompt, autoRequestBiometric) {
+        if (shouldAutomaticallyRequestFingerprint(autoRequestBiometric, connection.hasAccessToken, connection.isRemembered, biometricAvailable) && prompt != null && !biometricRequested) {
             biometricRequested = true
             prompt.authenticate(biometricPromptInfo())
         }
@@ -203,7 +211,7 @@ private fun BrandHeader() {
         CatalogBrandIcon()
         Spacer(Modifier.size(12.dp))
         Text("Mi", fontSize = 32.sp, fontWeight = FontWeight.ExtraBold, color = Color.White)
-        Text("CatalogoApp", fontSize = 32.sp, fontWeight = FontWeight.ExtraBold, color = LightBlue)
+        Text("Catalogo", fontSize = 32.sp, fontWeight = FontWeight.ExtraBold, color = LightBlue)
     }
 }
 
@@ -385,7 +393,7 @@ internal fun LoginCard(
                         } else {
                             Text("Iniciar sesion", fontWeight = FontWeight.Bold, fontSize = 16.sp)
                             Spacer(Modifier.size(12.dp))
-                            Icon(Icons.Default.ArrowForward, contentDescription = null)
+                            Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null)
                         }
                     }
                     Spacer(Modifier.height(20.dp))

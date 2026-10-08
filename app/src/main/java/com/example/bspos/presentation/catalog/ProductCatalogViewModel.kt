@@ -16,6 +16,7 @@ import com.example.bspos.domain.repository.ProductRepository
 import com.example.bspos.domain.model.MiCatalogoShop
 import com.example.bspos.domain.model.MiCatalogoResult
 import com.example.bspos.core.database.AppDatabaseTransactor
+import com.example.bspos.data.micatalogo.RemoteMutationRecorder
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -24,6 +25,10 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+import java.time.Instant
+import java.util.UUID
 import javax.inject.Inject
 
 @HiltViewModel
@@ -35,7 +40,8 @@ class ProductCatalogViewModel @Inject constructor(
     private val initialInventory: RegisterInitialInventoryUseCase,
     private val connection: MiCatalogoConnectionRepository,
     productRepository: ProductRepository,
-    private val transactor: AppDatabaseTransactor
+    private val transactor: AppDatabaseTransactor,
+    private val remote: RemoteMutationRecorder
 ) : ViewModel() {
     val products = connection.observeConnection()
         .flatMapLatest { state ->
@@ -115,6 +121,45 @@ class ProductCatalogViewModel @Inject constructor(
         viewModelScope.launch {
             runCatching { productUseCases.delete(product.id) }.onFailure {
                 val message = it.toUiMessage("No se pudo eliminar el producto")
+                _message.value = message
+                UiErrorBus.show(message)
+            }
+        }
+    }
+
+    fun openBottle(product: com.example.bspos.domain.model.Product, quantity: Int, expectedStock: Long) {
+        val shopId = product.remoteShopId
+        val productId = product.remoteProductId
+        if (!canEdit(product) || shopId.isNullOrBlank() || productId.isNullOrBlank()) {
+            reportReadOnly()
+            return
+        }
+        if (product.remoteSaleUnit != "bottle") {
+            _message.value = "Solo puedes abrir productos configurados como botella completa."
+            return
+        }
+        if (quantity <= 0 || quantity.toLong() > expectedStock) {
+            _message.value = "La cantidad de botellas a abrir no es válida."
+            return
+        }
+
+        viewModelScope.launch {
+            runCatching {
+                remote.transaction {
+                    remote.enqueue(shopId, listOf(productId), buildJsonObject {
+                        put("type", "open_bottle")
+                        put("product_id", productId)
+                        put("quantity", quantity)
+                        put("expected_stock", expectedStock)
+                        product.remoteAvailableMl?.let { put("expected_available_ml", it) }
+                        put("notes", "Apertura de botella para preparar decants desde Android")
+                    }, Instant.now(), UUID.randomUUID().toString())
+                }
+                remote.wake()
+            }.onSuccess {
+                _message.value = "Apertura enviada. El inventario se actualizará al sincronizar."
+            }.onFailure {
+                val message = it.toUiMessage("No se pudo abrir la botella")
                 _message.value = message
                 UiErrorBus.show(message)
             }

@@ -5,6 +5,7 @@ import com.example.bspos.domain.model.SaleStatus
 import kotlinx.coroutines.flow.Flow
 import java.util.UUID
 @Dao abstract class PaymentDao{
+ @Query("SELECT * FROM payments ORDER BY date DESC,id DESC") abstract fun observeAll():Flow<List<PaymentEntity>>
  @Query("SELECT * FROM payments WHERE customer_id=:customerId ORDER BY date DESC,id DESC") abstract fun observeForCustomer(customerId:UUID):Flow<List<PaymentEntity>>
  @Query("SELECT * FROM payment_allocations WHERE payment_id=:paymentId ORDER BY sale_id") abstract fun observeAllocations(paymentId:UUID):Flow<List<PaymentAllocationEntity>>
  @Query("SELECT * FROM sales WHERE id=:id") protected abstract suspend fun findSale(id:UUID):SaleEntity?

@@ -49,6 +49,7 @@ import com.example.bspos.core.money.MoneyUtils
 import com.example.bspos.domain.model.Customer
 import com.example.bspos.domain.model.PaymentMethod
 import com.example.bspos.domain.model.Sale
+import com.example.bspos.presentation.common.UiErrorBus
 import java.util.Locale
 
 @Composable
@@ -62,6 +63,7 @@ fun CollectionScreen(viewModel: CollectionViewModel = hiltViewModel()) {
     val filteredSales = sales
         .filter { customer == null || it.customerId == customer?.id }
         .filter { sale -> if (tab == "Por cobrar") sale.pendingAmount > 0 else sale.pendingAmount <= 0 }
+    val customersById = customers.associateBy { it.id }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize().background(BSPOSTheme.colors.background),
@@ -73,8 +75,6 @@ fun CollectionScreen(viewModel: CollectionViewModel = hiltViewModel()) {
                 IconBadge()
                 Spacer(Modifier.width(12.dp))
                 Column {
-                    Text("COBROS", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
-                    Text("Crédito", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold)
                     Text("Consulta quién te debe y registra sus abonos.", color = BSPOSTheme.colors.textSecondary)
                 }
             }
@@ -129,7 +129,22 @@ fun CollectionScreen(viewModel: CollectionViewModel = hiltViewModel()) {
             if (filteredSales.isEmpty()) {
                 item { CreditEmptyState(tab) }
             } else {
-                items(filteredSales, key = { it.id }) { sale -> PendingSaleCard(sale, method, viewModel::collect) }
+                items(filteredSales, key = { it.id }) { sale ->
+                    val saleCustomer = sale.customerId?.let(customersById::get)
+                    PendingSaleCard(
+                        sale = sale,
+                        customer = saleCustomer,
+                        method = method,
+                        onCollect = { amount ->
+                            if (saleCustomer == null) {
+                                UiErrorBus.show("Esta venta no tiene un cliente asociado para registrar el abono.")
+                            } else {
+                                viewModel.select(saleCustomer)
+                                viewModel.collect(sale.id, amount, method)
+                            }
+                        }
+                    )
+                }
             }
         } else {
             item {
@@ -151,21 +166,37 @@ fun CollectionScreen(viewModel: CollectionViewModel = hiltViewModel()) {
 }
 
 @Composable
-private fun PendingSaleCard(sale: Sale, method: PaymentMethod, onCollect: (java.util.UUID, Long, PaymentMethod) -> Unit) {
-    var amount by remember(sale.id, sale.pendingAmount) { mutableStateOf(sale.pendingAmount.toString()) }
-    val value = amount.toLongOrNull()
+private fun PendingSaleCard(
+    sale: Sale,
+    customer: Customer?,
+    method: PaymentMethod,
+    onCollect: (Long) -> Unit
+) {
+    var amount by remember(sale.id, sale.pendingAmount) { mutableStateOf(MoneyUtils.formatCentsCompact(sale.pendingAmount)) }
+    val value = MoneyUtils.parsePesosStringToCents(amount)
     Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface)) {
         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text(sale.invoiceNumber, fontWeight = FontWeight.ExtraBold)
+                    Text(customer?.businessName ?: "Cliente no asociado", color = if (customer == null) BSPOSTheme.colors.warning else BSPOSTheme.colors.textSecondary)
                     Text("Pendiente: ${money(sale.pendingAmount)}", color = BSPOSTheme.colors.textSecondary)
                 }
                 Text(money(sale.total), fontWeight = FontWeight.ExtraBold)
             }
             Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                OutlinedTextField(amount, { amount = it }, modifier = Modifier.weight(1f), label = { Text("Monto a cobrar") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true)
-                Button(onClick = { value?.takeIf { it > 0 && it <= sale.pendingAmount }?.let { onCollect(sale.id, it, method) } }, enabled = value != null && value > 0 && value <= sale.pendingAmount) { Text("Cobrar") }
+                OutlinedTextField(
+                    value = amount,
+                    onValueChange = { amount = it.filter { char -> char.isDigit() || char == '.' } },
+                    modifier = Modifier.weight(1f),
+                    label = { Text("Monto a cobrar") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    singleLine = true
+                )
+                Button(
+                    onClick = { if (value > 0L && value <= sale.pendingAmount) onCollect(value) },
+                    enabled = customer != null && value > 0L && value <= sale.pendingAmount
+                ) { Text("Cobrar") }
             }
         }
     }

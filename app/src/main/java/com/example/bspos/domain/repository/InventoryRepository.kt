@@ -17,6 +17,7 @@ interface InventoryRepository {
         productId: UUID, location: InventoryLocation,
         fromInclusive: Instant? = null, toExclusive: Instant? = null
     ): Flow<List<InventoryMovement>>
+    fun observeAllMovements(location: InventoryLocation): Flow<List<InventoryMovement>>
     suspend fun findMovement(id: UUID): InventoryMovement?
 
     /** Atomic ledger append; stale previous quantities cause the whole batch to fail. */

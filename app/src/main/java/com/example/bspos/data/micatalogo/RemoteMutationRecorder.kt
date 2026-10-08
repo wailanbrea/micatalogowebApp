@@ -36,8 +36,22 @@ class RemoteMutationRecorder @Inject constructor(private val transactor: AppData
             photo?.let { put("image_base64", it.base64); put("image_sha256", it.sha256) }
             if (previous == null || previous.categoryId != product.categoryId) category?.takeUnless { it.startsWith("Sin categoria") || it.startsWith("Sin categoría") }?.let { put("category_name", it) }
             if (previous == null || previous.minimumStock != product.minimumStock) put("minimum_stock", product.minimumStock)
+            if (previous == null || previous.isActive != product.isActive) put("published", product.isActive)
             if (previous == null || previous.miCatalogoSaleUnit != product.miCatalogoSaleUnit) {
                 put("sale_unit", product.miCatalogoSaleUnit ?: "unit")
+            }
+            if (previous == null || previous.miCatalogoIsCombo != product.miCatalogoIsCombo) {
+                put("is_combo", product.miCatalogoIsCombo)
+            }
+            if (previous == null || previous.miCatalogoComboItemsJson != product.miCatalogoComboItemsJson) {
+                put("combo_items", buildJsonArray {
+                    product.remoteComboItems().forEach { item ->
+                        add(buildJsonObject {
+                            put("product_id", item.productId)
+                            put("quantity", item.quantity)
+                        })
+                    }
+                })
             }
             if (previous == null || previous.miCatalogoVolumeMl != product.miCatalogoVolumeMl) {
                 put("volume_ml", product.miCatalogoVolumeMl?.let(::JsonPrimitive) ?: JsonNull)
@@ -75,4 +89,10 @@ class RemoteMutationRecorder @Inject constructor(private val transactor: AppData
             return String(output)
         }
     }
+
+    private fun ProductEntity.remoteComboItems(): List<com.example.bspos.domain.model.ProductComboComponent> = runCatching {
+        kotlinx.serialization.json.Json.decodeFromString<List<com.example.bspos.domain.model.ProductComboComponent>>(
+            this@remoteComboItems.miCatalogoComboItemsJson
+        )
+    }.getOrDefault(emptyList<com.example.bspos.domain.model.ProductComboComponent>())
 }

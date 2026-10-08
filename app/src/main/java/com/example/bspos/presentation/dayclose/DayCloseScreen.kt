@@ -1,242 +1,211 @@
 package com.example.bspos.presentation.dayclose
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.CalendarToday
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.ErrorOutline
-import androidx.compose.material.icons.filled.LockOpen
-import androidx.compose.material.icons.filled.PointOfSale
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DatePicker
-import androidx.compose.material3.DatePickerDialog
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.AlertDialog
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.example.bspos.core.money.LocalCurrency
 import com.example.bspos.core.money.MoneyUtils
 import com.example.bspos.core.ui.theme.BSPOSTheme
 import com.example.bspos.presentation.finance.FinancePeriodFilter
+import com.example.bspos.presentation.finance.FinanceUiState
 import com.example.bspos.presentation.finance.FinanceViewModel
-import java.time.LocalDate
+import java.math.BigDecimal
+import java.math.RoundingMode
 import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
 import java.time.ZoneOffset
-import kotlin.math.roundToLong
+import java.time.format.DateTimeFormatter
 
 @Composable
 fun DayCloseScreen(viewModel: FinanceViewModel = hiltViewModel()) {
     val state by viewModel.uiState.collectAsState()
-    var cashDialog by remember { mutableStateOf<CashDialogMode?>(null) }
-    var datePickerOpen by remember { mutableStateOf(false) }
-    val datePickerState = androidx.compose.material3.rememberDatePickerState()
-
     LaunchedEffect(Unit) { viewModel.selectPeriod(FinancePeriodFilter.TODAY) }
+    DayCloseContent(state, { viewModel.setCustomPeriod(it, it) }, viewModel::closeDaily, viewModel::refresh)
+}
 
-    LazyColumn(
-        modifier = Modifier.fillMaxSize().background(BSPOSTheme.colors.background),
-        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 20.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
-    ) {
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun DayCloseContent(state: FinanceUiState, onDate: (String) -> Unit,
+    onClose: (String?, String?) -> Unit, onRefresh: () -> Unit) {
+    var dialog by rememberSaveable { mutableStateOf(false) }
+    var datePicker by rememberSaveable { mutableStateOf(false) }
+    val date = state.fromDate.ifBlank { LocalDate.now().toString() }
+    // Do not display a previous day's response under the selected date.
+    val close = state.dailyClose?.takeIf { it.businessDate == date }
+    val summary = state.summary?.takeIf { it.from == date && it.to == date }
+    val closure = close?.closure
+    LaunchedEffect(state.successMessage, state.isDailyCloseBusy) {
+        if (!state.isDailyCloseBusy && state.successMessage == "Cierre diario guardado.") dialog = false
+    }
+    LazyColumn(Modifier.fillMaxSize().background(BSPOSTheme.colors.background).testTag("day-close-list"),
+        contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("OPERACIÓN", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
-                Text("Cierre de día", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold)
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = { datePickerOpen = true }) {
-                        Icon(Icons.Default.CalendarToday, null, modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text(state.fromDate.ifBlank { LocalDate.now().toString() })
-                    }
-                    Text(if (state.cashSession?.hasOpenSession == true) "· abierto" else "· sin sesión abierta", color = BSPOSTheme.colors.textSecondary)
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("Cierre de día", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = BSPOSTheme.colors.textPrimary)
+                Text("$date · ${if (closure != null) "cerrado" else if (close == null) "consultando" else "pendiente"}",
+                    fontSize = 12.sp, color = BSPOSTheme.colors.textSecondary)
+                OutlinedButton(onClick = { datePicker = true }, enabled = !state.isDailyCloseBusy,
+                    shape = RoundedCornerShape(12.dp), contentPadding = PaddingValues(horizontal = 12.dp),
+                    modifier = Modifier.widthIn(min = 176.dp).heightIn(min = 48.dp).testTag("day-close-date")) {
+                    Text(runCatching { LocalDate.parse(date).format(DateTimeFormatter.ofPattern("dd/MM/yyyy")) }.getOrDefault(date), fontSize = 12.sp)
+                    Spacer(Modifier.width(32.dp))
+                    Icon(Icons.Default.CalendarToday, "Seleccionar fecha", Modifier.size(16.dp))
                 }
             }
         }
-        state.errorMessage?.let { error -> item { MessageCard(error, isError = true) } }
-        state.successMessage?.let { message -> item { MessageCard(message, isError = false) } }
-        if (state.isLoading && state.summary == null) {
-            item { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) { CircularProgressIndicator(color = BSPOSTheme.colors.primary) } }
+        state.errorMessage?.let { error -> item {
+            CloseCard { Text(error, color = BSPOSTheme.colors.error); TextButton(onClick = onRefresh) { Text("Reintentar") } }
+        } }
+        state.successMessage?.let { message -> item { Text(message, color = BSPOSTheme.colors.success) } }
+        if (close == null) item {
+            if (state.isLoading) CircularProgressIndicator(Modifier.size(24.dp))
+            else Text("No hay un resumen disponible para esta fecha. Reintenta la consulta.", color = BSPOSTheme.colors.textSecondary)
         }
-        state.summary?.let { summary ->
-            val period = summary.period
-            item { DayMetricCard("VENTAS COBRADAS", money(period.collectedInPeriod), "${period.salesCount} cobro(s) · Efectivo y otros medios", Icons.Default.PointOfSale, BSPOSTheme.colors.primary) }
-            item { DayMetricCard("ABONOS RECIBIDOS", money(summary.cashFlow?.inflows?.debtCollections ?: 0.0), if (period.creditGenerated > 0) "Ventas a crédito: ${money(period.creditGenerated)}" else "No se recibieron abonos.", Icons.Default.AccountBalanceWallet, BSPOSTheme.colors.success) }
-            item { DayMetricCard("GASTOS", money(period.operatingExpenses), if (period.operatingExpenses > 0) "Gastos registrados en el período" else "No hubo gastos.", Icons.Default.AccountBalanceWallet, BSPOSTheme.colors.warning) }
-            item { DayMetricCard("DEVOLUCIONES", money(period.returns), if (period.returns > 0) "Reembolsos del período" else "No hubo devoluciones.", Icons.Default.ErrorOutline, BSPOSTheme.colors.error) }
-        }
-        state.cashSession?.let { cash ->
+        if (close != null) {
+            val sales = close.salesCash + close.salesCard + close.salesTransfer + close.salesOther
+            item { MetricCard("Ventas cobradas", sales, if (sales == 0.0) "No hubo ventas cobradas." else "Cobrado por todos los medios de pago.") }
+            item { MetricCard("Abonos recibidos", close.debtCollectionsTotal,
+                if (close.debtCollectionsTotal == 0.0) "No se recibieron abonos." else "Abonos recibidos por todos los medios.") }
+            item { MetricCard("Gastos", close.expensesPaidTotal,
+                if (close.expensesPaidTotal == 0.0) "No hubo gastos pagados." else "Gastos pagados en la fecha seleccionada.") }
+            item { MetricCard("Devoluciones", summary?.period?.returns,
+                when (summary?.period?.returns) { null -> "Resumen de devoluciones no disponible."; 0.0 -> "No hubo devoluciones."; else -> "Importe de devoluciones del día." }) }
             item {
-                CashReconciliationCard(
-                    cash = cash,
-                    onOpen = { cashDialog = CashDialogMode.OPEN },
-                    onClose = { cashDialog = CashDialogMode.CLOSE }
-                )
+                CloseCard {
+                    Caption("Efectivo en caja")
+                    AmountBlock("Entró", close.salesCash + close.debtCollectionsCash + close.otherInflowsCash)
+                    AmountBlock("Salió", close.expensesCash + close.cashOut)
+                    AmountBlock("Deberías tener", close.expectedCash, prominent = true)
+                    Text("Solo el efectivo se cuenta aquí. Transferencias y tarjeta se revisan contra el banco, no contra la gaveta.",
+                        fontSize = 11.sp, color = BSPOSTheme.colors.textSecondary)
+                }
             }
-        } ?: item {
-            CashReconciliationCard(cash = null, onOpen = { cashDialog = CashDialogMode.OPEN }, onClose = {})
-        }
-        item {
-            Text("Solo el efectivo se cuenta aquí. Transferencias y tarjetas se revisan contra el banco, no contra la gaveta.", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodySmall)
-            Spacer(Modifier.height(4.dp))
-            Text("Después de cerrar no se deben corregir movimientos del día sin autorización del dueño.", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
-        }
-    }
-
-    cashDialog?.let { mode ->
-        CashDialog(
-            mode = mode,
-            busy = state.isCashOperationBusy,
-            onDismiss = { if (!state.isCashOperationBusy) cashDialog = null },
-            onConfirm = { amount, notes ->
-                if (mode == CashDialogMode.OPEN) viewModel.openRemoteCash(amount, notes) else viewModel.closeRemoteCash(amount, notes)
-                cashDialog = null
+            item {
+                CloseCard {
+                    Caption("Otros medios")
+                    AmountBlock("Tarjeta", close.salesCard)
+                    AmountBlock("Transferencia", close.salesTransfer)
+                    AmountBlock("Otros", close.salesOther)
+                }
             }
-        )
-    }
-
-    if (datePickerOpen) {
-        DatePickerDialog(
-            onDismissRequest = { datePickerOpen = false },
-            confirmButton = {
-                TextButton(onClick = {
-                    datePickerState.selectedDateMillis?.let { millis ->
-                        val selected = Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate().toString()
-                        viewModel.setCustomPeriod(selected, selected)
+            item {
+                CloseCard {
+                    Surface(shape = RoundedCornerShape(20.dp), color = BSPOSTheme.colors.surfaceVariant) {
+                        Text(if (closure != null) "Cerrado" else "Pendiente", Modifier.padding(horizontal = 10.dp, vertical = 4.dp), fontSize = 11.sp)
                     }
-                    datePickerOpen = false
-                }) { Text("Aplicar") }
-            },
-            dismissButton = { TextButton(onClick = { datePickerOpen = false }) { Text("Cancelar") } }
-        ) {
-            DatePicker(state = datePickerState, title = { Text("Selecciona el día") })
+                    closure?.closedAt?.let { timestamp ->
+                        val local = runCatching { Instant.parse(timestamp).atZone(ZoneId.systemDefault())
+                            .format(DateTimeFormatter.ofPattern("dd/MM/yyyy · HH:mm")) }.getOrDefault(timestamp)
+                        Text("Registrado: $local", fontSize = 12.sp, color = BSPOSTheme.colors.textSecondary)
+                    }
+                    AmountBlock("Esperado", closure?.expectedCash ?: close.expectedCash)
+                    Text("Contado", fontSize = 12.sp, color = BSPOSTheme.colors.textSecondary)
+                    if (closure?.countedCash != null) MoneyText(closure.countedCash, 16) else Text("Sin arqueo", fontSize = 13.sp)
+                    Text("Diferencia", fontSize = 12.sp, color = BSPOSTheme.colors.textSecondary)
+                    if (closure?.difference != null) MoneyText(closure.difference, 16) else Text("—")
+                    closure?.notes?.takeIf { it.isNotBlank() }?.let { Text(it, fontSize = 12.sp) }
+                    if (closure == null) Button(onClick = { dialog = true }, enabled = !state.isDailyCloseBusy,
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("day-close-save"), shape = RoundedCornerShape(12.dp)) {
+                        Text("Guardar cierre diario")
+                    }
+                    else Text("Cierre registrado. La reapertura no está disponible en la API actual.", fontSize = 11.sp, color = BSPOSTheme.colors.textSecondary)
+                }
+            }
+            if (closure != null) item {
+                CloseCard {
+                    Caption("Cierre registrado")
+                    Text(closure.businessDate, fontWeight = FontWeight.Bold)
+                    AmountBlock("Esperado", closure.expectedCash)
+                    AmountBlock("Contado", closure.countedCash)
+                    AmountBlock("Diferencia", closure.difference)
+                }
+            }
         }
     }
-}
-
-private enum class CashDialogMode { OPEN, CLOSE }
-
-@Composable
-private fun DayMetricCard(title: String, amount: String, detail: String, icon: androidx.compose.ui.graphics.vector.ImageVector, accent: Color) {
-    Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface)) {
-        Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(icon, null, tint = accent)
-                Spacer(Modifier.width(10.dp))
-                Text(title, color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
-            }
-            Text(amount, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold, color = BSPOSTheme.colors.textPrimary)
-            Text(detail, color = BSPOSTheme.colors.textSecondary)
-        }
-    }
-
-}
-
-@Composable
-private fun CashReconciliationCard(
-    cash: com.example.bspos.data.micatalogo.dto.CashCurrentSessionResponseDto?,
-    onOpen: () -> Unit,
-    onClose: () -> Unit
-) {
-    val session = cash?.session
-    val summary = session?.summary
-    Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = if (session != null) BSPOSTheme.colors.secondaryNavy else BSPOSTheme.colors.surface)) {
-        Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(if (session == null) Icons.Default.LockOpen else Icons.Default.AccountBalanceWallet, null, tint = if (session == null) BSPOSTheme.colors.primary else BSPOSTheme.colors.textOnPrimary)
-                Spacer(Modifier.width(10.dp))
-                Text("EFECTIVO EN CAJA", color = if (session == null) BSPOSTheme.colors.textSecondary else BSPOSTheme.colors.textOnNavy, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
-            }
-            if (session == null) {
-                Text("No hay una sesión abierta", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
-                Text("Abre caja antes de registrar operaciones en efectivo.", color = BSPOSTheme.colors.textSecondary)
-                Button(onClick = onOpen, modifier = Modifier.fillMaxWidth()) { Text("Abrir caja") }
-            } else {
-                Text(money(summary?.expectedClosingAmount ?: session.openingAmount), color = BSPOSTheme.colors.textOnPrimary, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold)
-                Text("Deberías tener", color = BSPOSTheme.colors.textOnNavy)
-                CashRow("Entró", summary?.totalIn ?: 0.0)
-                CashRow("Salió", summary?.totalOut ?: 0.0)
-                Button(onClick = onClose, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = BSPOSTheme.colors.primary)) { Text("Cerrar el día") }
-            }
+    if (dialog) DailyCloseDialog(state.isDailyCloseBusy, { if (!state.isDailyCloseBusy) dialog = false }, onClose)
+    if (datePicker) {
+        val initial = runCatching { LocalDate.parse(date).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli() }.getOrNull()
+        val picker = rememberDatePickerState(initialSelectedDateMillis = initial)
+        DatePickerDialog(onDismissRequest = { datePicker = false }, confirmButton = {
+            TextButton(onClick = { picker.selectedDateMillis?.let { onDate(Instant.ofEpochMilli(it).atZone(ZoneOffset.UTC).toLocalDate().toString()) }; datePicker = false }) { Text("Aplicar") }
+        }, dismissButton = { TextButton(onClick = { datePicker = false }) { Text("Cancelar") } }) {
+            DatePicker(picker, title = { Text("Selecciona el día", Modifier.padding(16.dp)) })
         }
     }
 }
 
 @Composable
-private fun CashRow(label: String, amount: Double) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text(label, color = BSPOSTheme.colors.textOnNavy)
-        Text(money(amount), color = BSPOSTheme.colors.textOnPrimary, fontWeight = FontWeight.Bold)
+private fun CloseCard(content: @Composable ColumnScope.() -> Unit) {
+    Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), border = BorderStroke(1.dp, BSPOSTheme.colors.outline),
+        colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface)) {
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp), content = content)
     }
 }
 
 @Composable
-private fun CashDialog(mode: CashDialogMode, busy: Boolean, onDismiss: () -> Unit, onConfirm: (String, String?) -> Unit) {
-    var amount by remember { mutableStateOf("") }
-    var notes by remember { mutableStateOf("") }
-    var error by remember { mutableStateOf(false) }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(if (mode == CashDialogMode.OPEN) "Abrir caja" else "Cerrar el día") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                OutlinedTextField(amount, { amount = it.filter { char -> char.isDigit() || char == '.' }; error = false }, label = { Text("Efectivo contado (${LocalCurrency.current.symbol})") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), isError = error, singleLine = true)
-                OutlinedTextField(notes, { notes = it }, label = { Text("Notas (opcional)") }, minLines = 2)
-                if (error) Text("Indica un monto válido mayor o igual a cero.", color = BSPOSTheme.colors.error, style = MaterialTheme.typography.bodySmall)
-            }
-        },
-        confirmButton = {
-            TextButton(enabled = !busy, onClick = { if (amount.toBigDecimalOrNull() == null || amount.toBigDecimalOrNull()!! < java.math.BigDecimal.ZERO) error = true else onConfirm(amount, notes.trim().ifBlank { null }) }) { Text(if (busy) "Guardando…" else "Confirmar") }
-        },
-        dismissButton = { TextButton(enabled = !busy, onClick = onDismiss) { Text("Cancelar") } }
-    )
+private fun Caption(text: String) {
+    Text(text.uppercase(), fontSize = 11.sp, letterSpacing = 1.sp, fontFamily = FontFamily.Monospace, color = BSPOSTheme.colors.textSecondary)
 }
 
 @Composable
-private fun MessageCard(message: String, isError: Boolean) {
-    Card(colors = CardDefaults.cardColors(containerColor = if (isError) BSPOSTheme.colors.errorLight else BSPOSTheme.colors.successLight), shape = RoundedCornerShape(14.dp)) {
-        Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(if (isError) Icons.Default.ErrorOutline else Icons.Default.CheckCircle, null, tint = if (isError) BSPOSTheme.colors.error else BSPOSTheme.colors.success)
-            Spacer(Modifier.width(8.dp))
-            Text(message, color = BSPOSTheme.colors.textPrimary)
+private fun MetricCard(label: String, amount: Double?, description: String) {
+    CloseCard { Caption(label); if (amount != null) MoneyText(amount, 21) else Text("—", fontSize = 21.sp)
+        Text(description, fontSize = 12.sp, color = BSPOSTheme.colors.textSecondary) }
+}
+
+@Composable
+private fun AmountBlock(label: String, amount: Double?, prominent: Boolean = false) {
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        Text(label, fontSize = 12.sp, color = BSPOSTheme.colors.textSecondary)
+        if (amount != null) MoneyText(amount, if (prominent) 20 else 16) else Text("—")
+    }
+}
+
+@Composable
+private fun MoneyText(value: Double, size: Int) {
+    Text(MoneyUtils.formatCents(BigDecimal.valueOf(value).movePointRight(2).setScale(0, RoundingMode.HALF_UP).longValueExact(), LocalCurrency.current),
+        fontSize = size.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false, color = BSPOSTheme.colors.textPrimary)
+}
+
+internal fun validCountedCash(value: String): Boolean = value.isBlank() ||
+    (Regex("[0-9]+(?:\\.[0-9]{1,2})?").matches(value) && value.toBigDecimalOrNull()?.let { it >= BigDecimal.ZERO } == true)
+
+@Composable
+private fun DailyCloseDialog(busy: Boolean, onDismiss: () -> Unit, onConfirm: (String?, String?) -> Unit) {
+    var amount by rememberSaveable { mutableStateOf("") }
+    var notes by rememberSaveable { mutableStateOf("") }
+    var attempted by remember { mutableStateOf(false) }
+    AlertDialog(onDismissRequest = { if (!busy) onDismiss() }, title = { Text("Guardar cierre diario") }, text = {
+        Column(Modifier.verticalScroll(rememberScrollState()).imePadding(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            OutlinedTextField(amount, { amount = it.filter { char -> char in '0'..'9' || char == '.' }; attempted = false },
+                modifier = Modifier.fillMaxWidth().testTag("day-close-counted"), label = { Text("Efectivo contado · opcional") }, enabled = !busy,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true, isError = attempted && !validCountedCash(amount))
+            Text("Si lo dejas vacío, se guarda como cerrado sin arqueo.", fontSize = 12.sp)
+            OutlinedTextField(notes, { notes = it.take(500) }, Modifier.fillMaxWidth(), enabled = !busy, label = { Text("Nota (opcional)") }, minLines = 2)
+            if (attempted && !validCountedCash(amount)) Text("Indica un monto válido con hasta dos decimales.", color = BSPOSTheme.colors.error)
         }
-    }
+    }, confirmButton = {
+        TextButton(enabled = !busy, onClick = { attempted = true; if (validCountedCash(amount)) onConfirm(amount.trim().ifBlank { null }, notes.trim().ifBlank { null }) }) {
+            Text(if (busy) "Guardando…" else "Guardar")
+        }
+    }, dismissButton = { TextButton(onClick = onDismiss, enabled = !busy) { Text("Cancelar") } })
 }
-
-@Composable
-private fun money(value: Double): String = MoneyUtils.formatCents((value * 100).roundToLong(), LocalCurrency.current)

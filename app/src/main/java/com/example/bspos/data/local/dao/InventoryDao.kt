@@ -36,6 +36,13 @@ abstract class InventoryDao {
         fromInclusive: Instant?, toExclusive: Instant?
     ): Flow<List<InventoryMovementEntity>>
 
+    @Query("""
+        SELECT * FROM inventory_movements
+        WHERE location_type = :type AND location_id = :locationId
+        ORDER BY created_at DESC, rowid DESC
+    """)
+    abstract fun observeAllMovements(type: InventoryLocationType, locationId: String): Flow<List<InventoryMovementEntity>>
+
     @Query("SELECT * FROM inventory_movements WHERE id = :id")
     abstract suspend fun findMovement(id: UUID): InventoryMovementEntity?
 

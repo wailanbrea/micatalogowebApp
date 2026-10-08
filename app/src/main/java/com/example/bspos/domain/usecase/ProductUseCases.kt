@@ -1,6 +1,7 @@
 package com.example.bspos.domain.usecase
 
 import com.example.bspos.domain.model.Product
+import com.example.bspos.domain.model.ProductComboComponent
 import com.example.bspos.domain.repository.CategoryRepository
 import com.example.bspos.domain.repository.ProductRepository
 import com.example.bspos.domain.repository.UnitOfMeasureRepository
@@ -25,7 +26,10 @@ data class ProductInput(
     val remoteShopId: String? = null,
     val remoteSaleUnit: String? = null,
     val remoteVolumeMl: Int? = null,
-    val remoteSourceProductId: String? = null
+    val remoteSourceProductId: String? = null,
+    val isCombo: Boolean = false,
+    val comboItems: List<ProductComboComponent> = emptyList(),
+    val isActive: Boolean = true
 )
 
 class ProductUseCases @Inject constructor(
@@ -51,13 +55,16 @@ class ProductUseCases @Inject constructor(
             remoteShopId = current.remoteShopId,
             remoteProductId = current.remoteProductId,
             remoteSaleUnit = input.remoteSaleUnit ?: current.remoteSaleUnit,
+            remoteIsCombo = input.isCombo,
+            remoteComboItems = input.comboItems,
             remoteVolumeMl = if (input.remoteSaleUnit != null) input.remoteVolumeMl else current.remoteVolumeMl,
             remoteAvailableMl = current.remoteAvailableMl,
+            remoteOpenedBottles = current.remoteOpenedBottles,
             remoteSourceProductId = if (input.remoteSaleUnit != null) input.remoteSourceProductId else current.remoteSourceProductId,
             lastPurchaseCost = current.lastPurchaseCost,
             imagePath = input.imagePath ?: current.imagePath,
             thumbnailPath = input.thumbnailPath ?: current.thumbnailPath,
-            isActive = current.isActive,
+            isActive = input.isActive,
             deletedAt = current.deletedAt
         )
     )
@@ -90,7 +97,10 @@ class ProductUseCases @Inject constructor(
             remoteProductId = input.remoteShopId?.let { com.example.bspos.data.micatalogo.RemoteMutationRecorder.productId(id) },
             remoteSaleUnit = input.remoteSaleUnit,
             remoteVolumeMl = input.remoteVolumeMl,
-            remoteSourceProductId = input.remoteSourceProductId
+            remoteSourceProductId = input.remoteSourceProductId,
+            remoteIsCombo = input.isCombo,
+            remoteComboItems = input.comboItems,
+            isActive = input.isActive
         )
     }
 }

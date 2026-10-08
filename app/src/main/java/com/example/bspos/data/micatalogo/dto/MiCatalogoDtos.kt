@@ -83,8 +83,43 @@ data class FeatureModuleDto(
     val rows: List<FeatureRowDto> = emptyList(),
     val actions: List<FeatureActionDto> = emptyList(),
     val sections: List<FeatureSectionDto> = emptyList(),
+    @SerialName("bottleSources") val bottleSources: List<FeatureBottleSourceDto> = emptyList(),
     @SerialName("quoteProducts") val quoteProducts: List<FeatureProductDto> = emptyList(),
+    @SerialName("pendingRequests") val pendingRequests: List<AuthorizationRequestDto> = emptyList(),
     val note: String? = null
+)
+
+@Serializable
+data class AuthorizationRequestDto(
+    val id: String = "",
+    val action: String = "",
+    val context: Map<String, JsonElement> = emptyMap(),
+    @SerialName("requester") val requester: String = "Vendedor",
+    @SerialName("requester_email") val requesterEmail: String = "",
+    @SerialName("created_at") val createdAt: String = "",
+    @SerialName("approve_url") val approveUrl: String? = null,
+    @SerialName("reject_url") val rejectUrl: String? = null,
+    val status: String = "pending"
+)
+
+@Serializable
+data class AuthorizationDecisionResponseDto(
+    val message: String = "",
+    val request: AuthorizationRequestDto? = null
+)
+
+@Serializable
+data class FeatureBottleSourceDto(
+    val name: String = "",
+    @SerialName("volume_ml") val volumeMl: Int = 0,
+    @SerialName("available_ml") val availableMl: Int? = null,
+    @SerialName("decants_count") val decantsCount: Int = 0,
+    val cost: Double? = null,
+    val revenue: Double = 0.0,
+    val difference: Double? = null,
+    val percent: Double? = null,
+    val covered: Boolean = false,
+    val message: String = ""
 )
 
 @Serializable
@@ -173,8 +208,254 @@ data class FeatureRowDto(
     val secondary: String = "",
     val value: String = "",
     val status: String = "",
+    val filterable: Boolean = false,
     @SerialName("can_convert") val canConvert: Boolean = false,
-    @SerialName("can_confirm") val canConfirm: Boolean = false
+    @SerialName("can_confirm") val canConfirm: Boolean = false,
+    @SerialName("product_id") val productId: String? = null,
+    @SerialName("margin_percent") val marginPercent: String? = null,
+    @SerialName("round_step") val roundStep: String? = null,
+    @SerialName("auto_increase") val autoIncrease: Boolean = false,
+    @SerialName("pending_price") val pendingPrice: String? = null
+)
+
+@Serializable
+data class PricingRuleRequestDto(
+    @SerialName("margin_percent") val marginPercent: String,
+    @SerialName("round_step") val roundStep: String,
+    @SerialName("auto_increase") val autoIncrease: Boolean
+)
+
+@Serializable
+data class PricingApprovalRequestDto(
+    @SerialName("expected_price") val expectedPrice: String
+)
+
+@Serializable
+data class AttributeUpdateRequestDto(
+    val name: String,
+    val filterable: Boolean,
+    val required: Boolean,
+    @SerialName("is_active") val isActive: Boolean
+)
+
+@Serializable
+data class PricingMutationResponseDto(
+    val message: String = ""
+)
+
+@Serializable
+data class PartnerCreateRequestDto(
+    val name: String,
+    val email: String? = null,
+    val phone: String? = null,
+    @SerialName("ownership_percent") val ownershipPercent: String = "0"
+)
+
+@Serializable
+data class PartnerTransactionRequestDto(
+    val type: String,
+    val amount: String,
+    val notes: String? = null
+)
+
+@Serializable
+data class AccountantAccessRequestDto(
+    val email: String
+)
+
+@Serializable
+data class ShopHoursDto(
+    val open: String? = "09:00",
+    val close: String? = "18:00",
+    @SerialName("all_day") val allDay: Boolean = false,
+    val closed: Boolean = false
+)
+
+@Serializable
+data class ShopSettingsDto(
+    val id: String = "",
+    val slug: String = "",
+    val name: String = "",
+    @SerialName("business_type") val businessType: String = "general_retail",
+    @SerialName("business_type_label") val businessTypeLabel: String = "Negocio independiente",
+    val description: String = "",
+    @SerialName("logo_url") val logoUrl: String? = null,
+    val address: String = "",
+    @SerialName("maps_url") val mapsUrl: String = "",
+    val instagram: String = "",
+    @SerialName("whatsapp_country_code") val whatsappCountryCode: String = "",
+    @SerialName("whatsapp_number") val whatsappNumber: String = "",
+    @SerialName("offers_shipping") val offersShipping: Boolean = false,
+    @SerialName("primary_color") val primaryColor: String = "#1d4ed8",
+    @SerialName("secondary_color") val secondaryColor: String = "#0f172a",
+    @SerialName("business_hours") val businessHours: Map<String, ShopHoursDto> = emptyMap(),
+    val google: GoogleSettingsDto = GoogleSettingsDto(),
+    @SerialName("business_types") val businessTypes: List<ShopTypeOptionDto> = emptyList(),
+    @SerialName("operational_settings") val operationalSettings: OperationalSettingsDto = OperationalSettingsDto(),
+    @SerialName("available_payment_methods") val availablePaymentMethods: List<PaymentMethodOptionDto> = emptyList(),
+    @SerialName("payment_accounts") val paymentAccounts: List<PaymentAccountDto> = emptyList()
+)
+
+@Serializable
+data class GoogleSettingsDto(
+    val score: Int = 0,
+    @SerialName("target_score") val targetScore: Int = 90,
+    @SerialName("pending_count") val pendingCount: Int = 0,
+    val checks: List<GoogleChecklistItemDto> = emptyList()
+)
+
+@Serializable
+data class GoogleChecklistItemDto(
+    val key: String = "",
+    val label: String = "",
+    val description: String = "",
+    val done: Boolean = false,
+    val count: Int? = null,
+    val section: String = "Google"
+)
+
+@Serializable
+data class ShopTypeOptionDto(
+    val key: String = "",
+    val label: String = ""
+)
+
+@Serializable
+data class ReceiptSettingsDto(
+    @SerialName("show_logo") val showLogo: Boolean = true,
+    @SerialName("show_customer") val showCustomer: Boolean = true,
+    @SerialName("show_seller") val showSeller: Boolean = true,
+    @SerialName("show_notes") val showNotes: Boolean = true
+)
+
+@Serializable
+data class FiscalSettingsDto(
+    val enabled: Boolean = false,
+    @SerialName("invoice_type") val invoiceType: String = "consumer"
+)
+
+@Serializable
+data class CreditSettingsDto(
+    val enabled: Boolean = true,
+    @SerialName("default_days") val defaultDays: Int = 30,
+    @SerialName("allow_partial_payments") val allowPartialPayments: Boolean = true
+)
+
+@Serializable
+data class ToggleSettingDto(
+    val enabled: Boolean = false
+)
+
+@Serializable
+data class WholesaleSettingsDto(
+    val enabled: Boolean = false,
+    @SerialName("minimum_quantity") val minimumQuantity: Int = 6
+)
+
+@Serializable
+data class PurchaseSettingsDto(
+    @SerialName("allow_partial_receive") val allowPartialReceive: Boolean = true,
+    @SerialName("require_supplier") val requireSupplier: Boolean = false
+)
+
+@Serializable
+data class ShippingSettingsDto(
+    val enabled: Boolean = false,
+    val types: List<String> = listOf("pickup", "delivery")
+)
+
+@Serializable
+data class DecantSettingsDto(
+    val enabled: Boolean = false,
+    @SerialName("default_ml") val defaultMl: List<Int> = listOf(5, 10, 30),
+    @SerialName("as_cover") val asCover: Boolean = false,
+    @SerialName("section_text") val sectionText: String? = null
+)
+
+@Serializable
+data class CatalogSettingsDto(
+    val sort: String = "name_asc",
+    @SerialName("offers_first") val offersFirst: Boolean = true,
+    @SerialName("hide_out_of_stock") val hideOutOfStock: Boolean = false,
+    @SerialName("show_stock") val showStock: Boolean = false,
+    @SerialName("allow_backorder") val allowBackorder: Boolean = false
+)
+
+@Serializable
+data class MarketingSettingsDto(
+    @SerialName("meta_pixel") val metaPixel: String? = null,
+    @SerialName("tiktok_pixel") val tiktokPixel: String? = null,
+    val ga4: String? = null,
+    @SerialName("google_site_verification") val googleSiteVerification: String? = null
+)
+
+@Serializable
+data class ImageSettingsDto(
+    @SerialName("max_per_product") val maxPerProduct: Int = 3,
+    @SerialName("auto_optimize") val autoOptimize: Boolean = true
+)
+
+@Serializable
+data class OperationalSettingsDto(
+    val currency: String = "DOP",
+    @SerialName("currency_symbol") val currencySymbol: String = "RD$",
+    val timezone: String = "America/Santo_Domingo",
+    @SerialName("tax_rate") val taxRate: Double? = null,
+    @SerialName("business_rnc") val businessRnc: String? = null,
+    @SerialName("employee_count") val employeeCount: Int? = null,
+    @SerialName("payment_methods") val paymentMethods: List<String> = listOf("cash", "bank_transfer", "card"),
+    val receipt: ReceiptSettingsDto = ReceiptSettingsDto(),
+    val fiscal: FiscalSettingsDto = FiscalSettingsDto(),
+    val credit: CreditSettingsDto = CreditSettingsDto(),
+    val orders: ToggleSettingDto = ToggleSettingDto(true),
+    @SerialName("quick_service") val quickService: ToggleSettingDto = ToggleSettingDto(true),
+    val recipes: ToggleSettingDto = ToggleSettingDto(),
+    val wholesale: WholesaleSettingsDto = WholesaleSettingsDto(),
+    val purchases: PurchaseSettingsDto = PurchaseSettingsDto(),
+    val shipping: ShippingSettingsDto = ShippingSettingsDto(),
+    val decants: DecantSettingsDto = DecantSettingsDto(),
+    val images: ImageSettingsDto = ImageSettingsDto(),
+    val catalog: CatalogSettingsDto = CatalogSettingsDto(),
+    val marketing: MarketingSettingsDto = MarketingSettingsDto()
+)
+
+@Serializable
+data class PaymentMethodOptionDto(
+    val key: String = "",
+    val label: String = ""
+)
+
+@Serializable
+data class PaymentAccountDto(
+    val id: String = "",
+    val name: String = "",
+    @SerialName("bank_name") val bankName: String? = null,
+    @SerialName("account_number") val accountNumber: String? = null,
+    @SerialName("account_holder") val accountHolder: String? = null,
+    val instructions: String? = null
+)
+
+@Serializable
+data class ShopSettingsUpdateDto(
+    val name: String,
+    @SerialName("business_type") val businessType: String,
+    val description: String,
+    val address: String,
+    @SerialName("maps_url") val mapsUrl: String? = null,
+    val instagram: String? = null,
+    @SerialName("whatsapp_country_code") val whatsappCountryCode: String,
+    @SerialName("whatsapp_number") val whatsappNumber: String,
+    @SerialName("offers_shipping") val offersShipping: Boolean,
+    @SerialName("primary_color") val primaryColor: String,
+    @SerialName("secondary_color") val secondaryColor: String,
+    @SerialName("business_hours") val businessHours: Map<String, ShopHoursDto>,
+    @SerialName("operational_settings") val operationalSettings: OperationalSettingsDto = OperationalSettingsDto()
+)
+
+@Serializable
+data class ShopLogoUploadResponseDto(
+    val message: String = "",
+    @SerialName("logo_url") val logoUrl: String? = null
 )
 
 @Serializable
@@ -192,9 +473,66 @@ data class PurchaseWorkspaceDto(
 )
 
 @Serializable
+data class PurchaseInvoicePreviewDto(
+    @SerialName("upload_token") val uploadToken: String = "",
+    val file: PurchasePreviewFileDto = PurchasePreviewFileDto(),
+    val rows: List<PurchaseInvoicePreviewRowDto> = emptyList(),
+    val warnings: List<String> = emptyList(),
+    val counts: PurchasePreviewCountsDto = PurchasePreviewCountsDto()
+)
+
+@Serializable
+data class PurchasePreviewFileDto(
+    val name: String = "",
+    val type: String = ""
+)
+
+@Serializable
+data class PurchasePreviewCountsDto(
+    val total: Int = 0,
+    val valid: Int = 0,
+    @SerialName("needs_review") val needsReview: Int = 0,
+    val matched: Int = 0
+)
+
+@Serializable
+data class PurchaseInvoicePreviewRowDto(
+    val line: Int = 0,
+    @SerialName("product_id") val productId: String? = null,
+    @SerialName("product_name") val productName: String = "",
+    val quantity: Int = 0,
+    @SerialName("unit_cost") val unitCost: String? = null,
+    @SerialName("match_label") val matchLabel: String = "",
+    val errors: List<String> = emptyList(),
+    val warnings: List<String> = emptyList(),
+    val valid: Boolean = false
+)
+
+@Serializable
 data class PurchaseSupplierDto(
     val id: String = "",
-    val name: String = ""
+    val name: String = "",
+    @SerialName("invoice_currency") val invoiceCurrency: String? = null,
+    val phone: String? = null,
+    val email: String? = null,
+    val address: String? = null,
+    val notes: String? = null
+)
+
+@Serializable
+data class SupplierCreateRequestDto(
+    val name: String,
+    @SerialName("invoice_currency") val invoiceCurrency: String? = null,
+    val phone: String? = null,
+    val email: String? = null,
+    val address: String? = null,
+    val notes: String? = null
+)
+
+@Serializable
+data class SupplierActionResponseDto(
+    val message: String = "",
+    val supplier: PurchaseSupplierDto? = null
 )
 
 @Serializable
@@ -209,9 +547,20 @@ data class PurchaseProductDto(
 data class PurchaseDocumentDto(
     val id: String = "",
     @SerialName("document_number") val documentNumber: String = "",
+    @SerialName("invoice_date") val invoiceDate: String? = null,
+    @SerialName("due_at") val dueAt: String? = null,
     val type: String = "container",
     val status: String = "draft",
     val currency: String = "DOP",
+    @SerialName("exchange_rate") val exchangeRate: String? = null,
+    val carrier: String? = null,
+    @SerialName("tracking_number") val trackingNumber: String? = null,
+    @SerialName("expected_at") val expectedAt: String? = null,
+    @SerialName("shipping_pounds") val shippingPounds: String? = null,
+    @SerialName("freight_amount") val freightAmount: String? = null,
+    @SerialName("customs_amount") val customsAmount: String? = null,
+    @SerialName("payment_status") val paymentStatus: String = "pending",
+    @SerialName("parent_document_id") val parentDocumentId: String? = null,
     val subtotal: String = "0.00",
     val total: String = "0.00",
     val notes: String? = null,
@@ -242,11 +591,23 @@ data class PurchaseItemRequestDto(
 data class PurchaseCreateRequestDto(
     val type: String,
     @SerialName("document_number") val documentNumber: String,
+    @SerialName("invoice_date") val invoiceDate: String? = null,
+    @SerialName("due_at") val dueAt: String? = null,
+    val amount: String? = null,
     @SerialName("supplier_id") val supplierId: String? = null,
     val currency: String = "DOP",
+    @SerialName("exchange_rate") val exchangeRate: String? = null,
+    val carrier: String? = null,
+    @SerialName("tracking_number") val trackingNumber: String? = null,
+    @SerialName("expected_at") val expectedAt: String? = null,
+    @SerialName("shipping_pounds") val shippingPounds: String? = null,
+    @SerialName("freight_amount") val freightAmount: String? = null,
+    @SerialName("customs_amount") val customsAmount: String? = null,
+    @SerialName("payment_status") val paymentStatus: String = "pending",
+    @SerialName("parent_document_id") val parentDocumentId: String? = null,
     val mode: String = "draft",
     val notes: String? = null,
-    val items: List<PurchaseItemRequestDto>
+    val items: List<PurchaseItemRequestDto> = emptyList()
 )
 
 @Serializable
@@ -499,6 +860,7 @@ data class RemoteCategoryDto(
 @Serializable
 data class RemoteProductDto(
     val id: String,
+    val slug: String? = null,
     @SerialName("category_id") val categoryId: String? = null,
     @SerialName("source_product_id") val sourceProductId: String? = null,
     val name: String,
@@ -511,6 +873,8 @@ data class RemoteProductDto(
     @SerialName("wholesale_price") val wholesalePrice: String? = null,
     val currency: String,
     @SerialName("sale_unit") val saleUnit: String? = null,
+    @SerialName("is_combo") val isCombo: Boolean = false,
+    @SerialName("combo_items") val comboItems: List<RemoteComboItemDto> = emptyList(),
     @SerialName("volume_ml") val volumeMl: Int? = null,
     @SerialName("availability_status") val availabilityStatus: String,
     @SerialName("moderation_status") val moderationStatus: String,
@@ -519,10 +883,18 @@ data class RemoteProductDto(
 )
 
 @Serializable
+data class RemoteComboItemDto(
+    @SerialName("product_id") val productId: String,
+    val name: String? = null,
+    val quantity: Int = 1,
+)
+
+@Serializable
 data class RemoteInventoryDto(
     @SerialName("track_inventory") val trackInventory: Boolean,
     @SerialName("stock_quantity") val stockQuantity: Int? = null,
     @SerialName("available_ml") val availableMl: Int? = null,
+    @SerialName("opened_bottles") val openedBottles: Int? = null,
     @SerialName("cost_price") val costPrice: String? = null,
     @SerialName("low_stock_threshold") val lowStockThreshold: Int? = null
 )
@@ -746,6 +1118,35 @@ data class FinanceCashFlowOutflowsDto(
 )
 
 @Serializable
+data class DailyCloseDto(
+    @SerialName("business_date") val businessDate: String,
+    @SerialName("sales_cash") val salesCash: Double = 0.0,
+    @SerialName("debt_collections_cash") val debtCollectionsCash: Double = 0.0,
+    @SerialName("other_inflows_cash") val otherInflowsCash: Double = 0.0,
+    @SerialName("expenses_cash") val expensesCash: Double = 0.0,
+    @SerialName("cash_out") val cashOut: Double = 0.0,
+    @SerialName("expected_cash") val expectedCash: Double = 0.0,
+    @SerialName("sales_card") val salesCard: Double = 0.0,
+    @SerialName("sales_transfer") val salesTransfer: Double = 0.0,
+    @SerialName("sales_other") val salesOther: Double = 0.0,
+    @SerialName("debt_collections_total") val debtCollectionsTotal: Double = 0.0,
+    @SerialName("expenses_paid_total") val expensesPaidTotal: Double = 0.0,
+    val closure: DailyClosureRecordDto? = null
+)
+
+@Serializable
+data class DailyClosureRecordDto(
+    val id: String,
+    @SerialName("business_date") val businessDate: String,
+    @SerialName("expected_cash") val expectedCash: Double = 0.0,
+    @SerialName("counted_cash") val countedCash: Double? = null,
+    val difference: Double? = null,
+    val status: String = "closed",
+    @SerialName("closed_at") val closedAt: String? = null,
+    val notes: String? = null
+)
+
+@Serializable
 data class FinanceProductProfitabilityDto(
     @SerialName("product_id") val productId: Long? = null,
     @SerialName("product_name") val productName: String,
@@ -847,7 +1248,7 @@ data class CashSessionOpenRequestDto(
 
 @Serializable
 data class CashSessionCloseRequestDto(
-    @SerialName("counted_amount") val countedAmount: String,
+    @SerialName("counted_amount") val countedAmount: String? = null,
     val notes: String? = null,
     @SerialName("client_operation_uuid") val clientOperationUuid: String
 )
@@ -858,6 +1259,13 @@ data class CashMovementRequestDto(
     val amount: String,
     val notes: String,
     @SerialName("client_operation_uuid") val clientOperationUuid: String
+)
+
+@Serializable
+data class DailyCloseRequestDto(
+    val date: String,
+    @SerialName("counted_cash") val countedCash: String? = null,
+    val notes: String? = null
 )
 
 @Serializable

@@ -42,6 +42,9 @@ class InventoryRepositoryImpl @Inject constructor(
             .map { rows -> rows.map { it.toDomain() } }
     }
 
+    override fun observeAllMovements(location: InventoryLocation): Flow<List<InventoryMovement>> =
+        local.observeAllMovements(location).map { rows -> rows.map { it.toDomain() } }
+
     override suspend fun findMovement(id: UUID) = local.findMovement(id)?.toDomain()
     override suspend fun recordMovements(movements: List<InventoryMovement>, allowNegativeStock: Boolean) {
         remote.transaction {

@@ -4,6 +4,31 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 object DatabaseMigrations {
+    val MIGRATION_24_25 = object : Migration(24, 25) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE products ADD COLUMN micatalogo_opened_bottles INTEGER")
+        }
+    }
+
+    val MIGRATION_23_24 = object : Migration(23, 24) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE products ADD COLUMN micatalogo_combo_items_json TEXT NOT NULL DEFAULT '[]'")
+        }
+    }
+
+    val MIGRATION_22_23 = object : Migration(22, 23) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE products ADD COLUMN micatalogo_is_combo INTEGER NOT NULL DEFAULT 0")
+        }
+    }
+
+    /** Store the public catalog slug so local product actions open the canonical storefront URL. */
+    val MIGRATION_21_22 = object : Migration(21, 22) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE products ADD COLUMN micatalogo_product_slug TEXT")
+        }
+    }
+
     /** Preserve the server response for queued operations when upgrading v20 installs. */
     val MIGRATION_20_21 = object : Migration(20, 21) {
         override fun migrate(db: SupportSQLiteDatabase) {

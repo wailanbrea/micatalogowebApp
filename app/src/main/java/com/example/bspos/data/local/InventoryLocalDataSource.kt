@@ -20,6 +20,8 @@ class InventoryLocalDataSource @Inject constructor(
     fun observeMovements(productId: UUID, location: InventoryLocation, fromInclusive: Instant?, toExclusive: Instant?) =
         inventory.observeMovements(productId, location.type, location.id, fromInclusive, toExclusive)
 
+    fun observeAllMovements(location: InventoryLocation) = inventory.observeAllMovements(location.type, location.id)
+
     suspend fun findMovement(id: UUID) = inventory.findMovement(id)
     suspend fun recordMovements(movements: List<InventoryMovementEntity>, allowNegativeStock: Boolean) =
         inventory.recordMovements(movements, allowNegativeStock)

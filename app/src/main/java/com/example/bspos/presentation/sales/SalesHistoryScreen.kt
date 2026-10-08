@@ -1,9 +1,10 @@
 package com.example.bspos.presentation.sales
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -12,7 +13,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -20,13 +24,25 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.FileDownload
+import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.VerticalDivider
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.runtime.Composable
@@ -42,6 +58,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.example.bspos.core.money.LocalCurrency
 import com.example.bspos.core.money.MoneyUtils
@@ -63,12 +80,14 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 @Composable
+@OptIn(ExperimentalMaterial3Api::class)
 fun SalesHistoryScreen(
     onReturns: () -> Unit,
     viewModel: DashboardViewModel = hiltViewModel(),
     printerViewModel: PosViewModel = hiltViewModel()
 ) {
     val sales by viewModel.sales.collectAsState()
+    val saleItems by viewModel.saleItems.collectAsState()
     val customers by viewModel.customers.collectAsState()
     val products by viewModel.products.collectAsState()
     val printers by printerViewModel.printers.collectAsState()
@@ -76,9 +95,24 @@ fun SalesHistoryScreen(
     val selectedSale by viewModel.selectedSale.collectAsState()
     val selectedItems by viewModel.selectedItems.collectAsState()
     val context = LocalContext.current
+    val currency = LocalCurrency.current
     var period by remember { mutableStateOf("Hoy") }
     var paymentFilter by remember { mutableStateOf("Todas") }
     var query by remember { mutableStateOf("") }
+    var showFilters by remember { mutableStateOf(false) }
+    var originFilter by remember { mutableStateOf("Todos") }
+    var minAmount by remember { mutableStateOf("") }
+    var maxAmount by remember { mutableStateOf("") }
+    val filterSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var showExportDialog by remember { mutableStateOf(false) }
+    var exportAll by remember { mutableStateOf(false) }
+    var exportContents by remember { mutableStateOf("") }
+    val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
+        if (uri != null) runCatching {
+            context.contentResolver.openOutputStream(uri)?.use { it.write(exportContents.toByteArray(Charsets.UTF_8)) }
+                ?: error("No se pudo guardar el archivo.")
+        }.onFailure { UiErrorBus.show("No se pudo exportar: ${it.message ?: "error"}") }
+    }
 
     androidx.compose.runtime.LaunchedEffect(printerMessage) {
         printerMessage?.let {
@@ -109,9 +143,13 @@ fun SalesHistoryScreen(
             when (paymentFilter) {
                 "Pagadas" -> sale.pendingAmount <= 0
                 "A crédito" -> sale.paymentType == SalePaymentType.CREDIT || sale.pendingAmount > 0
+                "Parciales" -> sale.paidAmount > 0 && sale.pendingAmount > 0
                 else -> true
             }
         }
+        .filter { sale -> originFilter == "Todos" || (originFilter == "Ruta" && sale.routeId != null) || (originFilter == "Terminal" && sale.routeId == null) }
+        .filter { sale -> minAmount.isBlank() || sale.total >= MoneyUtils.parsePesosStringToCents(minAmount) }
+        .filter { sale -> maxAmount.isBlank() || sale.total <= MoneyUtils.parsePesosStringToCents(maxAmount) }
         .filter { sale ->
             normalizedQuery.isBlank() || sale.invoiceNumber.contains(normalizedQuery, ignoreCase = true) ||
                 (customerNames[sale.customerId] ?: "").contains(normalizedQuery, ignoreCase = true)
@@ -127,12 +165,18 @@ fun SalesHistoryScreen(
         ) {
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("Ventas", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold, color = BSPOSTheme.colors.textPrimary)
-                    Text("Consulta tus ventas, cobros y resultados.", color = BSPOSTheme.colors.textSecondary)
+                    Text("VENTAS", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
+                    Text("Consulta tus ventas, cobros y resultados.", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
+                    OutlinedButton(onClick = { showExportDialog = true }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)) {
+                        Icon(Icons.Default.FileDownload, null); Spacer(Modifier.width(8.dp)); Text("Exportar ventas")
+                    }
                 }
             }
             item {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
+                ) {
                     listOf("Hoy", "Este mes", "Últimos 7", "Todo").forEach { option ->
                         FilterChip(
                             selected = period == option,
@@ -163,6 +207,11 @@ fun SalesHistoryScreen(
                     )
                 )
             }
+            item {
+                OutlinedButton(onClick = { showFilters = true }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)) {
+                    Icon(Icons.Default.FilterList, null); Spacer(Modifier.width(8.dp)); Text("Filtros" + if (originFilter != "Todos" || minAmount.isNotBlank() || maxAmount.isNotBlank()) " · activos" else "")
+                }
+            }
             item { SalesSummary(visibleSales) }
             item {
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
@@ -173,7 +222,10 @@ fun SalesHistoryScreen(
                 }
             }
             item {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
+                ) {
                     listOf("Todas", "Pagadas", "A crédito", "Anuladas").forEach { option ->
                         FilterChip(
                             selected = paymentFilter == option,
@@ -242,34 +294,83 @@ fun SalesHistoryScreen(
             onDismiss = { viewModel.selectSale(null) }
         )
     }
+    if (showExportDialog) {
+        AlertDialog(
+            onDismissRequest = { showExportDialog = false },
+            title = { Text("Exportar ventas") },
+            text = {
+                Column {
+                    Text("CSV con las ventas y líneas disponibles en este dispositivo.", color = BSPOSTheme.colors.textSecondary)
+                    Row(Modifier.fillMaxWidth().clickable { exportAll = false }, verticalAlignment = Alignment.CenterVertically) {
+                        RadioButton(selected = !exportAll, onClick = { exportAll = false })
+                        Text("Lo que ves ahora · ${visibleSales.size} ventas")
+                    }
+                    Row(Modifier.fillMaxWidth().clickable { exportAll = true }, verticalAlignment = Alignment.CenterVertically) {
+                        RadioButton(selected = exportAll, onClick = { exportAll = true })
+                        Text("Todas las ventas · ${sales.count { it.status == SaleStatus.COMPLETED }} ventas")
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val rows = if (exportAll) sales.filter { it.status == SaleStatus.COMPLETED }.sortedByDescending { it.date } else visibleSales
+                    exportContents = buildSalesCsv(rows, customerNames, products.associateBy { it.id }, saleItems, currency)
+                    showExportDialog = false
+                    exportLauncher.launch("ventas-${LocalDate.now()}.csv")
+                }) { Text("Guardar CSV") }
+            },
+            dismissButton = { TextButton(onClick = { showExportDialog = false }) { Text("Cancelar") } }
+        )
+    }
+    if (showFilters) {
+        ModalBottomSheet(onDismissRequest = { showFilters = false }, sheetState = filterSheetState) {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).navigationBarsPadding(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Text("Filtros de ventas", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
+                Text("Total", color = BSPOSTheme.colors.textSecondary, fontWeight = FontWeight.Bold)
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedTextField(minAmount, { minAmount = it.filter { c -> c.isDigit() || c == '.' || c == ',' } }, Modifier.weight(1f), label = { Text("Desde") }, singleLine = true, keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal))
+                    OutlinedTextField(maxAmount, { maxAmount = it.filter { c -> c.isDigit() || c == '.' || c == ',' } }, Modifier.weight(1f), label = { Text("Hasta") }, singleLine = true, keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal))
+                }
+                Text("Pago", color = BSPOSTheme.colors.textSecondary, fontWeight = FontWeight.Bold)
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf("Todas", "Pagadas", "A crédito", "Parciales", "Anuladas").forEach { label ->
+                        FilterChip(selected = paymentFilter == label, onClick = { paymentFilter = label }, label = { Text(label) })
+                    }
+                }
+                Text("Origen", color = BSPOSTheme.colors.textSecondary, fontWeight = FontWeight.Bold)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("Todos", "Terminal", "Ruta").forEach { label ->
+                        FilterChip(selected = originFilter == label, onClick = { originFilter = label }, label = { Text(label) })
+                    }
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    TextButton(onClick = { originFilter = "Todos"; paymentFilter = "Todas"; minAmount = ""; maxAmount = "" }, modifier = Modifier.weight(1f)) { Text("Limpiar") }
+                    Button(onClick = { showFilters = false }, modifier = Modifier.weight(1f)) { Text("Ver ventas") }
+                }
+                Spacer(Modifier.height(10.dp))
+            }
+        }
+    }
 }
 
 @Composable
-private fun SalesSummary(sales: List<Sale>) {
+internal fun SalesSummary(sales: List<Sale>) {
     val total = sales.sumOf { it.total }
     val average = if (sales.isEmpty()) 0 else total / sales.size
-    val credit = sales.count { it.paymentType == SalePaymentType.CREDIT || it.pendingAmount > 0 }
-    val creditRate = if (sales.isEmpty()) 0 else credit * 100 / sales.size
+    val credit = sales.sumOf { it.pendingAmount.coerceAtLeast(0L) }
+    val creditRate = if (total <= 0) 0 else (credit * 100 / total).toInt()
     Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface)) {
-        BoxWithConstraints(Modifier.fillMaxWidth().padding(16.dp)) {
-            val metrics = listOf(
-                Triple("Total vendido", money(total), BSPOSTheme.colors.primary),
-                Triple("Promedio por venta", money(average.toLong()), BSPOSTheme.colors.textPrimary),
-                Triple("A crédito", "$creditRate%", BSPOSTheme.colors.warning)
-            )
-            if (maxWidth < 500.dp) {
-                Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                    metrics.chunked(2).forEach { row ->
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                            row.forEach { (label, value, color) -> Metric(label, value, color, Modifier.weight(1f)) }
-                            if (row.size == 1) Spacer(Modifier.weight(1f))
-                        }
-                    }
-                }
-            } else {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                    metrics.forEach { (label, value, color) -> Metric(label, value, color, Modifier.weight(1f)) }
-                }
+        Column(Modifier.fillMaxWidth()) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Metric("Ventas del período", sales.size.toString(), BSPOSTheme.colors.primary, Modifier.weight(1f))
+                VerticalDivider(Modifier.height(88.dp), color = BSPOSTheme.colors.outline)
+                Metric("Total vendido", money(total), BSPOSTheme.colors.success, Modifier.weight(1f))
+            }
+            HorizontalDivider(color = BSPOSTheme.colors.outline)
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Metric("Promedio por venta", money(average.toLong()), BSPOSTheme.colors.primary, Modifier.weight(1f))
+                VerticalDivider(Modifier.height(88.dp), color = BSPOSTheme.colors.outline)
+                Metric("A crédito", "$creditRate%", BSPOSTheme.colors.warning, Modifier.weight(1f))
             }
         }
     }
@@ -277,9 +378,9 @@ private fun SalesSummary(sales: List<Sale>) {
 
 @Composable
 private fun Metric(label: String, value: String, color: Color, modifier: Modifier) {
-    Column(modifier) {
-        Text(label, color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelMedium)
-        Text(value, color = color, fontWeight = FontWeight.ExtraBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    Column(modifier.padding(horizontal = 14.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(label.uppercase(Locale("es")), color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelSmall, letterSpacing = 1.sp)
+        Text(value, color = color, fontWeight = FontWeight.ExtraBold, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleLarge)
     }
 }
 
@@ -329,3 +430,36 @@ private fun SalePaymentType.label(): String = when (this) {
 
 @Composable
 private fun money(cents: Long): String = MoneyUtils.formatCents(cents, LocalCurrency.current)
+
+internal fun buildSalesCsv(
+    sales: List<Sale>,
+    customers: Map<java.util.UUID, String>,
+    products: Map<java.util.UUID, com.example.bspos.domain.model.Product>,
+    items: List<com.example.bspos.domain.model.SaleItem>,
+    currency: com.example.bspos.domain.model.CurrencyUnit
+): String {
+    fun cell(value: String): String = "\"${value.replace("\"", "\"\"")}\""
+    fun format(cents: Long): String = MoneyUtils.formatCents(cents, currency)
+    val output = StringBuilder(listOf("factura", "fecha", "cliente", "metodo", "estado", "total", "producto", "cantidad", "precio_unitario", "subtotal_linea").joinToString(",", transform = ::cell)).append("\r\n")
+    sales.forEach { sale ->
+        val lines = items.filter { it.saleId == sale.id }
+        val fields = { item: com.example.bspos.domain.model.SaleItem? ->
+            listOf(
+                sale.invoiceNumber,
+                sale.date.toString(),
+                customers[sale.customerId].orEmpty(),
+                sale.paymentType.label(),
+                if (sale.pendingAmount > 0L) "Pendiente" else if (sale.status == SaleStatus.COMPLETED) "Pagada" else "Anulada",
+                format(sale.total),
+                item?.let { products[it.productId]?.name }.orEmpty(),
+                item?.quantity?.toString().orEmpty(),
+                item?.let { format(it.unitPrice) }.orEmpty(),
+                item?.let { format(it.subtotal) }.orEmpty()
+            )
+        }
+        (lines.ifEmpty { listOf(null) }).forEach { line ->
+            output.append(fields(line).joinToString(",", transform = ::cell)).append("\r\n")
+        }
+    }
+    return output.toString()
+}

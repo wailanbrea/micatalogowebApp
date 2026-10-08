@@ -6,6 +6,11 @@ import org.junit.Test
 
 class SessionLockPolicyTest {
     @Test
+    fun doesNotLockOnInitialLaunch() {
+        assertFalse(shouldLockSession(lastBackgroundedAt = 0L, now = sessionLockTimeoutMillis * 2))
+    }
+
+    @Test
     fun locksOnlyAfterTheConfiguredBackgroundTimeout() {
         val backgroundedAt = 1_000L
 

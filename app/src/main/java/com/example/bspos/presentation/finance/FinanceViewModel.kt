@@ -6,6 +6,7 @@ import com.example.bspos.data.micatalogo.dto.ExpenseCategoryDto
 import com.example.bspos.data.micatalogo.dto.ExpenseCreateRequestDto
 import com.example.bspos.data.micatalogo.dto.ExpenseDto
 import com.example.bspos.data.micatalogo.dto.CashCurrentSessionResponseDto
+import com.example.bspos.data.micatalogo.dto.DailyCloseDto
 import com.example.bspos.data.micatalogo.dto.FinanceSummaryDto
 import com.example.bspos.domain.model.MiCatalogoResult
 import com.example.bspos.domain.repository.FinanceRepository
@@ -41,7 +42,9 @@ data class FinanceUiState(
     val shopName: String = "",
     val isRegisteringExpense: Boolean = false,
     val cashSession: CashCurrentSessionResponseDto? = null,
-    val isCashOperationBusy: Boolean = false
+    val isCashOperationBusy: Boolean = false,
+    val dailyClose: DailyCloseDto? = null,
+    val isDailyCloseBusy: Boolean = false
 )
 
 @HiltViewModel
@@ -89,11 +92,32 @@ class FinanceViewModel @Inject constructor(
         refresh()
     }
 
+    fun closeDaily(countedCash: String?, notes: String?) {
+        val shopId = currentShopId ?: return
+        val date = _uiState.value.fromDate
+        if (date.isBlank() || _uiState.value.isDailyCloseBusy) return
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isDailyCloseBusy = true, errorMessage = null)
+            when (val result = financeRepository.closeDay(shopId, date, countedCash?.trim()?.ifBlank { null }, notes?.trim()?.ifBlank { null })) {
+                is MiCatalogoResult.Success -> _uiState.value = _uiState.value.copy(
+                    isDailyCloseBusy = false,
+                    dailyClose = result.value,
+                    successMessage = "Cierre diario guardado."
+                )
+                is MiCatalogoResult.Failure -> _uiState.value = _uiState.value.copy(
+                    isDailyCloseBusy = false,
+                    errorMessage = result.message
+                )
+            }
+        }
+    }
+
     fun refresh() {
         val shopId = currentShopId ?: return
         fetchSummary(shopId)
         fetchExpenses(shopId)
         fetchCashSession(shopId)
+        fetchDailyClose(shopId)
     }
 
     fun loadInitialData() {
@@ -111,6 +135,7 @@ class FinanceViewModel @Inject constructor(
                         fetchExpenses(firstShop.id)
                         fetchCategories(firstShop.id)
                         fetchCashSession(firstShop.id)
+                        fetchDailyClose(firstShop.id)
                     } else {
                         _uiState.value = _uiState.value.copy(
                             isLoading = false,
@@ -137,6 +162,17 @@ class FinanceViewModel @Inject constructor(
         }
     }
 
+    private fun fetchDailyClose(shopId: String) {
+        val date = _uiState.value.fromDate
+        if (date.isBlank() || date != _uiState.value.toDate) return
+        viewModelScope.launch {
+            when (val result = financeRepository.getDailyClose(shopId, date)) {
+                is MiCatalogoResult.Success -> _uiState.value = _uiState.value.copy(dailyClose = result.value)
+                is MiCatalogoResult.Failure -> _uiState.value = _uiState.value.copy(errorMessage = result.message)
+            }
+        }
+    }
+
     fun openRemoteCash(amount: String, notes: String?) {
         val normalizedNotes = notes?.trim()?.ifBlank { null }
         runCashOperation("open|${amount.trim()}|$normalizedNotes") { operationId ->
@@ -144,11 +180,11 @@ class FinanceViewModel @Inject constructor(
         }
     }
 
-    fun closeRemoteCash(amount: String, notes: String?) {
+    fun closeRemoteCash(amount: String?, notes: String?) {
         val sessionId = checkNotNull(_uiState.value.cashSession?.session?.id)
         val normalizedNotes = notes?.trim()?.ifBlank { null }
-        runCashOperation("close|$sessionId|${amount.trim()}|$normalizedNotes") { operationId ->
-            financeRepository.closeCashSession(checkNotNull(currentShopId), sessionId, amount.trim(), normalizedNotes, operationId)
+        runCashOperation("close|$sessionId|${amount?.trim().orEmpty()}|$normalizedNotes") { operationId ->
+            financeRepository.closeCashSession(checkNotNull(currentShopId), sessionId, amount?.trim()?.ifBlank { null }, normalizedNotes, operationId)
         }
     }
 
@@ -232,6 +268,7 @@ class FinanceViewModel @Inject constructor(
         amount: String,
         categoryId: Int?,
         paymentMethod: String,
+        occurredAt: String,
         notes: String? = null
     ) {
         val shopId = currentShopId ?: return
@@ -239,7 +276,8 @@ class FinanceViewModel @Inject constructor(
         val normalizedDescription = description.trim()
         val normalizedAmount = amount.trim()
         val normalizedNotes = notes?.trim()?.ifBlank { null }
-        val operationKey = listOf(categoryId, normalizedDescription, normalizedAmount, paymentMethod, normalizedNotes).joinToString("|")
+        val normalizedOccurredAt = occurredAt.trim().ifBlank { null }
+        val operationKey = listOf(categoryId, normalizedDescription, normalizedAmount, paymentMethod, normalizedOccurredAt, normalizedNotes).joinToString("|")
         val operationId = pendingExpenseOperation
             ?.takeIf { it.first == operationKey }
             ?.second
@@ -251,6 +289,7 @@ class FinanceViewModel @Inject constructor(
                 description = normalizedDescription,
                 amount = normalizedAmount,
                 paymentMethod = paymentMethod,
+                occurredAt = normalizedOccurredAt,
                 notes = normalizedNotes,
                 clientOperationUuid = operationId
             )

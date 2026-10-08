@@ -5,6 +5,7 @@ import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,6 +19,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -62,6 +64,7 @@ fun OrdersScreen(
 ) {
     val state by viewModel.state.collectAsState()
     var selectedRow by remember { mutableStateOf<FeatureRowDto?>(null) }
+    var detailRow by remember { mutableStateOf<FeatureRowDto?>(null) }
     val screenTitle = when (feature) {
         "encargos" -> "Encargos"
         "shipments" -> "Envíos"
@@ -81,7 +84,15 @@ fun OrdersScreen(
         when {
             state.loading -> CircularProgressIndicator(Modifier.align(Alignment.Center), color = BSPOSTheme.colors.primary)
             state.error != null && state.rows.isEmpty() -> OrdersError(state.error!!, onRetry = { viewModel.load() })
-            else -> OrdersContent(state, screenTitle, screenDescription, onRefresh = { viewModel.load(feature, refresh = true) }, onConfirm = { selectedRow = it })
+            else -> OrdersContent(
+                state,
+                screenTitle,
+                screenDescription,
+                onRefresh = { viewModel.load(feature, refresh = true) },
+                onApplyFilters = { search, status -> viewModel.load(feature, refresh = true, search = search, status = status) },
+                onConfirm = { selectedRow = it },
+                onOpenDetail = { detailRow = it }
+            )
         }
     }
 
@@ -94,6 +105,15 @@ fun OrdersScreen(
             onConfirm = { kind, method, customer, credit, reference ->
                 viewModel.confirm(row, kind, method, customer, credit, reference)
             }
+        )
+    }
+    detailRow?.let { row ->
+        OrderDetailDialog(
+            row = row,
+            onDismiss = { detailRow = null },
+            onConfirm = if (row.canConfirm) {
+                { detailRow = null; selectedRow = row }
+            } else null
         )
     }
     state.message?.let { message ->
@@ -121,8 +141,12 @@ private fun OrdersContent(
     title: String,
     description: String,
     onRefresh: () -> Unit,
-    onConfirm: (FeatureRowDto) -> Unit
+    onApplyFilters: (String, String) -> Unit,
+    onConfirm: (FeatureRowDto) -> Unit,
+    onOpenDetail: (FeatureRowDto) -> Unit
 ) {
+    var search by remember(title) { mutableStateOf(state.search) }
+    var status by remember(title) { mutableStateOf(state.status) }
     val emptyTitle = when (title) {
         "Encargos" -> "No tienes encargos pendientes"
         "Envíos" -> "No hay envíos pendientes"
@@ -140,13 +164,50 @@ private fun OrdersContent(
         item {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.weight(1f)) {
-                    Text("OPERACIÓN", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
-                    Text(title, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold, color = BSPOSTheme.colors.textPrimary)
-                    Text(description, color = BSPOSTheme.colors.textSecondary)
+                    Text(description, color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
                 }
                 IconButton(onClick = onRefresh, enabled = !state.refreshing) {
                     if (state.refreshing) CircularProgressIndicator(Modifier.width(20.dp).height(20.dp), strokeWidth = 2.dp, color = BSPOSTheme.colors.primary)
                     else Icon(Icons.Filled.Refresh, contentDescription = "Actualizar", tint = BSPOSTheme.colors.primary)
+                }
+            }
+        }
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedTextField(
+                        value = search,
+                        onValueChange = { search = it },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true,
+                        label = { Text("Buscar pedido o cliente") },
+                        shape = RoundedCornerShape(14.dp)
+                    )
+                    Button(onClick = { onApplyFilters(search, status) }) { Text("Buscar") }
+                }
+                if (title == "Encargos") {
+                    Row(
+                        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        listOf(
+                            "all" to "Todos",
+                            "today" to "Hoy",
+                            "tomorrow" to "Mañana",
+                            "overdue" to "Atrasados",
+                            "no_date" to "Sin fecha"
+                        ).forEach { (value, label) ->
+                            FilterChip(
+                                selected = status == value,
+                                onClick = { status = value; onApplyFilters(search, value) },
+                                label = { Text(label, maxLines = 1) }
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -174,7 +235,12 @@ private fun OrdersContent(
         } else {
             items(state.rows, key = { row -> "${row.primary}-${row.id}" }) { row ->
                 AnimatedVisibility(true, enter = fadeIn() + slideInHorizontally { it / 12 }) {
-                    OrderRow(row, busy = state.confirmingId == row.id, onConfirm = { onConfirm(row) })
+                    OrderRow(
+                        row,
+                        busy = state.confirmingId == row.id,
+                        onClick = { onOpenDetail(row) },
+                        onConfirm = { onConfirm(row) }
+                    )
                 }
             }
         }
@@ -193,8 +259,12 @@ private fun OrderKpi(kpi: FeatureKpiDto, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun OrderRow(row: FeatureRowDto, busy: Boolean, onConfirm: () -> Unit) {
-    Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface)) {
+private fun OrderRow(row: FeatureRowDto, busy: Boolean, onClick: () -> Unit, onConfirm: () -> Unit) {
+    Card(
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface),
+        modifier = Modifier.clickable(onClick = onClick)
+    ) {
         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
@@ -214,6 +284,45 @@ private fun OrderRow(row: FeatureRowDto, busy: Boolean, onConfirm: () -> Unit) {
             }
         }
     }
+}
+
+@Composable
+private fun OrderDetailDialog(
+    row: FeatureRowDto,
+    onDismiss: () -> Unit,
+    onConfirm: (() -> Unit)?
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = { Icon(Icons.Outlined.ReceiptLong, null, tint = BSPOSTheme.colors.primary) },
+        title = { Text("Detalle del pedido") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(row.primary, fontWeight = FontWeight.Bold, color = BSPOSTheme.colors.textPrimary)
+                if (row.secondary.isNotBlank()) Text(row.secondary, color = BSPOSTheme.colors.textSecondary)
+                if (row.value.isNotBlank()) Text("Total: ${row.value}", fontWeight = FontWeight.ExtraBold)
+                Text("Estado: ${row.status.ifBlank { "Pendiente" }}", color = BSPOSTheme.colors.primary)
+                Text(
+                    if (row.canConfirm) {
+                        "Revisa el pedido y confirma la venta cuando la mercancía esté lista para descontar inventario."
+                    } else {
+                        "Este pedido ya fue procesado. Puedes consultar su estado desde Ventas."
+                    },
+                    color = BSPOSTheme.colors.textSecondary
+                )
+            }
+        },
+        confirmButton = {
+            if (onConfirm != null) {
+                Button(onClick = onConfirm) { Text("Confirmar venta") }
+            } else {
+                TextButton(onClick = onDismiss) { Text("Cerrar") }
+            }
+        },
+        dismissButton = if (onConfirm != null) {
+            { TextButton(onClick = onDismiss) { Text("Cancelar") } }
+        } else null
+    )
 }
 
 @Composable

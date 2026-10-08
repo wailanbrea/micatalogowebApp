@@ -8,6 +8,15 @@ import com.example.bspos.domain.model.Category
 import com.example.bspos.domain.model.Product
 import com.example.bspos.domain.model.Supplier
 import com.example.bspos.domain.model.UnitOfMeasure
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
+
+private fun decodeComboItems(json: String): List<com.example.bspos.domain.model.ProductComboComponent> = runCatching {
+    Json.decodeFromString<List<com.example.bspos.domain.model.ProductComboComponent>>(json)
+}.getOrDefault(emptyList())
+
+private fun encodeComboItems(items: List<com.example.bspos.domain.model.ProductComboComponent>): String = Json.encodeToString(items.filter { it.productId.isNotBlank() && it.quantity > 0 })
 
 fun CategoryEntity.toDomain() = Category(
     id = id, name = name, description = description, icon = icon, sortOrder = sortOrder,
@@ -37,8 +46,10 @@ fun ProductEntity.toDomain() = Product(
     thumbnailPath = thumbnailPath, isActive = isActive, tracksExpiration = tracksExpiration,
     createdAt = createdAt, updatedAt = updatedAt, deletedAt = deletedAt,
     remoteShopId = miCatalogoShopId, remoteProductId = miCatalogoProductId, remoteSaleUnit = miCatalogoSaleUnit,
-    remoteVolumeMl = miCatalogoVolumeMl, remoteAvailableMl = miCatalogoAvailableMl,
-    remoteSourceProductId = miCatalogoSourceProductId
+    remoteIsCombo = miCatalogoIsCombo,
+    remoteVolumeMl = miCatalogoVolumeMl, remoteAvailableMl = miCatalogoAvailableMl, remoteOpenedBottles = miCatalogoOpenedBottles,
+    remoteSourceProductId = miCatalogoSourceProductId, remoteProductSlug = miCatalogoProductSlug,
+    remoteComboItems = decodeComboItems(miCatalogoComboItemsJson)
 )
 
 fun Product.toEntity() = ProductEntity(
@@ -54,7 +65,10 @@ fun Product.toEntity() = ProductEntity(
     miCatalogoSourceProductId = remoteSourceProductId,
     miCatalogoVolumeMl = remoteVolumeMl,
     miCatalogoAvailableMl = remoteAvailableMl,
-    miCatalogoSaleUnit = remoteSaleUnit
+    miCatalogoOpenedBottles = remoteOpenedBottles,
+    miCatalogoSaleUnit = remoteSaleUnit, miCatalogoProductSlug = remoteProductSlug,
+    miCatalogoIsCombo = remoteIsCombo,
+    miCatalogoComboItemsJson = encodeComboItems(remoteComboItems)
 )
 
 fun SupplierEntity.toDomain() = Supplier(

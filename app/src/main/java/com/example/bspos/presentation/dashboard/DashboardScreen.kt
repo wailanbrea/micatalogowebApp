@@ -83,6 +83,14 @@ fun DashboardScreen(
     onCustomers: () -> Unit = {},
     onRoutes: () -> Unit = {},
     onReturns: () -> Unit = {},
+    onEncargos: () -> Unit = {},
+    onDayClose: () -> Unit = {},
+    onMovements: () -> Unit = {},
+    onStockFilter: (String) -> Unit = {},
+    onPhotos: () -> Unit = {},
+    onProfile: () -> Unit = {},
+    onHelp: () -> Unit = {},
+    showEncargos: Boolean = false,
     routesEnabled: Boolean = false,
     sellerMode: Boolean = false,
     showSales: Boolean = true,
@@ -102,6 +110,10 @@ fun DashboardScreen(
     val stock by viewModel.stock.collectAsState()
     val products by viewModel.products.collectAsState()
     val routes by viewModel.routes.collectAsState()
+    val payments by viewModel.payments.collectAsState()
+    val pendingOrders by viewModel.pendingOrders.collectAsState()
+    val ordersError by viewModel.ordersError.collectAsState()
+    LaunchedEffect(businessName, showEncargos) { if (showEncargos) viewModel.loadPendingOrders() }
     val selectedSale by viewModel.selectedSale.collectAsState()
     val selectedItems by viewModel.selectedItems.collectAsState()
     val printers by printerViewModel.printers.collectAsState()
@@ -176,111 +188,18 @@ fun DashboardScreen(
         if ("active_customers" in visibleWidgets) add(Kpi("Clientes activos", customers.count { it.isActive }.toString(), "Directorio comercial", Icons.Default.People, BSPOSTheme.colors.primary, BSPOSTheme.colors.primaryLight))
         if (routesEnabled) add(Kpi("Rutas activas", routes.count { it.isActive }.toString(), "Disponibles hoy", Icons.Default.LocationOn, BSPOSTheme.colors.primary, BSPOSTheme.colors.primaryLight))
     }
-    BoxWithConstraints(Modifier.fillMaxSize()) {
-        val compact = !isExpanded || maxWidth < 840.dp
-        val kpiColumns = if (!compact) 3 else if (maxWidth >= 400.dp) 2 else 1
-        LazyColumn(
-            modifier = Modifier.fillMaxSize().background(BSPOSTheme.colors.background),
-            contentPadding = PaddingValues(if (compact) 16.dp else 28.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            item { DashboardEnter { DashboardHeading(sellerMode, businessName, presentation) } }
-            item {
-                DashboardEnter(delayMillis = 55) {
-                    QuickActions(onNewSale, onCollections, onInventory, onProducts, compact, sellerMode, showSales, showCollections, showInventory, showProducts, presentation.dashboardQuickActions)
-                }
-            }
-            item {
-                val setupItems = listOf(
-                    "Confirma cómo te pagan" to (cashSession != null),
-                    "Agrega tu primer producto" to activeProducts.isNotEmpty(),
-                    "Haz tu primera venta" to completed.isNotEmpty(),
-                    "Comparte tu catálogo" to false
-                )
-                if (setupItems.any { !it.second }) {
-                    DashboardEnter(delayMillis = 70) {
-                        GuidedSetupCard(
-                            steps = setupItems,
-                            onCash = onCash,
-                            onProduct = onProducts,
-                            onSale = onNewSale,
-                            onShare = onStorefront
-                        )
-                    }
-                }
-            }
-            item {
-                DashboardPeriodSelector(
-                    selected = selectedPeriod,
-                    customDate = selectedDate,
-                    onSelected = { selectedDate = null; selectedPeriod = it },
-                    onDateSelected = { selectedDate = it }
-                )
-            }
-            item {
-                DashboardEnter(delayMillis = 120) {
-                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        kpis.chunked(kpiColumns).forEach { row ->
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                row.forEach { item -> KpiCard(item, Modifier.weight(1f)) }
-                                repeat(kpiColumns - row.size) { Spacer(Modifier.weight(1f)) }
-                            }
-                        }
-                    }
-                }
-            }
-            item {
-                DashboardEnter(delayMillis = 220) {
-                    if (sellerMode) {
-                        WeeklySalesCard(dailySales, week.map { it.dayOfWeek.getDisplayName(TextStyle.SHORT, Locale("es")) })
-                    } else if (compact) {
-                        WeeklySalesCard(dailySales, week.map { it.dayOfWeek.getDisplayName(TextStyle.SHORT, Locale("es")) })
-                        Spacer(Modifier.height(16.dp))
-                        if ("receivables" in visibleWidgets) PortfolioCard(completed.sumOf { it.paidAmount }, receivable, customers.count { it.balance > 0 })
-                    } else {
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                            WeeklySalesCard(dailySales, week.map { it.dayOfWeek.getDisplayName(TextStyle.SHORT, Locale("es")) }, Modifier.weight(1.35f))
-                            if ("receivables" in visibleWidgets) PortfolioCard(completed.sumOf { it.paidAmount }, receivable, customers.count { it.balance > 0 }, Modifier.weight(.85f))
-                        }
-                    }
-                }
-            }
-            item {
-                DashboardEnter(delayMillis = 245) {
-                    if (compact) {
-                        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                            if (topProducts.isNotEmpty()) TopProductsCard(topProducts)
-                            if (paymentMix.isNotEmpty()) PaymentMixCard(paymentMix)
-                        }
-                    } else {
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                            if (topProducts.isNotEmpty()) TopProductsCard(topProducts, Modifier.weight(1f))
-                            if (paymentMix.isNotEmpty()) PaymentMixCard(paymentMix, Modifier.weight(1f))
-                        }
-                    }
-                }
-            }
-            item {
-                DashboardEnter(delayMillis = 270) {
-                    if (sellerMode) {
-                        RecentSalesCard(completed.take(10), customerNames, viewModel::selectSale, { showAllSales = true })
-                    } else if (compact) {
-                        if (routesEnabled) RoutesCard(routes.filter { it.isActive }, onRoutes)
-                        Spacer(Modifier.height(16.dp))
-                        if ("low_stock" in visibleWidgets && showInventory) LowStockCard(lowProducts.take(5), quantities, onInventory)
-                        Spacer(Modifier.height(16.dp))
-                        RecentSalesCard(completed.take(5), customerNames, viewModel::selectSale, { showAllSales = true })
-                    } else {
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                            if (routesEnabled) RoutesCard(routes.filter { it.isActive }, onRoutes, Modifier.weight(1f))
-                            if ("low_stock" in visibleWidgets && showInventory) LowStockCard(lowProducts.take(5), quantities, onInventory, Modifier.weight(1f))
-                            RecentSalesCard(completed.take(5), customerNames, viewModel::selectSale, { showAllSales = true }, Modifier.weight(1f))
-                        }
-                    }
-                }
-            }
-        }
-    }
+    ResumenOverview(
+        businessName = businessName, sales = completed, saleItems = saleItems, costTotals = costTotals,
+        customers = customers, products = products, quantities = quantities, payments = payments,
+        pendingOrders = pendingOrders, ordersError = ordersError, cashOpen = cashSession != null,
+        showSales = showSales, showCollections = showCollections, showInventory = showInventory,
+        showEncargos = showEncargos, showCost = !sellerMode,
+        onNewSale = onNewSale, onCollections = onCollections, onInventory = onInventory,
+        onStockFilter = onStockFilter, onMovements = onMovements, onProducts = onProducts,
+        onPhotos = onPhotos, onEncargos = onEncargos, onCash = onCash, onDayClose = onDayClose,
+        onStorefront = onStorefront, onProfile = onProfile, onHelp = onHelp,
+        onAllSales = { showAllSales = true }, onSale = viewModel::selectSale
+    )
     if (showAllSales) {
         RecentSalesDialog(
             sales = completed,
@@ -435,6 +354,60 @@ private fun GuidedSetupCard(
     }
 }
 
+@Composable
+private fun StorefrontProgressCard(onOpen: () -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    val steps = listOf(
+        "Sube tu logo",
+        "Agrega tu WhatsApp",
+        "Completa el catálogo",
+        "Define tu horario",
+        "Enlaza tus redes",
+        "Revisa cómo se ve"
+    )
+    Card(
+        modifier = Modifier.fillMaxWidth().animateContentSize(),
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface),
+        border = androidx.compose.foundation.BorderStroke(1.dp, BSPOSTheme.colors.outline)
+    ) {
+        Column(Modifier.padding(horizontal = 18.dp, vertical = 14.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth().clickable { expanded = !expanded },
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    Modifier.size(34.dp).clip(CircleShape).background(BSPOSTheme.colors.primaryLight),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Default.ShoppingCart, contentDescription = null, tint = BSPOSTheme.colors.primary)
+                }
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("Termina tu tienda", fontWeight = FontWeight.ExtraBold)
+                    Text("Sigue la guía para dejarla lista para tus clientes.", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodySmall)
+                }
+                Text("${steps.size} pasos", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+                Spacer(Modifier.width(6.dp))
+                Text(if (expanded) "⌃" else "⌄", color = BSPOSTheme.colors.primary, fontSize = 20.sp)
+            }
+            AnimatedVisibility(visible = expanded) {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 10.dp)) {
+                    steps.forEachIndexed { index, step ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("${index + 1}", color = BSPOSTheme.colors.primary, fontWeight = FontWeight.ExtraBold, modifier = Modifier.width(24.dp))
+                            Text(step, color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                    Button(onClick = onOpen, modifier = Modifier.fillMaxWidth()) {
+                        Text("Abrir guía de Mi tienda")
+                    }
+                }
+            }
+        }
+    }
+}
+
 private data class Kpi(val title: String, val value: String, val helper: String, val icon: androidx.compose.ui.graphics.vector.ImageVector, val accent: Color, val soft: Color)
 private data class TopProduct(val name: String, val quantity: Long, val revenue: Long)
 private data class PaymentMix(val label: String, val amount: Long)
@@ -490,6 +463,75 @@ private fun KpiCard(item: Kpi, modifier: Modifier = Modifier) {
             Text(item.value, color = BSPOSTheme.colors.textPrimary, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(item.helper, color = item.accent, style = MaterialTheme.typography.labelMedium)
         }
+    }
+}
+
+@Composable
+private fun InventorySummaryCard(
+    products: List<Product>,
+    quantities: Map<java.util.UUID, Long>,
+    lowProducts: List<Product>,
+    onOpen: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val units = products.sumOf { (quantities[it.id] ?: 0L).coerceAtLeast(0L) }
+    val capitalAtCost = products.sumOf { product ->
+        (quantities[product.id] ?: 0L).coerceAtLeast(0L) * product.averageCost.coerceAtLeast(0L)
+    }
+    val inStock = products.count { (quantities[it.id] ?: 0L) > 0L }
+    val outOfStock = products.count { (quantities[it.id] ?: 0L) <= 0L }
+    val lowWithoutOut = lowProducts.count { (quantities[it.id] ?: 0L) > 0L }
+
+    SectionCard(modifier) {
+        SectionTitle("Tu inventario", Icons.Default.Inventory2, "Capital y existencias", onOpen)
+        Spacer(Modifier.height(10.dp))
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(18.dp),
+            verticalAlignment = Alignment.Bottom
+        ) {
+            Column(Modifier.weight(1.35f)) {
+                Text(money(capitalAtCost), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
+                Text("Capital al costo", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+            }
+            InventoryMetric(inStock.toString(), "productos", Modifier.weight(1f))
+            InventoryMetric(units.toString(), "unidades", Modifier.weight(1f))
+        }
+        Spacer(Modifier.height(14.dp))
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            if (maxWidth < 500.dp) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        InventoryStatusChip("$inStock con existencia", BSPOSTheme.colors.successLight, BSPOSTheme.colors.success, Modifier.weight(1f))
+                        InventoryStatusChip("$lowWithoutOut bajo mínimo", BSPOSTheme.colors.warningLight, BSPOSTheme.colors.warning, Modifier.weight(1f))
+                    }
+                    Row(Modifier.fillMaxWidth()) {
+                        InventoryStatusChip("$outOfStock agotados", BSPOSTheme.colors.errorLight, BSPOSTheme.colors.error, Modifier.fillMaxWidth(.5f))
+                    }
+                }
+            } else {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    InventoryStatusChip("$inStock con existencia", BSPOSTheme.colors.successLight, BSPOSTheme.colors.success, Modifier.weight(1f))
+                    InventoryStatusChip("$lowWithoutOut bajo mínimo", BSPOSTheme.colors.warningLight, BSPOSTheme.colors.warning, Modifier.weight(1f))
+                    InventoryStatusChip("$outOfStock agotados", BSPOSTheme.colors.errorLight, BSPOSTheme.colors.error, Modifier.weight(1f))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun InventoryMetric(value: String, label: String, modifier: Modifier = Modifier) {
+    Column(modifier) {
+        Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(label, color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+    }
+}
+
+@Composable
+private fun InventoryStatusChip(label: String, background: Color, foreground: Color, modifier: Modifier = Modifier) {
+    Surface(shape = RoundedCornerShape(50), color = background, modifier = modifier) {
+        Text(label, color = foreground, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 9.dp, vertical = 7.dp))
     }
 }
 

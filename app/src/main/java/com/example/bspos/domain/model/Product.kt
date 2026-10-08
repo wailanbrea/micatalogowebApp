@@ -2,6 +2,13 @@ package com.example.bspos.domain.model
 
 import java.time.Instant
 import java.util.UUID
+import kotlinx.serialization.Serializable
+
+@Serializable
+data class ProductComboComponent(
+    val productId: String,
+    val quantity: Int,
+)
 
 /** Amounts are Long cents. Operational stock belongs to inventory, not the product. */
 data class Product(
@@ -27,7 +34,11 @@ data class Product(
     val remoteShopId: String? = null,
     val remoteProductId: String? = null,
     val remoteSaleUnit: String? = null,
+    val remoteIsCombo: Boolean = false,
     val remoteVolumeMl: Int? = null,
     val remoteAvailableMl: Int? = null,
-    val remoteSourceProductId: String? = null
+    val remoteOpenedBottles: Int? = null,
+    val remoteSourceProductId: String? = null,
+    val remoteProductSlug: String? = null,
+    val remoteComboItems: List<ProductComboComponent> = emptyList()
 )

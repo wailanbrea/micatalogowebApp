@@ -51,10 +51,14 @@ data class ProductEntity(
     @ColumnInfo(name = "micatalogo_source_product_id") val miCatalogoSourceProductId: String? = null,
     @ColumnInfo(name = "micatalogo_volume_ml") val miCatalogoVolumeMl: Int? = null,
     @ColumnInfo(name = "micatalogo_available_ml") val miCatalogoAvailableMl: Int? = null,
+    @ColumnInfo(name = "micatalogo_opened_bottles") val miCatalogoOpenedBottles: Int? = null,
     @ColumnInfo(name = "micatalogo_sale_unit") val miCatalogoSaleUnit: String? = null,
+    @ColumnInfo(name = "micatalogo_is_combo", defaultValue = "0") val miCatalogoIsCombo: Boolean = false,
+    @ColumnInfo(name = "micatalogo_combo_items_json", defaultValue = "[]") val miCatalogoComboItemsJson: String = "[]",
     @ColumnInfo(name = "is_active", defaultValue = "1") val isActive: Boolean = true,
     @ColumnInfo(name = "tracks_expiration", defaultValue = "0") val tracksExpiration: Boolean = false,
     @ColumnInfo(name = "created_at") val createdAt: Instant,
     @ColumnInfo(name = "updated_at") val updatedAt: Instant,
-    @ColumnInfo(name = "deleted_at") val deletedAt: Instant? = null
+    @ColumnInfo(name = "deleted_at") val deletedAt: Instant? = null,
+    @ColumnInfo(name = "micatalogo_product_slug") val miCatalogoProductSlug: String? = null
 )
