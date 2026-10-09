@@ -40,7 +40,6 @@ internal fun SellerDashboardScreen(
                 Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(businessName, color = BSPOSTheme.colors.textOnNavy, style = MaterialTheme.typography.labelLarge)
                     Text("Tu espacio de ventas", color = BSPOSTheme.colors.textOnNavy, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                    Text("Sigue tus ventas y tus ganancias por comisión.", color = BSPOSTheme.colors.textOnNavy)
                     if (showSales) Button(onClick = onNewSale) { Text("Nueva venta") }
                 }
             }

@@ -166,7 +166,6 @@ fun SalesHistoryScreen(
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text("VENTAS", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
-                    Text("Consulta tus ventas, cobros, créditos y resultados.", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
                     OutlinedButton(onClick = { showExportDialog = true }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)) {
                         Icon(Icons.Default.FileDownload, null); Spacer(Modifier.width(8.dp)); Text("Exportar ventas")
                     }
@@ -300,7 +299,6 @@ fun SalesHistoryScreen(
             title = { Text("Exportar ventas") },
             text = {
                 Column {
-                    Text("CSV con las ventas y líneas disponibles en este dispositivo.", color = BSPOSTheme.colors.textSecondary)
                     Row(Modifier.fillMaxWidth().clickable { exportAll = false }, verticalAlignment = Alignment.CenterVertically) {
                         RadioButton(selected = !exportAll, onClick = { exportAll = false })
                         Text("Lo que ves ahora · ${visibleSales.size} ventas")
@@ -415,7 +413,6 @@ private fun EmptySalesState() {
     Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface)) {
         Column(Modifier.fillMaxWidth().padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Aún no hay ventas en este período", fontWeight = FontWeight.Bold)
-            Text("Las ventas confirmadas, a crédito y con abonos aparecerán aquí.", color = BSPOSTheme.colors.textSecondary)
         }
     }
 }

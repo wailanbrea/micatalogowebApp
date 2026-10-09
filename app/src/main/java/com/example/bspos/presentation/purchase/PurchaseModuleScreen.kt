@@ -182,7 +182,6 @@ private fun PurchaseContent(
                 Card(shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface)) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text("Preparar compra", fontWeight = FontWeight.ExtraBold, style = MaterialTheme.typography.titleLarge)
-                        Text("Guarda un borrador para revisarlo o recibe el inventario de inmediato.", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodySmall)
                         if (!debtMode) OutlinedTextField(
                             documentNumber,
                             { documentNumber = it },
@@ -415,10 +414,7 @@ private fun SupplierManagerContent(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text("Administra a quién le compras, sus datos de contacto y el historial de compras.", color = BSPOSTheme.colors.textSecondary)
-                }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                 IconButton(onClick = { viewModel.load("suppliers") }) { Icon(Icons.Default.Refresh, contentDescription = "Actualizar", tint = BSPOSTheme.colors.primary) }
             }
         }
@@ -587,7 +583,6 @@ private fun PurchaseDocumentCard(document: PurchaseDocumentDto, saving: Boolean,
                 ) {
                     if (logistics.isNotBlank()) Text(logistics, color = BSPOSTheme.colors.textPrimary, style = MaterialTheme.typography.bodySmall)
                     Text("${document.currency}${document.exchangeRate?.let { " · tasa $it" } ?: ""} · Flete/aduana: ${document.freightAmount ?: "0.00"}/${document.customsAmount ?: "0.00"}", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodySmall)
-                    Text("Recibe cada compra relacionada para afectar el inventario.", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelSmall)
                 }
             } else if (document.status == "draft") {
                 OutlinedButton(onClick = { onReceive(document.id) }, enabled = !saving, modifier = Modifier.fillMaxWidth()) { Text("Recibir inventario") }

@@ -252,6 +252,15 @@ private fun PeriodSelectorRow(
     }
 }
 
+private data class FinanceKpiDetail(
+    val title: String,
+    val amount: String,
+    val subtitle: String,
+    val description: String,
+    val icon: ImageVector,
+    val accentColor: Color
+)
+
 @Composable
 fun FinanceSummaryTab(
     summary: FinanceSummaryDto?,
@@ -267,6 +276,19 @@ fun FinanceSummaryTab(
     val period = summary.period
     val current = summary.currentState
     var showInvoiceDetails by remember { mutableStateOf(false) }
+    var selectedKpi by remember { mutableStateOf<FinanceKpiDetail?>(null) }
+    val netSalesAmount = formatPesos(period.netSales)
+    val grossProfitAmount = period.grossProfit?.let { formatPesos(it) } ?: "N/D"
+    val operatingExpensesAmount = formatPesos(period.operatingExpenses)
+    val operatingProfitAmount = period.operatingProfit?.let { formatPesos(it) } ?: "N/D"
+    val commissionsAmount = formatPesos(period.commissionsGenerated)
+    val grossMarginLabel = period.grossMarginPercent?.let { "%.1f%%".format(it) } ?: "N/D"
+    val operatingMarginLabel = period.operatingMarginPercent?.let { "%.1f%%".format(it) } ?: "N/D"
+    val primaryColor = BSPOSTheme.colors.primary
+    val shoppingCartIcon = Icons.Default.ShoppingCart
+    val trendingUpIcon = Icons.Default.TrendingUp
+    val receiptLongIcon = Icons.Default.ReceiptLong
+    val accountBalanceIcon = Icons.Default.AccountBalance
 
     Column(
         modifier = Modifier
@@ -288,18 +310,38 @@ fun FinanceSummaryTab(
         ) {
             FinanceKpiCard(
                 title = "Ventas netas",
-                amount = formatPesos(period.netSales),
+                amount = netSalesAmount,
                 subtitle = "${period.salesCount} ventas (${period.unitsSold} u.)",
-                icon = Icons.Default.ShoppingCart,
+                icon = shoppingCartIcon,
                 accentColor = BSPOSTheme.colors.primary,
+                onClick = {
+                    selectedKpi = FinanceKpiDetail(
+                        title = "Ventas netas",
+                        amount = netSalesAmount,
+                        subtitle = "${period.salesCount} ventas (${period.unitsSold} u.)",
+                        description = "Total de las ventas del período después de descuentos y devoluciones, antes de restar el costo de la mercancía y los gastos operativos. Incluye ${period.salesCount} ventas y ${period.unitsSold} unidades.",
+                        icon = shoppingCartIcon,
+                        accentColor = primaryColor
+                    )
+                },
                 modifier = Modifier.weight(1f)
             )
             FinanceKpiCard(
                 title = "Ganancia bruta",
-                amount = period.grossProfit?.let { formatPesos(it) } ?: "N/D",
-                subtitle = "Margen: ${period.grossMarginPercent?.let { "%.1f%%".format(it) } ?: "N/D"}",
-                icon = Icons.Default.TrendingUp,
+                amount = grossProfitAmount,
+                subtitle = "Margen: $grossMarginLabel",
+                icon = trendingUpIcon,
                 accentColor = Color(0xFF2E7D32),
+                onClick = {
+                    selectedKpi = FinanceKpiDetail(
+                        title = "Ganancia bruta",
+                        amount = grossProfitAmount,
+                        subtitle = "Margen: $grossMarginLabel",
+                        description = "Resultado de restar a las ventas netas el costo real de los productos vendidos. El margen bruto indica qué porcentaje de cada peso vendido queda antes de gastos operativos y comisiones.",
+                        icon = trendingUpIcon,
+                        accentColor = Color(0xFF2E7D32)
+                    )
+                },
                 modifier = Modifier.weight(1f)
             )
         }
@@ -310,18 +352,38 @@ fun FinanceSummaryTab(
         ) {
             FinanceKpiCard(
                 title = "Gastos operativos",
-                amount = formatPesos(period.operatingExpenses),
-                subtitle = "Comisiones: ${formatPesos(period.commissionsGenerated)}",
-                icon = Icons.Default.ReceiptLong,
+                amount = operatingExpensesAmount,
+                subtitle = "Comisiones: $commissionsAmount",
+                icon = receiptLongIcon,
                 accentColor = Color(0xFFD32F2F),
+                onClick = {
+                    selectedKpi = FinanceKpiDetail(
+                        title = "Gastos operativos",
+                        amount = operatingExpensesAmount,
+                        subtitle = "Comisiones: $commissionsAmount",
+                        description = "Total de los gastos registrados durante el período que afectan la operación del negocio. Las comisiones generadas se muestran aparte para que puedas identificar cuánto corresponde al equipo de ventas.",
+                        icon = receiptLongIcon,
+                        accentColor = Color(0xFFD32F2F)
+                    )
+                },
                 modifier = Modifier.weight(1f)
             )
             FinanceKpiCard(
                 title = "Ganancia operativa",
-                amount = period.operatingProfit?.let { formatPesos(it) } ?: "N/D",
-                subtitle = "Margen op: ${period.operatingMarginPercent?.let { "%.1f%%".format(it) } ?: "N/D"}",
-                icon = Icons.Default.AccountBalance,
+                amount = operatingProfitAmount,
+                subtitle = "Margen op: $operatingMarginLabel",
+                icon = accountBalanceIcon,
                 accentColor = Color(0xFF1565C0),
+                onClick = {
+                    selectedKpi = FinanceKpiDetail(
+                        title = "Ganancia operativa",
+                        amount = operatingProfitAmount,
+                        subtitle = "Margen op: $operatingMarginLabel",
+                        description = "Resultado de la ganancia bruta después de descontar los gastos operativos y las comisiones del período. El margen operativo muestra qué porcentaje de las ventas netas queda como resultado de la operación.",
+                        icon = accountBalanceIcon,
+                        accentColor = Color(0xFF1565C0)
+                    )
+                },
                 modifier = Modifier.weight(1f)
             )
         }
@@ -585,6 +647,42 @@ fun FinanceSummaryTab(
         }
 
         Spacer(modifier = Modifier.height(32.dp))
+    }
+
+    selectedKpi?.let { detail ->
+        AlertDialog(
+            onDismissRequest = { selectedKpi = null },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Icon(detail.icon, contentDescription = null, tint = detail.accentColor)
+                    Text(detail.title, fontWeight = FontWeight.Bold)
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(detail.amount, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold, color = detail.accentColor)
+                    Text(detail.subtitle, color = BSPOSTheme.colors.textSecondary)
+                    HorizontalDivider()
+                    Text(detail.description, style = MaterialTheme.typography.bodyMedium, color = BSPOSTheme.colors.textPrimary)
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = BSPOSTheme.colors.primaryLight
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(Icons.Default.Info, contentDescription = null, tint = BSPOSTheme.colors.primary)
+                            Text("Toca cualquier cuadro para volver a consultar su explicación completa.", style = MaterialTheme.typography.bodySmall, color = BSPOSTheme.colors.textPrimary)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { selectedKpi = null }) { Text("Cerrar") }
+            }
+        )
     }
 }
 
@@ -859,12 +957,13 @@ private fun FinanceKpiCard(
     subtitle: String,
     icon: ImageVector,
     accentColor: Color,
+    onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Card(
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface),
-        modifier = modifier
+        modifier = modifier.clickable(onClick = onClick)
     ) {
         Column(
             modifier = Modifier.padding(16.dp),
@@ -902,6 +1001,12 @@ private fun FinanceKpiCard(
                 color = BSPOSTheme.colors.textSecondary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = "Ver detalle",
+                style = MaterialTheme.typography.labelSmall,
+                color = accentColor,
+                fontWeight = FontWeight.Bold
             )
         }
     }

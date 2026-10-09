@@ -154,7 +154,6 @@ private fun RestrictedPricingRow(row: FeatureRowDto) {
         Column(Modifier.fillMaxWidth().padding(15.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
             Text(row.primary.ifBlank { "Producto" }, fontWeight = FontWeight.ExtraBold, color = BSPOSTheme.colors.textPrimary, maxLines = 2, overflow = TextOverflow.Ellipsis)
             if (row.value.isNotBlank()) Text(row.value, color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodySmall)
-            Text("Regla financiera administrada por el propietario o finanzas.", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodySmall)
         }
     }
 }

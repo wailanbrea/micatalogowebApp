@@ -98,10 +98,30 @@ fun CustomerScreen(
 @Composable
 private fun CustomerCard(customer: Customer, showCredit: Boolean, onEdit: () -> Unit, onDelete: () -> Unit) {
     Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface), elevation = CardDefaults.cardElevation(1.dp)) {
-        Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(46.dp).clip(CircleShape).background(BSPOSTheme.colors.primaryLight), contentAlignment = Alignment.Center) { Text(customer.fullName.take(1).uppercase(), color = BSPOSTheme.colors.primary, fontWeight = FontWeight.ExtraBold) }
-            Spacer(Modifier.width(12.dp)); Column(Modifier.weight(1f)) { Text(customer.fullName, fontWeight = FontWeight.ExtraBold, maxLines = 1, overflow = TextOverflow.Ellipsis); Text(listOfNotNull(customer.documentNumber, customer.phone).joinToString(" / ").ifBlank { "Sin contacto" }, color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelMedium); if (showCredit) Text("Saldo: ${money(customer.balance)} de ${money(customer.creditLimit)}", color = if (customer.balance > 0) BSPOSTheme.colors.warning else BSPOSTheme.colors.success, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold) }
-            IconButton(onEdit) { Icon(Icons.Default.Edit, "Editar", tint = BSPOSTheme.colors.primary) }; IconButton(onDelete) { Icon(Icons.Default.DeleteOutline, "Eliminar", tint = BSPOSTheme.colors.error) }
+        Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(46.dp).clip(CircleShape).background(BSPOSTheme.colors.primaryLight), contentAlignment = Alignment.Center) {
+                    Text(customer.fullName.take(1).uppercase(), color = BSPOSTheme.colors.primary, fontWeight = FontWeight.ExtraBold)
+                }
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(customer.fullName, fontWeight = FontWeight.ExtraBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(customer.phone ?: customer.whatsapp ?: "Sin teléfono registrado", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+                }
+                IconButton(onEdit) { Icon(Icons.Default.Edit, "Editar", tint = BSPOSTheme.colors.primary) }
+                IconButton(onDelete) { Icon(Icons.Default.DeleteOutline, "Eliminar", tint = BSPOSTheme.colors.error) }
+            }
+            customer.documentNumber?.takeIf { it.isNotBlank() }?.let {
+                Text("${customer.documentType?.replaceFirstChar(Char::uppercase) ?: "Documento"}: $it", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+            }
+            if (showCredit) {
+                Surface(shape = RoundedCornerShape(10.dp), color = if (customer.balance > 0) BSPOSTheme.colors.warningLight else BSPOSTheme.colors.successLight) {
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Saldo pendiente", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+                        Text("${money(customer.balance)} de ${money(customer.creditLimit)}", color = if (customer.balance > 0) BSPOSTheme.colors.warning else BSPOSTheme.colors.success, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.ExtraBold)
+                    }
+                }
+            }
         }
     }
 }

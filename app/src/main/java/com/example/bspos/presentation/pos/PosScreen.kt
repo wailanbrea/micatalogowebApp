@@ -40,6 +40,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.HelpOutline
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Print
@@ -115,6 +116,7 @@ fun PosScreen(
     showQuoteAction: Boolean = true,
     showDayCloseAction: Boolean = true,
     showCosts: Boolean = false,
+    onOpenMenu: () -> Unit = {},
     onNavigateBack: () -> Unit = {},
     viewModel: PosViewModel = hiltViewModel()
 ) {
@@ -216,7 +218,7 @@ fun PosScreen(
         val tablet = maxWidth >= 700.dp
         if (tablet) {
             Column(Modifier.fillMaxSize().padding(28.dp)) {
-                TerminalHeader(creditOnly, { showingTerminalGuide = true }, { showingTerminalOptions = true })
+                TerminalHeader({ showingTerminalGuide = true }, { showingTerminalOptions = true })
                 if (!creditOnly && showingQuickGuide) {
                     TerminalQuickGuideCard(onDismiss = { showingQuickGuide = false })
                 }
@@ -304,6 +306,7 @@ fun PosScreen(
                             wholesaleEnabled = true,
                             onBack = onNavigateBack,
                             onWholesaleChanged = { viewModel.setWholesaleMode(it) },
+                            onOpenMenu = onOpenMenu,
                             onGuide = { showingTerminalGuide = true },
                             onOptions = { showingTerminalOptions = true },
                             isProcessing = isProcessing
@@ -498,25 +501,10 @@ fun PosScreen(
 }
 
 @Composable
-private fun TerminalHeader(creditOnly: Boolean, onGuide: () -> Unit, onOptions: () -> Unit) {
-    BoxWithConstraints(Modifier.fillMaxWidth()) {
-        if (maxWidth >= 560.dp) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
-                Column(Modifier.weight(1f)) {
-                    Text(if (creditOnly) "Asigna un cliente y los productos para registrar el saldo" else "Selecciona los productos para agregarlos al carrito", color = BSPOSTheme.colors.textSecondary)
-                }
-                TextButton(onClick = onGuide) { Text("Cómo hacer una venta") }
-                OutlinedButton(onClick = onOptions, shape = RoundedCornerShape(14.dp)) { Text("Opciones") }
-            }
-        } else {
-            Column(Modifier.fillMaxWidth()) {
-                Text(if (creditOnly) "Asigna un cliente y los productos para registrar el saldo" else "Selecciona los productos para agregarlos al carrito", color = BSPOSTheme.colors.textSecondary)
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    TextButton(onClick = onGuide) { Text("Ayuda") }
-                    OutlinedButton(onClick = onOptions, shape = RoundedCornerShape(14.dp)) { Text("Opciones") }
-                }
-            }
-        }
+private fun TerminalHeader(onGuide: () -> Unit, onOptions: () -> Unit) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+        TextButton(onClick = onGuide) { Text("Ayuda") }
+        OutlinedButton(onClick = onOptions, shape = RoundedCornerShape(14.dp)) { Text("Opciones") }
     }
 }
 
@@ -532,18 +520,26 @@ private fun PunttoTerminalHeader(
     wholesaleEnabled: Boolean,
     onBack: () -> Unit,
     onWholesaleChanged: (Boolean) -> Unit,
+    onOpenMenu: () -> Unit,
     onGuide: () -> Unit,
     onOptions: () -> Unit,
     isProcessing: Boolean
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth().height(58.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        IconButton(onClick = onBack, enabled = !isProcessing, modifier = Modifier.size(40.dp)) {
-            Icon(Icons.Default.ArrowBack, contentDescription = "Volver", tint = BSPOSTheme.colors.textSecondary)
-        }
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val showBackButton = maxWidth >= 420.dp
+        Row(
+            modifier = Modifier.fillMaxWidth().height(58.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            IconButton(onClick = onOpenMenu, enabled = !isProcessing, modifier = Modifier.size(40.dp)) {
+                Icon(Icons.Default.Menu, contentDescription = "Abrir menú", tint = BSPOSTheme.colors.textSecondary)
+            }
+            if (showBackButton) {
+                IconButton(onClick = onBack, enabled = !isProcessing, modifier = Modifier.size(40.dp)) {
+                    Icon(Icons.Default.ArrowBack, contentDescription = "Volver", tint = BSPOSTheme.colors.textSecondary)
+                }
+            }
         Surface(
             modifier = Modifier.widthIn(max = 210.dp).weight(1f, fill = false).height(42.dp),
             shape = RoundedCornerShape(12.dp),
@@ -579,8 +575,9 @@ private fun PunttoTerminalHeader(
         IconButton(onClick = onGuide, enabled = !isProcessing, modifier = Modifier.size(40.dp)) {
             Icon(Icons.Default.HelpOutline, contentDescription = "Ayuda", tint = Color(0xFF3F3F46))
         }
-        IconButton(onClick = onOptions, enabled = !isProcessing, modifier = Modifier.size(40.dp)) {
-            Icon(Icons.Default.MoreHoriz, contentDescription = "Más opciones", tint = Color(0xFF3F3F46))
+            IconButton(onClick = onOptions, enabled = !isProcessing, modifier = Modifier.size(40.dp)) {
+                Icon(Icons.Default.MoreHoriz, contentDescription = "Más opciones", tint = Color(0xFF3F3F46))
+            }
         }
     }
 }
@@ -938,7 +935,6 @@ private fun TerminalOptionsSheet(onDismiss: () -> Unit, onDayClose: () -> Unit, 
     BSPOSModalBottomSheet(onDismissRequest = onDismiss) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).navigationBarsPadding(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("Opciones de la terminal", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
-            Text("Acciones relacionadas con esta jornada de ventas.", color = BSPOSTheme.colors.textSecondary)
 
             if (showQuote) TextButton(onClick = onQuote, modifier = Modifier.fillMaxWidth()) { Text("Crear cotización", modifier = Modifier.fillMaxWidth()) }
             if (showDayClose) TextButton(onClick = onDayClose, modifier = Modifier.fillMaxWidth()) { Text("Cierre de día", modifier = Modifier.fillMaxWidth()) }

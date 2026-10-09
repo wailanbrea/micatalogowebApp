@@ -89,7 +89,6 @@ fun SettingsScreen(
             Spacer(Modifier.width(12.dp))
             Column {
                 Text(if (teamOnly) "Equipo y permisos" else "Ajustes", fontWeight = FontWeight.ExtraBold)
-                Text("Selecciona la tienda y la sección que quieres configurar.", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodySmall)
             }
         }
         selectedShop?.let { shop ->
@@ -116,7 +115,6 @@ fun SettingsScreen(
         if (miCatalogoUi.isLoadingShops) LinearProgressIndicator(Modifier.fillMaxWidth())
         if (activeSection == "device") settings?.let { current ->
             Text("Preferencias de este dispositivo", fontWeight = FontWeight.Bold)
-            Text("Moneda, factura y opciones locales se comparten entre las tiendas que uses en esta instalación.", style = MaterialTheme.typography.bodySmall, color = BSPOSTheme.colors.textSecondary)
             Text("Moneda", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelLarge)
             CurrencyCard(current.currency, viewModel::setCurrency)
             Text("Factura y PDF", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelLarge)
@@ -132,7 +130,6 @@ fun SettingsScreen(
                 if (activeSection == "team" && shop.canManageSellers) {
                     var creating by rememberSaveable { mutableStateOf(false) }
                     Text("Permisos de usuarios / vendedores", fontWeight = FontWeight.Bold)
-                    Text("En la ficha de cada vendedor pulsa Seleccionar menús, marca o desmarca y guarda.", style = MaterialTheme.typography.bodySmall)
                     TextButton(onClick = { creating = !creating }) { Text(if (creating) "Ocultar formulario de creación" else "Crear / invitar vendedor") }
                     if (creating) SellerCreateCard(shop, miCatalogoUi.isCreatingSeller, viewModel::createSeller)
                     SellerMenuPermissionsCard(shop, miCatalogoUi.updatingSellerMenuId, viewModel::updateSellerMenus)

@@ -114,9 +114,7 @@ fun RouteLoadScreen(viewModel: RouteLoadViewModel = hiltViewModel()) {
         item {
             Text("Productos en la carga (${lines.size})", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold)
         }
-        if (lines.isEmpty()) {
-            item { Text("Agrega productos para preparar el traslado.", color = BSPOSTheme.colors.textSecondary) }
-        } else {
+        if (lines.isNotEmpty()) {
             items(lines, key = { it.productId }) { line ->
                 Card(shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface)) {
                     Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {

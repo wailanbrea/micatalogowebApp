@@ -22,7 +22,6 @@ import com.example.bspos.presentation.common.DialogScrollableColumn
     val categories by viewModel.categoryList.collectAsState(); val unitList by viewModel.unitList.collectAsState()
     Column(modifier.fillMaxSize().background(BSPOSTheme.colors.background).padding(20.dp)) {
         Text("Categorías y unidades", style = MaterialTheme.typography.headlineMedium, color = BSPOSTheme.colors.textPrimary)
-        Text("Define cómo se organizan y miden tus productos", color = BSPOSTheme.colors.textSecondary)
         Spacer(Modifier.height(16.dp))
         SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
             SegmentedButton(!units, { units = false }, SegmentedButtonDefaults.itemShape(0, 2)) { Text("Categorías") }

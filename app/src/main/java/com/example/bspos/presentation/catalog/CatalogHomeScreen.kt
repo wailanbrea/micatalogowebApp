@@ -9,10 +9,13 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.PhotoCamera
@@ -29,6 +32,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.example.bspos.core.ui.theme.BSPOSTheme
 import com.example.bspos.core.money.LocalCurrency
@@ -41,7 +46,6 @@ import com.example.bspos.domain.model.MiCatalogoBusinessPresentation
 import com.example.bspos.domain.usecase.ProductInput
 import com.example.bspos.presentation.common.BSPOSAlertDialog as AlertDialog
 import com.example.bspos.presentation.common.BSPOSModalBottomSheet
-import com.example.bspos.presentation.common.DialogScrollableColumn
 import coil.compose.AsyncImage
 import java.util.Locale
 import java.util.UUID
@@ -524,7 +528,21 @@ private fun ProductForm(current: Product?, currentQuantity: Long, categories: Li
     var minimumStock by remember(current?.id) { mutableStateOf((current?.minimumStock ?: 0L).toString()) }
     var priceError by remember { mutableStateOf(false) }
     var category by remember(current?.id) { mutableStateOf(categories.firstOrNull { it.id == current?.categoryId } ?: categories.first()) }
-    var unit by remember(current?.id) { mutableStateOf(units.firstOrNull { it.id == current?.unitId } ?: units.first()) }
+    val selectableUnits = remember(units, current?.unitId) {
+        buildList {
+            // Keep the current product's unit when old data contains duplicate
+            // records, then show each user-facing unit only once.
+            units.firstOrNull { it.id == current?.unitId }?.let(::add)
+            addAll(units)
+        }.distinctBy { it.name.trim().lowercase(Locale.ROOT) }
+    }
+    var unit by remember(current?.id, selectableUnits) {
+        mutableStateOf(
+            selectableUnits.firstOrNull { it.id == current?.unitId }
+                ?: selectableUnits.firstOrNull { unitDisplayName(it) == "Unidad" }
+                ?: selectableUnits.first()
+        )
+    }
     var categoryOpen by remember { mutableStateOf(false) }
     var unitOpen by remember { mutableStateOf(false) }
     var imagePath by remember(current?.id) { mutableStateOf(current?.imagePath) }
@@ -553,8 +571,57 @@ private fun ProductForm(current: Product?, currentQuantity: Long, categories: Li
         runCatching { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
         imagePath = uri.toString()
     }
-    AlertDialog(onDismissRequest = onDismiss, title = { Text(if (effectiveDecantMode) "Nueva presentación decant" else if (saleUnit == "service") if (current == null) "Nuevo servicio" else "Editar servicio" else if (current == null) "Nuevo producto" else "Editar producto") }, text = {
-        DialogScrollableColumn {
+    val formTitle = if (effectiveDecantMode) {
+        "Nueva presentación decant"
+    } else if (saleUnit == "service") {
+        if (current == null) "Nuevo servicio" else "Editar servicio"
+    } else {
+        if (current == null) "Nuevo producto" else "Editar producto"
+    }
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            dismissOnClickOutside = false,
+            dismissOnBackPress = true
+        )
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth(0.94f)
+                .fillMaxHeight(0.92f),
+            shape = RoundedCornerShape(28.dp),
+            color = BSPOSTheme.colors.surface,
+            tonalElevation = 8.dp
+        ) {
+            Column(Modifier.fillMaxSize()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 22.dp, top = 18.dp, end = 12.dp, bottom = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(formTitle, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
+                        Text(
+                            if (current == null) "Completa los datos para agregarlo a tu catálogo."
+                            else "Actualiza la información sin perder su inventario.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = BSPOSTheme.colors.textSecondary
+                        )
+                    }
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Default.Close, contentDescription = "Cerrar")
+                    }
+                }
+                HorizontalDivider(color = BSPOSTheme.colors.outline.copy(alpha = .65f))
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 20.dp, vertical = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
             if (effectiveDecantMode) {
                 Text("La presentación comparte el inventario de su producto fuente. Cada venta descuenta los ml correspondientes.", style = MaterialTheme.typography.bodySmall)
                 Spacer(Modifier.height(8.dp))
@@ -758,12 +825,34 @@ private fun ProductForm(current: Product?, currentQuantity: Long, categories: Li
             if (showInventoryFields && !effectiveDecantMode && saleUnit != "service" && !comboMode) OutlinedTextField(initialQuantity, { value -> if (current == null) initialQuantity = value.filter(Char::isDigit) }, label = { Text("Stock inicial") }, enabled = current == null, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), supportingText = { Text(if (current == null) "Se registra en 0 si lo dejas así" else "Edita existencias desde Inventario") })
             if (!serviceMode && current?.remoteSaleUnit != "service") {
                 OutlinedTextField(minimumStock, { minimumStock = it.filter(Char::isDigit) }, label = { Text("Aviso de mínimo") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), supportingText = { Text("Te avisaremos al llegar a esta cantidad") })
-                Box { TextButton({ categoryOpen = true }) { Text("Categoria: ${category.name}") }; DropdownMenu(categoryOpen, { categoryOpen = false }) { categories.forEach { item -> DropdownMenuItem({ Text(item.name) }, { category = item; categoryOpen = false }) } } }
-                Box { TextButton({ unitOpen = true }) { Text("Unidad: ${unit.name}") }; DropdownMenu(unitOpen, { unitOpen = false }) { units.forEach { item -> DropdownMenuItem({ Text(item.name) }, { unit = item; unitOpen = false }) } } }
+                Box { TextButton({ categoryOpen = true }) { Text("Categoría: ${category.name}") }; DropdownMenu(categoryOpen, { categoryOpen = false }) { categories.forEach { item -> DropdownMenuItem({ Text(item.name) }, { category = item; categoryOpen = false }) } } }
+                Box {
+                    TextButton({ unitOpen = true }) { Text("Unidad: ${unitDisplayName(unit)}") }
+                    DropdownMenu(unitOpen, { unitOpen = false }) {
+                        selectableUnits.forEach { item ->
+                            DropdownMenuItem(
+                                text = { Text(unitDisplayName(item)) },
+                                onClick = { unit = item; unitOpen = false }
+                            )
+                        }
+                    }
+                }
             }
         }
-    }, confirmButton = {
-        TextButton({
+                HorizontalDivider(color = BSPOSTheme.colors.outline.copy(alpha = .65f))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(14.dp)
+                    ) { Text("Cancelar") }
+                    Button(
+                        onClick = {
             val sale = if (!priceChanged && current != null) current.salePrice else price.toPesosCents()
             val purchase = if (!purchaseChanged && current != null) current.lastPurchaseCost else purchasePrice.toPesosCents()
             val wholesale = wholesalePrice.toPesosCents()
@@ -789,12 +878,30 @@ private fun ProductForm(current: Product?, currentQuantity: Long, categories: Li
             } else {
                 onSave(ProductInput(name, effectiveCode, category.id, unit.id, sale, purchasePrice = effectivePurchase, wholesalePrice = wholesale, description = description.trim().ifBlank { null }, imagePath = imagePath, thumbnailPath = imagePath, minimumStock = minimum, tracksExpiration = current?.tracksExpiration ?: false, remoteShopId = shopId, remoteSaleUnit = if (effectiveDecantMode) "decant" else if (comboMode) "unit" else saleUnit, remoteVolumeMl = if (effectiveDecantMode || saleUnit == "bottle" || saleUnit == "ml") selectedVolume else null, remoteSourceProductId = if (effectiveDecantMode) sourceProduct?.remoteProductId else null, isCombo = comboMode, comboItems = if (comboMode) selectedComboItems else emptyList(), isActive = if (serviceMode || current?.remoteSaleUnit == "service") published else (current?.isActive ?: true)), if (current == null && !comboMode) effectiveQuantity else 0L)
             }
-        }) { Text("Guardar") }
-    }, dismissButton = { TextButton(onDismiss) { Text("Cancelar") } })
+                        },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(14.dp)
+                    ) { Text(if (current == null) "Crear producto" else "Guardar cambios") }
+                }
+            }
+        }
+    }
 }
 
 @Composable
 private fun money(cents: Long): String = MoneyUtils.formatCents(cents, LocalCurrency.current)
+
+private fun unitDisplayName(unit: UnitOfMeasure): String {
+    val normalized = unit.name.trim().lowercase(Locale.ROOT)
+    return when (normalized) {
+        "unit", "unidad", "und", "u" -> "Unidad"
+        "bottle", "botella" -> "Botella"
+        "ml", "milliliter", "mililitro" -> "Mililitro (ml)"
+        "service", "servicio" -> "Servicio"
+        "decant" -> "Decant"
+        else -> unit.name.trim().ifBlank { unit.abbreviation.trim().ifBlank { "Unidad" } }
+    }
+}
 
 private data class ComboDraft(val productId: String, val quantity: String)
 

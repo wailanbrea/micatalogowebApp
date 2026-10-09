@@ -395,7 +395,6 @@ private fun StorefrontProgressCard(onOpen: () -> Unit) {
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
                     Text("Termina tu tienda", fontWeight = FontWeight.ExtraBold)
-                    Text("Sigue la guía para dejarla lista para tus clientes.", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodySmall)
                 }
                 Text("${steps.size} pasos", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelMedium)
                 Spacer(Modifier.width(6.dp))

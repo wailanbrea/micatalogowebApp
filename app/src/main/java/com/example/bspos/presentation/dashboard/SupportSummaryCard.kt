@@ -45,7 +45,6 @@ internal fun SupportSummaryCard(
                 Spacer(Modifier.width(9.dp))
                 Column(Modifier.weight(1f)) {
                     Text("¿Necesitas ayuda?", color = ResumenInk, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                    Text("Escribe al owner desde el chat interno.", color = ResumenMuted, fontSize = 12.sp)
                 }
                 TextButton(onClick = onHide, contentPadding = ButtonDefaults.TextButtonContentPadding) { Text("Ocultar", color = ResumenMuted, fontSize = 12.sp) }
             }

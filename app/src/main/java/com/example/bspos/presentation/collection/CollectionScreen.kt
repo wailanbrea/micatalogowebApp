@@ -71,15 +71,6 @@ fun CollectionScreen(viewModel: CollectionViewModel = hiltViewModel()) {
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconBadge()
-                Spacer(Modifier.width(12.dp))
-                Column {
-                    Text("Consulta quién te debe y registra sus abonos.", color = BSPOSTheme.colors.textSecondary)
-                }
-            }
-        }
-        item {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf("Por cobrar", "Pagados").forEach { option ->
                     FilterChip(
@@ -251,14 +242,6 @@ private fun CustomerPicker(customers: List<Customer>, onSelect: (Customer) -> Un
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("Cerrar") } }
     )
-}
-
-@Composable
-private fun IconBadge() {
-    androidx.compose.foundation.layout.Box(
-        Modifier.size(46.dp).clip(RoundedCornerShape(15.dp)).background(BSPOSTheme.colors.successLight),
-        contentAlignment = Alignment.Center
-    ) { Icon(Icons.Default.AccountBalanceWallet, null, tint = BSPOSTheme.colors.success) }
 }
 
 private val PaymentMethod.label: String

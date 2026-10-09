@@ -127,8 +127,7 @@ private fun ShopSettingsContent(
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         item {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("Personaliza identidad, contacto, horario y presentación de tu tienda.", Modifier.weight(1f), color = BSPOSTheme.colors.textSecondary)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                 IconButton(onClick = onRefresh) { Icon(Icons.Default.Refresh, "Actualizar", tint = BSPOSTheme.colors.primary) }
             }
         }
@@ -153,7 +152,6 @@ private fun ShopSettingsContent(
                         OutlinedTextField(operational.businessRnc.orEmpty(), { operational = operational.copy(businessRnc = it.ifBlank { null }) }, Modifier.fillMaxWidth(), label = { Text("RNC (opcional)") }, singleLine = true)
                         OutlinedTextField(operational.employeeCount?.toString().orEmpty(), { operational = operational.copy(employeeCount = it.filter(Char::isDigit).toIntOrNull()) }, Modifier.fillMaxWidth(), label = { Text("Empleados") }, singleLine = true)
                         Text("Métodos de pago", fontWeight = FontWeight.Bold, color = BSPOSTheme.colors.textPrimary)
-                        Text("El orden se refleja en Terminal, gastos y abonos.", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodySmall)
                         val activePaymentMethods = initial.availablePaymentMethods.filter { operational.paymentMethods.contains(it.key) }
                         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             activePaymentMethods.forEachIndexed { index, method ->

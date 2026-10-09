@@ -204,7 +204,6 @@ private fun SupportInboxContent(
                     Column(Modifier.fillMaxWidth().padding(26.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Icon(Icons.Outlined.ChatBubbleOutline, contentDescription = null, tint = BSPOSTheme.colors.primary, modifier = Modifier.size(40.dp))
                         Text(if (isInbox) "No hay solicitudes" else "Todavía no tienes conversaciones", fontWeight = FontWeight.Bold, color = BSPOSTheme.colors.textPrimary)
-                        if (isInbox) Text("Las nuevas solicitudes aparecerán aquí.", color = BSPOSTheme.colors.textSecondary)
                     }
                 }
             }

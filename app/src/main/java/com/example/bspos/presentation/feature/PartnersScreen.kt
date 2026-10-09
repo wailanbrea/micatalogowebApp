@@ -69,10 +69,7 @@ fun PartnersScreen(
                     verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
                     item {
-                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                            Column(Modifier.weight(1f)) {
-                                Text("Aportes y reparto de ganancias del negocio.", color = BSPOSTheme.colors.textSecondary)
-                            }
+                        Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
                             IconButton(onClick = { viewModel.load("partners") }) { Icon(Icons.Default.Refresh, "Actualizar", tint = BSPOSTheme.colors.primary) }
                         }
                     }
@@ -95,7 +92,6 @@ fun PartnersScreen(
                             Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                 Text("Cómo se calcula", fontWeight = FontWeight.ExtraBold, color = BSPOSTheme.colors.textPrimary)
                                 Text("Ganancia bruta − gastos y pérdidas del período = ganancia neta.", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodySmall)
-                                Text("Los movimientos de socios se registran en la caja abierta.", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodySmall)
                             }
                         }
                     }

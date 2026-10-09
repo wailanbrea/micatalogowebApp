@@ -657,7 +657,6 @@ private fun OrderConfirmationDialog(
         title = { Text("Confirmar ${order.primary}", fontWeight = FontWeight.ExtraBold) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("Registra el pedido como venta y descuenta el inventario al confirmar.", color = BSPOSTheme.colors.textSecondary)
                 Text("Tipo de venta", fontWeight = FontWeight.Bold)
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf("paid" to "Pagada", "credit" to "Crédito", "mixed" to "Mixta").forEach { (value, label) ->

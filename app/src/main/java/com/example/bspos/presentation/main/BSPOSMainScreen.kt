@@ -8,13 +8,11 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import java.text.Normalizer
 import androidx.compose.foundation.background
-import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
-import androidx.compose.animation.togetherWith
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.rememberScrollState
@@ -79,7 +77,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -658,7 +655,13 @@ fun BSPOSMainScreen(
                 }
             },
             topBar = {
-                if (currentBaseRoute != Screen.Support.route && (currentBaseRoute !in setOf(Screen.POS.route, Screen.Quotes.route, Screen.Orders.route) || windowWidthSizeClass == WindowWidthSizeClass.Expanded)) TopAppBar(
+                // The application shell owns the context header for every regular
+                // module. Terminal and Cotizaciones intentionally keep their compact
+                // Puntto-style header; Support is a nested conversation screen.
+                val usesCompactHeader = currentBaseRoute in setOf(Screen.POS.route, Screen.Quotes.route)
+                if (currentBaseRoute != Screen.Support.route &&
+                    (!usesCompactHeader || windowWidthSizeClass == WindowWidthSizeClass.Expanded)
+                ) TopAppBar(
                     title = {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
@@ -721,38 +724,30 @@ fun BSPOSMainScreen(
                 )
             }
         ) { paddingValues ->
-            AnimatedContent(
-                targetState = currentRoute,
-                transitionSpec = {
-                    (fadeIn() + slideInHorizontally { it / 18 }) togetherWith
-                        (fadeOut() + slideOutHorizontally { -it / 18 })
-                },
-                label = "screen-transition",
-                modifier = Modifier.fillMaxSize()
-            ) { route ->
-                key(route) {
-                    BSPOSNavHost(
-                        navController = navController,
-                        isTablet = windowWidthSizeClass == WindowWidthSizeClass.Expanded,
-                        routesEnabled = routesEnabled,
-                        currency = settings?.currency ?: CurrencyUnit.DOP,
-                        showSupportOnDashboard = settings?.showSupportOnDashboard != false,
-                        onHideSupport = { settingsViewModel.setShowSupportOnDashboard(false) },
-                        sellerMode = sellerMode,
-                        showSettings = canSeeMenu("settings"),
-                        showAdminShops = connection.isAdmin,
-                        remoteShopAvailable = connectedShop != null,
-                        presentation = connectedShop?.presentation ?: MiCatalogoBusinessPresentation(),
-                        businessName = businessName,
-                        productFields = connectedShop?.productFields?.toSet().orEmpty(),
-                        shopName = connectedShop?.name,
-                        shopId = connectedShop?.id,
-                        shopSlug = connectedShop?.slug,
-                        canSeeMenu = canSeeMenu,
-                        modifier = Modifier.padding(paddingValues)
-                    )
-                }
-            }
+            // Keep one NavHost alive for the whole session. Recreating it when
+            // currentRoute changes resets its start destination and makes drawer
+            // and bottom-bar navigation appear to do nothing.
+            BSPOSNavHost(
+                navController = navController,
+                isTablet = windowWidthSizeClass == WindowWidthSizeClass.Expanded,
+                routesEnabled = routesEnabled,
+                currency = settings?.currency ?: CurrencyUnit.DOP,
+                showSupportOnDashboard = settings?.showSupportOnDashboard != false,
+                onHideSupport = { settingsViewModel.setShowSupportOnDashboard(false) },
+                sellerMode = sellerMode,
+                showSettings = canSeeMenu("settings"),
+                showAdminShops = connection.isAdmin,
+                remoteShopAvailable = connectedShop != null,
+                presentation = connectedShop?.presentation ?: MiCatalogoBusinessPresentation(),
+                businessName = businessName,
+                productFields = connectedShop?.productFields?.toSet().orEmpty(),
+                shopName = connectedShop?.name,
+                shopId = connectedShop?.id,
+                shopSlug = connectedShop?.slug,
+                canSeeMenu = canSeeMenu,
+                onOpenMenu = { scope.launch { drawerState.open() } },
+                modifier = Modifier.padding(paddingValues)
+            )
         }
     }
 
@@ -823,6 +818,7 @@ fun BSPOSNavHost(
     shopId: String? = null,
     shopSlug: String? = null,
     canSeeMenu: (String) -> Boolean = { true },
+    onOpenMenu: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -937,6 +933,7 @@ fun BSPOSNavHost(
                     showQuoteAction = canSeeMenu("quotes"),
                     showDayCloseAction = canSeeMenu("day_close"),
                     showCosts = !sellerMode || canSeeMenu("inventory") || canSeeMenu("finance"),
+                    onOpenMenu = onOpenMenu,
                     onNavigateBack = { navController.popBackStack() }
                 )
             }

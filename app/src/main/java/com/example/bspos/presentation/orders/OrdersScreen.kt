@@ -95,21 +95,16 @@ fun OrdersScreen(
     val context = LocalContext.current
     var selectedRow by remember { mutableStateOf<FeatureRowDto?>(null) }
     var detailRow by remember { mutableStateOf<FeatureRowDto?>(null) }
+    var newCustomerOpen by remember { mutableStateOf(false) }
     val screenTitle = when (feature) {
         "encargos" -> "Encargos"
         "shipments" -> "Envíos"
         else -> "Pedidos"
     }
-    val screenDescription = when (feature) {
-        "encargos" -> "Organiza encargos pendientes y revisa lo que debes entregar a cada cliente."
-        "shipments" -> "Consulta los pedidos con entrega configurada y conviértelos en ventas cuando estén listos."
-        else -> "Revisa pedidos recibidos y conviértelos en ventas sin salir de la aplicación."
-    }
     LaunchedEffect(feature) { viewModel.load(feature) }
     LaunchedEffect(state.message) {
         if (state.message != null) selectedRow = null
     }
-
     fun openOrderWhatsApp(row: FeatureRowDto) {
         val digits = row.customerPhone.orEmpty().filter(Char::isDigit)
         val phone = if (digits.length == 10) "1$digits" else digits
@@ -127,7 +122,6 @@ fun OrdersScreen(
             else -> OrdersContent(
                 state,
                 screenTitle,
-                screenDescription,
                 showPunttoEmptyState = feature == "orders" && state.search.isBlank() && state.status == "all",
                 publicStoreUrl = publicStoreUrl,
                 onShareStore = onShareStore,
@@ -145,11 +139,31 @@ fun OrdersScreen(
         OrderConfirmDialog(
             row = row,
             customers = state.customers,
+            customersLoading = state.customersLoading,
+            creatingCustomer = state.creatingCustomer,
+            customerCreateError = state.customerCreateError,
+            createdCustomer = state.createdCustomer,
             busy = state.confirmingId == row.id,
             onDismiss = { if (state.confirmingId == null) selectedRow = null },
+            onCreateCustomer = { newCustomerOpen = true },
+            onConsumeCreatedCustomer = viewModel::consumeCreatedCustomer,
+            onCreatedCustomerSelected = { newCustomerOpen = false },
             onConfirm = { kind, method, customer, credit, reference ->
                 viewModel.confirm(row, kind, method, customer, credit, reference)
             }
+        )
+    }
+    if (newCustomerOpen) {
+        NewCreditCustomerDialog(
+            busy = state.creatingCustomer,
+            error = state.customerCreateError,
+            onDismiss = {
+                if (!state.creatingCustomer) {
+                    newCustomerOpen = false
+                    viewModel.consumeCustomerCreateError()
+                }
+            },
+            onCreate = viewModel::createCreditCustomer
         )
     }
     detailRow?.let { row ->
@@ -185,7 +199,6 @@ fun OrdersScreen(
 private fun OrdersContent(
     state: OrdersUiState,
     title: String,
-    description: String,
     showPunttoEmptyState: Boolean,
     publicStoreUrl: String?,
     onShareStore: () -> Unit,
@@ -215,17 +228,17 @@ private fun OrdersContent(
             verticalArrangement = Arrangement.spacedBy(if (isOrders) 10.dp else 14.dp)
         ) {
             item {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text(title, color = BSPOSTheme.colors.textPrimary, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold, modifier = Modifier.weight(1f))
-                    if (!isOrders) {
+                // The parent shell is the single source of truth for the screen
+                // title (for example, "Operación / Pedidos"). Keeping another
+                // title here made Pedidos, Encargos and Envíos look different from
+                // Inventario and produced duplicated labels on wide layouts.
+                if (!isOrders) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                         IconButton(onClick = onRefresh, enabled = !state.refreshing) {
                             if (state.refreshing) CircularProgressIndicator(Modifier.width(20.dp).height(20.dp), strokeWidth = 2.dp, color = BSPOSTheme.colors.primary)
                             else Icon(Icons.Filled.Refresh, contentDescription = "Actualizar", tint = BSPOSTheme.colors.primary)
                         }
                     }
-                }
-                if (!isOrders) {
-                    Text(description, color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 4.dp))
                 }
             }
 
@@ -757,7 +770,7 @@ private fun OrderDetailDialog(
         }
         CheckoutStyleSectionLabel("PRODUCTOS DEL PEDIDO")
         if (row.items.isEmpty()) {
-            Text("Los productos de este pedido estarán disponibles cuando el servidor entregue el detalle completo.", color = BSPOSTheme.colors.textSecondary, fontSize = 12.sp)
+            Text("Sin detalle de productos", color = BSPOSTheme.colors.textSecondary, fontSize = 12.sp)
         } else {
             Surface(shape = RoundedCornerShape(14.dp), border = BorderStroke(1.dp, BSPOSTheme.colors.outline), color = BSPOSTheme.colors.surface) {
                 Column(Modifier.fillMaxWidth()) {
@@ -794,8 +807,15 @@ private fun OrderMeta(label: String, value: String, modifier: Modifier = Modifie
 internal fun OrderConfirmDialog(
     row: FeatureRowDto,
     customers: List<RemoteCustomerDto>,
+    customersLoading: Boolean,
+    creatingCustomer: Boolean = false,
+    customerCreateError: String? = null,
+    createdCustomer: RemoteCustomerDto? = null,
     busy: Boolean,
     onDismiss: () -> Unit,
+    onCreateCustomer: () -> Unit = {},
+    onConsumeCreatedCustomer: () -> Unit = {},
+    onCreatedCustomerSelected: () -> Unit = {},
     onConfirm: (String, String, String?, String?, String?) -> Unit
 ) {
     var kind by remember { mutableStateOf("paid") }
@@ -807,6 +827,13 @@ internal fun OrderConfirmDialog(
     val totalCents = remember(row.id, row.value) { MoneyUtils.parsePesosStringToCents(row.value) }
     val mixedCreditCents = if (kind == "mixed") calculateMixedCredit(totalCents, downPayment) else null
     val creditValid = kind != "mixed" || mixedCreditCents != null
+    LaunchedEffect(createdCustomer?.id) {
+        createdCustomer?.let {
+            customer = it
+            onConsumeCreatedCustomer()
+            onCreatedCustomerSelected()
+        }
+    }
     CheckoutStyleBottomSheet(
         title = "Confirmar pedido",
         badge = when (kind) { "credit" -> "CRÉDITO"; "mixed" -> "MIXTO"; else -> "CONTADO" },
@@ -862,17 +889,119 @@ internal fun OrderConfirmDialog(
                     )
                 }
                 if (needsCustomer) {
-                    CheckoutStyleSectionLabel("CLIENTE CON CRÉDITO")
-                    if (customers.isEmpty()) Text("No hay clientes sincronizados. Registra primero el cliente desde Clientes.", color = BSPOSTheme.colors.error)
-                    else customers.filter { it.isActive != false }.take(8).forEach { item ->
-                        FilterChip(
-                            selected = customer?.id == item.id,
-                            onClick = { customer = item },
-                            label = { Text(item.name ?: listOfNotNull(item.firstName, item.lastName).joinToString(" ").ifBlank { "Cliente" }) }
-                        )
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.weight(1f)) { CheckoutStyleSectionLabel("CLIENTE CON CRÉDITO") }
+                        TextButton(onClick = onCreateCustomer, enabled = !busy && !creatingCustomer) { Text("Nuevo cliente") }
                     }
+                    if (customersLoading) Text("Cargando clientes…", color = BSPOSTheme.colors.textSecondary)
+                    else if (customers.isEmpty()) Text("Aún no hay clientes. Crea uno aquí para continuar a crédito.", color = BSPOSTheme.colors.textSecondary)
+                    else customers.filter { it.isActive != false }.forEach { item ->
+                        val name = item.name ?: listOfNotNull(item.firstName, item.lastName).joinToString(" ").ifBlank { "Cliente" }
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { customer = item },
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (customer?.id == item.id) BSPOSTheme.colors.primaryLight else BSPOSTheme.colors.surface,
+                            border = BorderStroke(
+                                1.dp,
+                                if (customer?.id == item.id) BSPOSTheme.colors.primary else BSPOSTheme.colors.outline
+                            )
+                        ) {
+                            Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+                                Text(name, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(
+                                    listOfNotNull(item.phone?.takeIf { it.isNotBlank() }, item.creditLimit?.let { "Límite ${LocalCurrency.current.symbol}$it" }).joinToString(" · ").ifBlank { "Sin teléfono ni límite registrado" },
+                                    color = BSPOSTheme.colors.textSecondary,
+                                    fontSize = 11.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
+                    customerCreateError?.let { Text(it, color = BSPOSTheme.colors.error, fontSize = 12.sp) }
                 }
                 OutlinedTextField(reference, { reference = it }, label = { Text("Referencia (opcional)") }, singleLine = true, shape = RoundedCornerShape(10.dp), modifier = Modifier.fillMaxWidth())
+    }
+}
+
+@Composable
+private fun NewCreditCustomerDialog(
+    busy: Boolean,
+    error: String?,
+    onDismiss: () -> Unit,
+    onCreate: (NewCreditCustomerInput) -> Unit
+) {
+    var name by remember { mutableStateOf("") }
+    var phone by remember { mutableStateOf("") }
+    var creditLimit by remember { mutableStateOf("") }
+    val parsedCredit = MoneyUtils.parseDecimalToCents(creditLimit)
+    val valid = name.trim().isNotBlank() && parsedCredit != null && parsedCredit > 0L
+
+    Dialog(
+        onDismissRequest = { if (!busy) onDismiss() },
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Surface(
+            modifier = Modifier.fillMaxWidth(.92f).heightIn(max = 620.dp),
+            shape = RoundedCornerShape(26.dp),
+            color = BSPOSTheme.colors.surface,
+            tonalElevation = 6.dp
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(22.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text("Nuevo cliente a crédito", fontWeight = FontWeight.ExtraBold, style = MaterialTheme.typography.titleLarge)
+                Text("Créalo y selecciónalo sin salir de este pedido.", color = BSPOSTheme.colors.textSecondary)
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Nombre completo") },
+                    singleLine = true,
+                    enabled = !busy,
+                    isError = name.isBlank() && name.isNotEmpty(),
+                    shape = RoundedCornerShape(12.dp)
+                )
+                OutlinedTextField(
+                    value = phone,
+                    onValueChange = { value -> phone = value.filter { it.isDigit() || it == '+' || it == ' ' || it == '-' } },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Teléfono / WhatsApp (opcional)") },
+                    singleLine = true,
+                    enabled = !busy,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                    shape = RoundedCornerShape(12.dp)
+                )
+                OutlinedTextField(
+                    value = creditLimit,
+                    onValueChange = { value ->
+                        val normalized = value.replace(',', '.')
+                        if (normalized.isEmpty() || normalized.matches(Regex("[0-9]+(\\.[0-9]{0,2})?"))) creditLimit = normalized
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Límite de crédito (${LocalCurrency.current.symbol})") },
+                    singleLine = true,
+                    enabled = !busy,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    isError = creditLimit.isNotBlank() && parsedCredit == null,
+                    shape = RoundedCornerShape(12.dp)
+                )
+                error?.let { Text(it, color = BSPOSTheme.colors.error, fontSize = 12.sp) }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(onClick = onDismiss, enabled = !busy) { Text("Cancelar") }
+                    Button(
+                        onClick = { onCreate(NewCreditCustomerInput(name, phone, creditLimit)) },
+                        enabled = valid && !busy
+                    ) {
+                        if (busy) CircularProgressIndicator(Modifier.width(18.dp).height(18.dp), strokeWidth = 2.dp)
+                        else Text("Crear y seleccionar")
+                    }
+                }
+            }
+        }
     }
 }
 

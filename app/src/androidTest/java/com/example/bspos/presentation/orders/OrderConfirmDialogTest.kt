@@ -25,6 +25,7 @@ class OrderConfirmDialogTest {
                 OrderConfirmDialog(
                     row = row,
                     customers = listOf(customer),
+                    customersLoading = false,
                     busy = false,
                     onDismiss = {},
                     onConfirm = { kind, method, customerId, credit, reference ->
@@ -42,5 +43,58 @@ class OrderConfirmDialogTest {
         compose.onNodeWithText("Confirmar venta").assertIsEnabled().performClick()
 
         assertEquals(listOf("mixed", "bank_transfer", "customer-juan-pis", "7500.00", ""), result)
+    }
+
+    @Test fun creditModeOffersCreatingCustomerWithoutLeavingTheOrder() {
+        var createClicks = 0
+        val row = FeatureRowDto(id = "order-new-customer", primary = "Pedido nuevo cliente", value = "RD$ 600.00", canConfirm = true)
+
+        compose.setContent {
+            BSPOSTheme {
+                OrderConfirmDialog(
+                    row = row,
+                    customers = emptyList(),
+                    customersLoading = false,
+                    busy = false,
+                    onDismiss = {},
+                    onCreateCustomer = { createClicks++ },
+                    onConfirm = { _, _, _, _, _ -> }
+                )
+            }
+        }
+
+        compose.onNodeWithText("Crédito").performClick()
+        compose.onNodeWithText("Nuevo cliente").assertIsDisplayed().performClick()
+
+        assertEquals(1, createClicks)
+        compose.onNodeWithText("Aún no hay clientes. Crea uno aquí para continuar a crédito.").assertExists()
+    }
+
+    @Test fun createdCustomerIsSelectedBeforeItsFormCloses() {
+        var customerFormCloseCalls = 0
+        var selectedCustomerId: String? = null
+        val customer = RemoteCustomerDto(id = "customer-created", name = "Nuevo cliente", isActive = true)
+
+        compose.setContent {
+            BSPOSTheme {
+                OrderConfirmDialog(
+                    row = FeatureRowDto(id = "order-created-customer", primary = "Pedido", value = "RD$ 600.00", canConfirm = true),
+                    customers = listOf(customer),
+                    customersLoading = false,
+                    createdCustomer = customer,
+                    busy = false,
+                    onDismiss = {},
+                    onCreatedCustomerSelected = { customerFormCloseCalls++ },
+                    onConfirm = { _, _, customerId, _, _ -> selectedCustomerId = customerId }
+                )
+            }
+        }
+
+        compose.waitForIdle()
+        compose.onNodeWithText("Crédito").performClick()
+        compose.onNodeWithText("Confirmar venta").assertIsEnabled().performClick()
+
+        assertEquals(1, customerFormCloseCalls)
+        assertEquals("customer-created", selectedCustomerId)
     }
 }

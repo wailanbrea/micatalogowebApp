@@ -89,7 +89,6 @@ fun ReturnScreen(viewModel: ReturnViewModel = hiltViewModel()) {
             if (eligible.isEmpty()) Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) { Text("No hay ventas elegibles para reembolso", color = BSPOSTheme.colors.textSecondary) }
             else LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) { items(eligible, key = { it.id }) { sale -> SaleCard(sale) { selected = sale; viewModel.select(sale) } } }
         } else {
-            Text("Selecciona un producto y la cantidad a devolver.", color = BSPOSTheme.colors.textSecondary)
             Spacer(Modifier.size(8.dp))
             if (items.isEmpty()) Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) { Text("La factura no contiene productos", color = BSPOSTheme.colors.textSecondary) }
             else LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) { items(selectedItems, key = { it.id }) { item -> ReturnItemCard(names[item.productId] ?: "Producto", item) { if (item.quantity > (returnedByItem[item.id] ?: 0L)) line = item } } }
