@@ -52,22 +52,16 @@ class LoginViewModel @Inject constructor(
         if (syncing || syncedToken == token) return@launch
         syncing = true
         try {
-            UiErrorBus.show("Sincronizando MiCatalogo...")
-            val saleSyncMessage = when (val result = posSaleRepository.syncDueSales()) {
+            val warnings = mutableListOf<String>()
+            when (val result = posSaleRepository.syncDueSales()) {
                 is MiCatalogoResult.Success -> {
-                    val recoveryMessage = result.value.recoveredBottles
-                        .takeIf { it.isNotEmpty() }
-                        ?.joinToString(prefix = "; botella(s) recuperada(s): ")
                     if (result.value.retried > 0) posSaleSyncScheduler.enqueue()
-                    when {
-                        result.value.sent > 0 -> "${result.value.sent} ventas enviadas${recoveryMessage.orEmpty()}"
-                        result.value.blocked > 0 -> "${result.value.blocked} ventas requieren revisión"
-                        else -> recoveryMessage?.trimStart(';', ' ')
-                    }
+                    if (result.value.retried > 0) warnings += "${result.value.retried} ventas siguen pendientes de envío"
+                    if (result.value.blocked > 0) warnings += "${result.value.blocked} ventas requieren revisión"
                 }
                 is MiCatalogoResult.Failure -> {
                     posSaleSyncScheduler.enqueue()
-                    "No se pudieron reenviar las ventas pendientes"
+                    warnings += "No se pudieron reenviar las ventas pendientes"
                 }
             }
             val shops = when (val result = connectionRepository.shops()) {
@@ -89,16 +83,9 @@ class LoginViewModel @Inject constructor(
                 }
             }
             syncedToken = token
-            val products = summaries.sumOf { it.productsApplied }
-            val images = summaries.sumOf { it.imagesDownloaded }
             val failedImages = summaries.sumOf { it.imagesFailed }
-            val imageStatus = if (failedImages == 0) {
-                "$images imágenes descargadas"
-            } else {
-                "$images imágenes descargadas, $failedImages pendientes"
-            }
-            val sales = saleSyncMessage?.let { " $it." }.orEmpty()
-            UiErrorBus.show("MiCatalogo sincronizado: $products productos. $imageStatus.$sales")
+            if (failedImages > 0) warnings += "$failedImages imágenes quedaron pendientes de descargar"
+            if (warnings.isNotEmpty()) UiErrorBus.show(warnings.joinToString(". "))
         } finally {
             syncing = false
         }

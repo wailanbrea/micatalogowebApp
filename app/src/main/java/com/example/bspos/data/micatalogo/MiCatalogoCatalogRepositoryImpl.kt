@@ -209,6 +209,7 @@ class MiCatalogoCatalogRepositoryImpl @Inject constructor(
                 miCatalogoSourceProductId = remote.sourceProductId,
                 miCatalogoVolumeMl = remote.volumeMl,
                 miCatalogoAvailableMl = if (remote.id in pendingRemoteProductIds) existing?.miCatalogoAvailableMl else remote.inventory.availableMl,
+                miCatalogoReservedDecantMl = if (remote.id in pendingRemoteProductIds) existing?.miCatalogoReservedDecantMl else remote.inventory.reservedDecantMl,
                 miCatalogoOpenedBottles = if (remote.id in pendingRemoteProductIds) existing?.miCatalogoOpenedBottles else remote.inventory.openedBottles,
                 miCatalogoSaleUnit = remote.saleUnit,
                 miCatalogoIsCombo = remote.isCombo,

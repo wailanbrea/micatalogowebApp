@@ -19,6 +19,7 @@ class SettingsRepositoryImpl @Inject constructor(private val dataStore: DataStor
             allowNegativeStock = values[ALLOW_NEGATIVE_STOCK] ?: false,
             automaticBackupsEnabled = values[AUTOMATIC_BACKUPS_ENABLED] ?: false,
             routesEnabled = values[ROUTES_ENABLED] ?: false,
+            showSupportOnDashboard = values[SHOW_SUPPORT_ON_DASHBOARD] ?: true,
             currency = CurrencyUnit.entries.firstOrNull { it.code == values[CURRENCY] } ?: CurrencyUnit.DOP,
             invoice = InvoiceConfig(
                 businessName = values[INVOICE_BUSINESS_NAME] ?: "MiCatalogo",
@@ -33,6 +34,7 @@ class SettingsRepositoryImpl @Inject constructor(private val dataStore: DataStor
     override suspend fun setAllowNegativeStock(enabled: Boolean) { dataStore.edit { it[ALLOW_NEGATIVE_STOCK] = enabled } }
     override suspend fun setAutomaticBackupsEnabled(enabled: Boolean) { dataStore.edit { it[AUTOMATIC_BACKUPS_ENABLED] = enabled } }
     override suspend fun setRoutesEnabled(enabled: Boolean) { dataStore.edit { it[ROUTES_ENABLED] = enabled } }
+    override suspend fun setShowSupportOnDashboard(enabled: Boolean) { dataStore.edit { it[SHOW_SUPPORT_ON_DASHBOARD] = enabled } }
     override suspend fun setCurrency(currency: CurrencyUnit) { dataStore.edit { it[CURRENCY] = currency.code } }
     override suspend fun setInvoiceConfig(config: InvoiceConfig) {
         dataStore.edit {
@@ -48,6 +50,7 @@ class SettingsRepositoryImpl @Inject constructor(private val dataStore: DataStor
         val ALLOW_NEGATIVE_STOCK = booleanPreferencesKey("allow_negative_stock")
         val AUTOMATIC_BACKUPS_ENABLED = booleanPreferencesKey("automatic_backups_enabled")
         val ROUTES_ENABLED = booleanPreferencesKey("routes_enabled")
+        val SHOW_SUPPORT_ON_DASHBOARD = booleanPreferencesKey("show_support_on_dashboard")
         val CURRENCY = stringPreferencesKey("currency")
         val INVOICE_BUSINESS_NAME = stringPreferencesKey("invoice_business_name")
         val INVOICE_TAX_ID = stringPreferencesKey("invoice_tax_id")

@@ -70,7 +70,8 @@ class InventoryMigrationTest {
                     DatabaseMigrations.MIGRATION_17_18, DatabaseMigrations.MIGRATION_18_19,
                     DatabaseMigrations.MIGRATION_19_20, DatabaseMigrations.MIGRATION_20_21,
                     DatabaseMigrations.MIGRATION_21_22, DatabaseMigrations.MIGRATION_22_23,
-                    DatabaseMigrations.MIGRATION_23_24, DatabaseMigrations.MIGRATION_24_25)
+                    DatabaseMigrations.MIGRATION_23_24, DatabaseMigrations.MIGRATION_24_25,
+                    DatabaseMigrations.MIGRATION_25_26)
                 .addCallback(InventoryIntegrity).build()
             try {
                 val rows = upgraded.posSaleOutboxDao().findDue(Instant.now(), 100)
@@ -84,7 +85,10 @@ class InventoryMigrationTest {
                 }
                 assertTrue(upgraded.operationOutboxDao().pendingRefreshes().isEmpty())
                 upgraded.openHelper.writableDatabase.query("PRAGMA foreign_key_check").use { assertFalse(it.moveToFirst()) }
-            } finally { upgraded.close() }
+            } finally {
+                upgraded.close()
+                context.deleteDatabase("published-v15-upgrade-" + upgraded.openHelper.writableDatabase.path?.split("/")?.lastOrNull { it.endsWith(".db") } ?: "unknown")
+            }
         } finally { oldHelper.close(); context.deleteDatabase(name) }
     }
 
@@ -124,6 +128,7 @@ class InventoryMigrationTest {
             .addMigrations(DatabaseMigrations.MIGRATION_22_23)
             .addMigrations(DatabaseMigrations.MIGRATION_23_24)
             .addMigrations(DatabaseMigrations.MIGRATION_24_25)
+            .addMigrations(DatabaseMigrations.MIGRATION_25_26)
             .addCallback(InventoryIntegrity)
             .build()
         try {

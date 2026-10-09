@@ -3,12 +3,17 @@ package com.example.bspos.data.micatalogo.dto
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.KSerializer
+import kotlinx.serialization.builtins.MapSerializer
+import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.descriptors.PrimitiveKind
 import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
 import kotlinx.serialization.descriptors.SerialDescriptor
 import kotlinx.serialization.json.JsonDecoder
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.JsonTransformingSerializer
 
 /**
  * Some legacy feature endpoints returned row ids as JSON numbers while newer
@@ -29,6 +34,19 @@ object FlexibleStringSerializer : KSerializer<String> {
         val element: JsonElement = jsonDecoder.decodeJsonElement()
         return (element as? JsonPrimitive)?.content ?: element.toString()
     }
+}
+
+/**
+ * Some older shop records were serialized by the API as business_hours: []
+ * when no schedule had been configured. The current contract is an object
+ * keyed by day, so treat the legacy empty array as an empty schedule instead
+ * of failing the whole settings screen during deserialization.
+ */
+object ShopHoursMapSerializer : JsonTransformingSerializer<Map<String, ShopHoursDto>>(
+    MapSerializer(String.serializer(), ShopHoursDto.serializer())
+) {
+    override fun transformDeserialize(element: JsonElement): JsonElement =
+        if (element is JsonArray && element.isEmpty()) JsonObject(emptyMap()) else element
 }
 
 @Serializable
@@ -88,10 +106,12 @@ data class SupportConversationDto(
     val status: String = "open",
     @SerialName("created_at") val createdAt: String? = null,
     @SerialName("last_message_at") val lastMessageAt: String? = null,
+    @SerialName("closed_at") val closedAt: String? = null,
     @SerialName("unread_count") val unreadCount: Int = 0,
     val shop: SupportChatShopDto? = null,
     val requester: SupportChatUserDto? = null,
-    @SerialName("assigned_to") val assignedTo: SupportChatUserDto? = null
+    @SerialName("assigned_to") val assignedTo: SupportChatUserDto? = null,
+    @SerialName("closed_by") val closedBy: SupportChatUserDto? = null
 )
 
 @Serializable
@@ -369,7 +389,9 @@ data class ShopSettingsDto(
     @SerialName("offers_shipping") val offersShipping: Boolean = false,
     @SerialName("primary_color") val primaryColor: String = "#1d4ed8",
     @SerialName("secondary_color") val secondaryColor: String = "#0f172a",
-    @SerialName("business_hours") val businessHours: Map<String, ShopHoursDto> = emptyMap(),
+    @SerialName("business_hours")
+    @kotlinx.serialization.Serializable(with = ShopHoursMapSerializer::class)
+    val businessHours: Map<String, ShopHoursDto> = emptyMap(),
     val google: GoogleSettingsDto = GoogleSettingsDto(),
     @SerialName("business_types") val businessTypes: List<ShopTypeOptionDto> = emptyList(),
     @SerialName("operational_settings") val operationalSettings: OperationalSettingsDto = OperationalSettingsDto(),
@@ -717,8 +739,19 @@ data class ShopDto(
     val presentation: BusinessPresentationDto = BusinessPresentationDto(),
     val quota: ShopQuotaDto? = null,
     @SerialName("menu_permissions") val menuPermissions: List<String> = emptyList(),
+    @SerialName("enabled_menu_keys") val enabledMenuKeys: List<String>? = null,
+    @SerialName("can_manage_menu_visibility") val canManageMenuVisibility: Boolean = false,
+    @SerialName("menu_options") val menuOptions: List<ShopMenuOptionDto> = emptyList(),
     @SerialName("can_manage_sellers") val canManageSellers: Boolean = false,
     val sellers: List<ShopSellerDto> = emptyList()
+)
+
+@Serializable
+data class ShopMenuOptionDto(
+    val key: String = "",
+    val label: String = "",
+    val group: String = "Ajustes",
+    @SerialName("protected") val protected: Boolean = false
 )
 
 @Serializable
@@ -799,6 +832,18 @@ data class ShopSellerDto(
 @Serializable
 data class MenuPermissionsUpdateDto(
     @SerialName("menu_permissions") val menuPermissions: List<String>
+)
+
+@Serializable
+data class MenuVisibilityUpdateDto(
+    @SerialName("enabled_menu_keys") val enabledMenuKeys: List<String>
+)
+
+@Serializable
+data class MenuVisibilityResponseDto(
+    val message: String = "",
+    @SerialName("enabled_menu_keys") val enabledMenuKeys: List<String> = emptyList(),
+    @SerialName("menu_permissions") val menuPermissions: List<String> = emptyList()
 )
 
 @Serializable
@@ -976,6 +1021,7 @@ data class RemoteInventoryDto(
     @SerialName("track_inventory") val trackInventory: Boolean,
     @SerialName("stock_quantity") val stockQuantity: Int? = null,
     @SerialName("available_ml") val availableMl: Int? = null,
+    @SerialName("reserved_decant_ml") val reservedDecantMl: Int? = null,
     @SerialName("opened_bottles") val openedBottles: Int? = null,
     @SerialName("cost_price") val costPrice: String? = null,
     @SerialName("low_stock_threshold") val lowStockThreshold: Int? = null

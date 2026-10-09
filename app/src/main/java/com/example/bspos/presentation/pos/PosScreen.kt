@@ -97,6 +97,8 @@ import com.example.bspos.core.money.MoneyUtils
 import com.example.bspos.domain.model.Product
 import com.example.bspos.domain.model.Customer
 import com.example.bspos.domain.model.MiCatalogoBusinessPresentation
+import com.example.bspos.presentation.common.BSPOSAlertDialog as AlertDialog
+import com.example.bspos.presentation.common.BSPOSModalBottomSheet
 import coil.compose.AsyncImage
 import java.util.Locale
 
@@ -190,7 +192,9 @@ fun PosScreen(
             if (result.success) {
                 showCart = false
                 showingSplitDialog = false
+                reviewMethod = null
             } else {
+                if (showingSplitDialog || reviewMethod != null) return@LaunchedEffect
                 // The modal sheet can cover the root Snackbar. Close it first so
                 // failures such as "open cash session required" are visible.
                 showCart = false
@@ -338,7 +342,7 @@ fun PosScreen(
         SnackbarHost(snackbarHostState, Modifier.align(Alignment.BottomCenter).padding(16.dp))
     }
     if (showCart) {
-        ModalBottomSheet(
+        BSPOSModalBottomSheet(
             onDismissRequest = { showCart = false },
             sheetState = cartSheetState
         ) {
@@ -379,8 +383,14 @@ fun PosScreen(
         SplitPaymentDialog(
             totalCents = cartTotal,
             customerName = customer?.fullName,
-            onDismiss = { showingSplitDialog = false },
+            creditAvailable = customer?.let { (it.creditLimit - it.balance).coerceAtLeast(0L) },
+            creditEnabled = presentation.posShowCredit || creditOnly,
+            isProcessing = isProcessing,
+            errorMessage = checkoutResult?.takeUnless { it.success }?.message,
+            onChooseCustomer = { choosingCustomer = true },
+            onDismiss = { if (!isProcessing) { showingSplitDialog = false; viewModel.consumeCheckoutResult() } },
             onConfirm = { payments, dueDate ->
+                viewModel.consumeCheckoutResult()
                 viewModel.completeSplit(payments, dueDate)
             }
         )
@@ -398,6 +408,11 @@ fun PosScreen(
             creditEnabled = presentation.posShowCredit || creditOnly,
             showCosts = showCosts,
             isProcessing = isProcessing,
+            errorMessage = checkoutResult?.takeUnless { it.success }?.message,
+            onCreditConfirm = { abono, method, notes, reference, dueDate ->
+                viewModel.consumeCheckoutResult()
+                viewModel.completeCredit(dueDate, notes, abono, method, reference)
+            },
             onDismiss = { if (!isProcessing) reviewMethod = null },
             onCustomer = { if (!isProcessing) choosingCustomer = true },
             onNewCustomer = { if (!isProcessing) { reviewMethod = null; onOpenCustomers() } },
@@ -419,7 +434,7 @@ fun PosScreen(
                 }
             },
             onConfirm = { notes, reference, dueDate ->
-                reviewMethod = null
+                viewModel.consumeCheckoutResult()
                 when (method) {
                     CheckoutReviewMethod.CASH -> viewModel.completeCash(notes)
                     CheckoutReviewMethod.CARD -> viewModel.completeCard(notes)
@@ -920,7 +935,7 @@ private fun TerminalModeRow(onQuote: () -> Unit) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun TerminalOptionsSheet(onDismiss: () -> Unit, onDayClose: () -> Unit, onQuote: () -> Unit, showQuote: Boolean, showDayClose: Boolean) {
-    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = BSPOSTheme.colors.surface) {
+    BSPOSModalBottomSheet(onDismissRequest = onDismiss) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).navigationBarsPadding(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("Opciones de la terminal", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
             Text("Acciones relacionadas con esta jornada de ventas.", color = BSPOSTheme.colors.textSecondary)
@@ -957,10 +972,10 @@ private fun SaleCompleteDialog(
                 .fillMaxWidth()
                 .widthIn(max = 430.dp)
                 .padding(horizontal = 20.dp, vertical = 24.dp),
-            shape = RoundedCornerShape(28.dp),
+            shape = BSPOSTheme.shapes.extraLarge,
             color = BSPOSTheme.colors.surface,
-            tonalElevation = 8.dp,
-            shadowElevation = 14.dp
+            tonalElevation = 6.dp,
+            shadowElevation = 8.dp
         ) {
             Column(
                 modifier = Modifier.padding(24.dp),
@@ -1264,7 +1279,7 @@ internal fun BarcodeScannerSheet(onDismiss: () -> Unit, onCode: (String) -> Unit
         if (!permissionGranted) permissionLauncher.launch(Manifest.permission.CAMERA)
     }
 
-    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = BSPOSTheme.colors.surface) {
+    BSPOSModalBottomSheet(onDismissRequest = onDismiss) {
         Column(
             modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 20.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -1565,31 +1580,31 @@ private fun CartActions(cartIsEmpty: Boolean, isProcessing: Boolean, creditSelec
 }
 
 @Composable
-private fun SplitPaymentDialog(
+internal fun SplitPaymentDialog(
     totalCents: Long,
     customerName: String?,
     onDismiss: () -> Unit,
-    onConfirm: (List<com.example.bspos.domain.usecase.PosPaymentSplitInput>, String?) -> Unit
+    onConfirm: (List<com.example.bspos.domain.usecase.PosPaymentSplitInput>, String?) -> Unit,
+    creditAvailable: Long? = null,
+    creditEnabled: Boolean = true,
+    isProcessing: Boolean = false,
+    errorMessage: String? = null,
+    onChooseCustomer: () -> Unit = {}
 ) {
-    var cashText by remember { mutableStateOf("") }
-    var cardText by remember { mutableStateOf("") }
-    var transferText by remember { mutableStateOf("") }
-    var creditText by remember { mutableStateOf("") }
-    var referenceText by remember { mutableStateOf("") }
-    var dueDateText by remember { mutableStateOf("") }
-
-    val cashCents = MoneyUtils.parsePesosStringToCents(cashText)
-    val cardCents = MoneyUtils.parsePesosStringToCents(cardText)
-    val transferCents = MoneyUtils.parsePesosStringToCents(transferText)
-    val creditCents = MoneyUtils.parsePesosStringToCents(creditText)
-
-    val sumCents = cashCents + cardCents + transferCents + creditCents
-    val diffCents = totalCents - sumCents
-    val isBalanced = diffCents == 0L && totalCents > 0L
-    val canSubmit = isBalanced && (creditCents == 0L || customerName != null)
+    var cashText by rememberSaveable { mutableStateOf("") }
+    var cardText by rememberSaveable { mutableStateOf("") }
+    var transferText by rememberSaveable { mutableStateOf("") }
+    var useCredit by rememberSaveable { mutableStateOf(false) }
+    var referenceText by rememberSaveable { mutableStateOf("") }
+    var dueDateText by rememberSaveable { mutableStateOf("") }
+    val validation = validatePaymentWithAutomaticCredit(totalCents, cashText, cardText, transferText, useCredit,
+        customerName != null, creditAvailable, creditEnabled, dueDateText)
+    val sumCents = validation.sum
+    val diffCents = validation.difference
+    val creditCents = validation.credit
 
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!isProcessing) onDismiss() },
         modifier = Modifier.padding(8.dp),
         shape = RoundedCornerShape(28.dp),
         containerColor = BSPOSTheme.colors.surface,
@@ -1606,6 +1621,7 @@ private fun SplitPaymentDialog(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .heightIn(max = 420.dp)
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
@@ -1626,9 +1642,10 @@ private fun SplitPaymentDialog(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Text("Suma ingresada:", color = BSPOSTheme.colors.textSecondary)
-                            Text(money(sumCents), fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
+                            Text("Abono inicial:", color = BSPOSTheme.colors.textSecondary)
+                            Text(money(sumCents - creditCents), fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
                         }
+                        Text("Saldo pendiente: ${money(creditCents)}", fontWeight = FontWeight.Bold)
                         HorizontalDivider()
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -1649,9 +1666,12 @@ private fun SplitPaymentDialog(
                     }
                 }
 
-                if (creditCents > 0L && customerName == null) {
+                if (creditEnabled) TextButton(onClick = onChooseCustomer, enabled = !isProcessing) {
+                    Text(customerName ?: "Seleccionar cliente para crédito")
+                }
+                (errorMessage ?: validation.error)?.let { error ->
                     Text(
-                        "Atención: Para asignar crédito debes seleccionar un cliente.",
+                        error,
                         color = Color(0xFFE65100),
                         style = MaterialTheme.typography.bodySmall
                     )
@@ -1659,39 +1679,38 @@ private fun SplitPaymentDialog(
 
                 OutlinedTextField(
                     value = cashText,
+                    enabled = !isProcessing,
                     onValueChange = { cashText = it },
                     label = { Text("Efectivo (${LocalCurrency.current.symbol})") },
                     keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal),
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().testTag("split-cash"),
                     singleLine = true
                 )
 
                 OutlinedTextField(
                     value = cardText,
+                    enabled = !isProcessing,
                     onValueChange = { cardText = it },
                     label = { Text("Tarjeta (${LocalCurrency.current.symbol})") },
                     keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal),
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().testTag("split-card"),
                     singleLine = true
                 )
 
                 OutlinedTextField(
                     value = transferText,
+                    enabled = !isProcessing,
                     onValueChange = { transferText = it },
                     label = { Text("Transferencia (${LocalCurrency.current.symbol})") },
                     keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal),
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().testTag("split-transfer"),
                     singleLine = true
                 )
 
-                OutlinedTextField(
-                    value = creditText,
-                    onValueChange = { creditText = it },
-                    label = { Text("Crédito (${LocalCurrency.current.symbol})") },
-                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal),
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
-                )
+                if (creditEnabled) Row(verticalAlignment = Alignment.CenterVertically) {
+                    androidx.compose.material3.Checkbox(checked = useCredit, enabled = !isProcessing, onCheckedChange = { useCredit = it })
+                    Text("Saldo restante a crédito", Modifier.clickable(enabled = !isProcessing) { useCredit = !useCredit })
+                }
 
                 if (creditCents > 0L) {
                     OutlinedTextField(
@@ -1717,20 +1736,17 @@ private fun SplitPaymentDialog(
         confirmButton = {
             Button(
                 onClick = {
-                    val list = mutableListOf<com.example.bspos.domain.usecase.PosPaymentSplitInput>()
-                    if (cashCents > 0L) list.add(com.example.bspos.domain.usecase.PosPaymentSplitInput("cash", cashCents))
-                    if (cardCents > 0L) list.add(com.example.bspos.domain.usecase.PosPaymentSplitInput("card", cardCents))
-                    if (transferCents > 0L) list.add(com.example.bspos.domain.usecase.PosPaymentSplitInput("bank_transfer", transferCents, referenceText.ifBlank { null }))
-                    if (creditCents > 0L) list.add(com.example.bspos.domain.usecase.PosPaymentSplitInput("credit", creditCents))
-                    onConfirm(list, dueDateText.ifBlank { null })
+                    onConfirm(validation.payments.map { payment ->
+                        if (payment.method == "bank_transfer") payment.copy(reference = referenceText.trim().ifBlank { null }) else payment
+                    }, validation.dueDate)
                 },
-                enabled = canSubmit
+                enabled = validation.canSubmit && !isProcessing
             ) {
-                Text("Confirmar Cobro")
+                Text(if (isProcessing) "Registrando…" else "Confirmar Cobro")
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
+            TextButton(onClick = onDismiss, enabled = !isProcessing) {
                 Text("Cancelar")
             }
         }

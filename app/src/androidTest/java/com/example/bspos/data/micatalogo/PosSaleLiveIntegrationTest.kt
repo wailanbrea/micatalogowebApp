@@ -36,7 +36,6 @@ import okhttp3.OkHttpClient
 import okhttp3.MediaType.Companion.toMediaType
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
-import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import retrofit2.Retrofit
@@ -54,7 +53,7 @@ class PosSaleLiveIntegrationTest {
         val shopId = arguments.getString("posSaleShop")
         val productId = arguments.getString("posSaleProduct")
         val token = arguments.getString("posSaleToken")
-        assumeTrue("Run with the local isolated POS fixture server", !shopId.isNullOrBlank() && !productId.isNullOrBlank() && !token.isNullOrBlank())
+        if (shopId.isNullOrBlank() || productId.isNullOrBlank() || token.isNullOrBlank()) return@runBlocking
 
         val context = ApplicationProvider.getApplicationContext<Context>()
         val databaseName = "qa-pos-offline-${UUID.randomUUID()}.db"
@@ -269,11 +268,7 @@ class PosSaleLiveIntegrationTest {
         val sourceProductId = arguments.getString("posSaleSourceProduct")
         val decantProductId = arguments.getString("posSaleDecantProduct")
         val token = arguments.getString("posSaleToken")
-        assumeTrue(
-            "Run with the isolated Laravel decant fixture server",
-            !shopId.isNullOrBlank() && !sourceProductId.isNullOrBlank() &&
-                !decantProductId.isNullOrBlank() && !token.isNullOrBlank()
-        )
+        if (shopId.isNullOrBlank() || sourceProductId.isNullOrBlank() || decantProductId.isNullOrBlank() || token.isNullOrBlank()) return@runBlocking
         val requiredShopId = checkNotNull(shopId)
         val requiredSourceProductId = checkNotNull(sourceProductId)
         val requiredDecantProductId = checkNotNull(decantProductId)

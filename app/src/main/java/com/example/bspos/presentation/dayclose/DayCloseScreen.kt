@@ -24,6 +24,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.example.bspos.core.money.LocalCurrency
 import com.example.bspos.core.money.MoneyUtils
 import com.example.bspos.core.ui.theme.BSPOSTheme
+import com.example.bspos.presentation.common.BSPOSAlertDialog as AlertDialog
 import com.example.bspos.presentation.finance.FinancePeriodFilter
 import com.example.bspos.presentation.finance.FinanceUiState
 import com.example.bspos.presentation.finance.FinanceViewModel

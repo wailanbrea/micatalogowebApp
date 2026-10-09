@@ -19,6 +19,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.example.bspos.core.ui.theme.BSPOSTheme
 import com.example.bspos.core.money.LocalCurrency
 import com.example.bspos.core.money.MoneyUtils
+import com.example.bspos.presentation.common.BSPOSAlertDialog as AlertDialog
 import com.example.bspos.presentation.common.DialogScrollableColumn
 import java.util.Locale
 

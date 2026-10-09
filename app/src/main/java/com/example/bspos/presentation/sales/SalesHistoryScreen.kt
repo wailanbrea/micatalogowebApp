@@ -29,7 +29,6 @@ import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -41,7 +40,6 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.VerticalDivider
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -68,6 +66,8 @@ import com.example.bspos.domain.model.SalePaymentType
 import com.example.bspos.domain.model.SaleStatus
 import com.example.bspos.presentation.dashboard.DashboardViewModel
 import com.example.bspos.presentation.dashboard.SaleDetailDialog
+import com.example.bspos.presentation.common.BSPOSAlertDialog as AlertDialog
+import com.example.bspos.presentation.common.BSPOSModalBottomSheet
 import com.example.bspos.presentation.pos.InvoicePdfGenerator
 import com.example.bspos.presentation.pos.PosCartLine
 import com.example.bspos.presentation.pos.PosViewModel
@@ -166,7 +166,7 @@ fun SalesHistoryScreen(
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text("VENTAS", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
-                    Text("Consulta tus ventas, cobros y resultados.", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
+                    Text("Consulta tus ventas, cobros, créditos y resultados.", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
                     OutlinedButton(onClick = { showExportDialog = true }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)) {
                         Icon(Icons.Default.FileDownload, null); Spacer(Modifier.width(8.dp)); Text("Exportar ventas")
                     }
@@ -323,7 +323,7 @@ fun SalesHistoryScreen(
         )
     }
     if (showFilters) {
-        ModalBottomSheet(onDismissRequest = { showFilters = false }, sheetState = filterSheetState) {
+        BSPOSModalBottomSheet(onDismissRequest = { showFilters = false }, sheetState = filterSheetState) {
             Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).navigationBarsPadding(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 Text("Filtros de ventas", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
                 Text("Total", color = BSPOSTheme.colors.textSecondary, fontWeight = FontWeight.Bold)
@@ -415,7 +415,7 @@ private fun EmptySalesState() {
     Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface)) {
         Column(Modifier.fillMaxWidth().padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Aún no hay ventas en este período", fontWeight = FontWeight.Bold)
-            Text("Las ventas registradas desde Terminal aparecerán aquí.", color = BSPOSTheme.colors.textSecondary)
+            Text("Las ventas confirmadas, a crédito y con abonos aparecerán aquí.", color = BSPOSTheme.colors.textSecondary)
         }
     }
 }

@@ -19,7 +19,8 @@ import com.example.bspos.core.ui.theme.BSPOSTheme
 internal fun SellerDashboardScreen(
     shopId: String?, businessName: String, showSales: Boolean, showProducts: Boolean,
     showCustomers: Boolean, onNewSale: () -> Unit, onProducts: () -> Unit,
-    onCustomers: () -> Unit, onAllSales: () -> Unit, viewModel: DashboardViewModel
+    onCustomers: () -> Unit, onAllSales: () -> Unit, onSupport: () -> Unit,
+    onHideSupport: () -> Unit, showSupport: Boolean, viewModel: DashboardViewModel
 ) {
     var period by rememberSaveable(shopId) { mutableStateOf("today") }
     val summary by viewModel.sellerSummary.collectAsState()
@@ -44,6 +45,7 @@ internal fun SellerDashboardScreen(
                 }
             }
         }
+        if (showSupport) item { SupportSummaryCard(onSupport = onSupport, onHide = onHideSupport) }
         if (showSales) {
             item {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {

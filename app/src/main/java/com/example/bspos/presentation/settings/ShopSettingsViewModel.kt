@@ -6,6 +6,7 @@ import com.example.bspos.data.micatalogo.api.MiCatalogoApi
 import com.example.bspos.data.micatalogo.dto.ShopSettingsDto
 import com.example.bspos.data.micatalogo.dto.ShopSettingsUpdateDto
 import com.example.bspos.data.micatalogo.dto.ShopLogoUploadResponseDto
+import com.example.bspos.data.micatalogo.apiErrorMessage
 import com.example.bspos.domain.repository.MiCatalogoConnectionRepository
 import com.example.bspos.presentation.common.UiErrorBus
 import dagger.Lazy
@@ -41,7 +42,7 @@ class ShopSettingsViewModel @Inject constructor(
                 val shopId = connection.activeShopId().orEmpty()
                 check(shopId.isNotBlank()) { "Selecciona una tienda activa." }
                 val response = api.get().shopSettings(shopId)
-                check(response.isSuccessful) { response.errorBody()?.string()?.takeIf { it.isNotBlank() } ?: "No se pudo cargar la configuración." }
+                check(response.isSuccessful) { response.apiErrorMessage("No se pudo cargar la configuración.") }
                 response.body() ?: error("La configuración llegó vacía.")
             }.onSuccess { _state.value = ShopSettingsUiState(loading = false, settings = it) }
                 .onFailure { _state.value = ShopSettingsUiState(loading = false, error = it.message ?: "No se pudo cargar la configuración.") }
@@ -55,7 +56,7 @@ class ShopSettingsViewModel @Inject constructor(
                 val shopId = connection.activeShopId().orEmpty()
                 check(shopId.isNotBlank()) { "Selecciona una tienda activa." }
                 val response = api.get().updateShopSettings(shopId, settings)
-                check(response.isSuccessful) { response.errorBody()?.string()?.takeIf { it.isNotBlank() } ?: "No se pudo guardar la configuración." }
+                check(response.isSuccessful) { response.apiErrorMessage("No se pudo guardar la configuración.") }
                 response.body() ?: error("La configuración guardada llegó vacía.")
             }.onSuccess {
                 _state.value = ShopSettingsUiState(loading = false, saving = false, settings = it)
@@ -76,7 +77,7 @@ class ShopSettingsViewModel @Inject constructor(
                 val body = bytes.toRequestBody(mimeType?.toMediaTypeOrNull())
                 val part = MultipartBody.Part.createFormData("logo", fileName, body)
                 val response = api.get().uploadShopLogo(shopId, part)
-                check(response.isSuccessful) { response.errorBody()?.string()?.takeIf { it.isNotBlank() } ?: "No se pudo subir el logo." }
+                check(response.isSuccessful) { response.apiErrorMessage("No se pudo subir el logo.") }
                 response.body() ?: error("La respuesta del logo llegó vacía.")
             }.onSuccess { result: ShopLogoUploadResponseDto ->
                 _state.value = _state.value.copy(loading = false, saving = false, settings = _state.value.settings?.copy(logoUrl = result.logoUrl))

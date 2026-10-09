@@ -39,6 +39,8 @@ import com.example.bspos.domain.model.ProductComboComponent
 import com.example.bspos.domain.model.UnitOfMeasure
 import com.example.bspos.domain.model.MiCatalogoBusinessPresentation
 import com.example.bspos.domain.usecase.ProductInput
+import com.example.bspos.presentation.common.BSPOSAlertDialog as AlertDialog
+import com.example.bspos.presentation.common.BSPOSModalBottomSheet
 import com.example.bspos.presentation.common.DialogScrollableColumn
 import coil.compose.AsyncImage
 import java.util.Locale
@@ -57,7 +59,6 @@ fun CatalogHomeScreen(
     viewModel: ProductCatalogViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
-    var baseCatalog by remember { mutableStateOf(false) }
     var showForm by remember { mutableStateOf(startWithForm || ((initialDecantMode || initialServiceMode) && startWithForm)) }
     var editingProduct by remember { mutableStateOf<Product?>(null) }
     var deleteTarget by remember { mutableStateOf<Product?>(null) }
@@ -65,13 +66,6 @@ fun CatalogHomeScreen(
     var decantFocusProduct by remember { mutableStateOf<Product?>(null) }
     var preselectedSourceRemoteId by remember { mutableStateOf<String?>(null) }
     var photoFilter by remember { mutableStateOf("Pendientes") }
-    if (baseCatalog) {
-        Column(Modifier.fillMaxSize().background(BSPOSTheme.colors.background).padding(20.dp)) {
-            TextButton({ baseCatalog = false }) { Text(presentation.term("products", "Productos")) }
-            CatalogSettingsScreen(Modifier.weight(1f))
-        }
-        return
-    }
     val products by viewModel.products.collectAsState()
     val categories by viewModel.categories.collectAsState()
     val units by viewModel.units.collectAsState()
@@ -105,11 +99,8 @@ fun CatalogHomeScreen(
     }
 
     Column(Modifier.fillMaxSize().background(BSPOSTheme.colors.background).padding(if (isTablet) 28.dp else 20.dp)) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                if (photosOnly) Text("Gestión de fotografías", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
-            }
-            if (!photosOnly) TextButton({ baseCatalog = true }) { Text("Categorias") }
+        if (photosOnly) {
+            Text("Gestión de fotografías", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
         }
         Spacer(Modifier.height(14.dp))
         Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), color = BSPOSTheme.colors.surface, border = androidx.compose.foundation.BorderStroke(1.dp, BSPOSTheme.colors.outline)) {
@@ -120,11 +111,13 @@ fun CatalogHomeScreen(
         }
         Spacer(Modifier.height(12.dp))
         if (initialDecantMode) {
-            val availableMl = sourceProducts.sumOf { it.remoteAvailableMl ?: 0 }
+            val availableMl = sourceProducts.sumOf { it.decantPoolMl() ?: 0 }
             val openBottleCount = sourceProducts.count { source ->
-                val total = source.remoteVolumeMl
-                val available = source.remoteAvailableMl
-                total != null && available != null && available in 1 until total
+                source.remoteOpenedBottles?.let { it > 0 } ?: run {
+                    val total = source.remoteVolumeMl
+                    val available = source.remoteAvailableMl
+                    total != null && available != null && available in 1 until total
+                }
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 DecantMetricCard("Listos", quantities.filterKeys { id -> filtered.any { it.id == id } }.values.sum().toString(), Modifier.weight(1f))
@@ -191,7 +184,7 @@ fun CatalogHomeScreen(
                 border = androidx.compose.foundation.BorderStroke(1.dp, BSPOSTheme.colors.warning.copy(alpha = .35f))
             ) {
                 Text(
-                    "Para crear una presentación decant necesitas al menos una categoría y una unidad activa. Créala desde Productos > Categorías y vuelve a Decants.",
+                    "Para crear una presentación decant necesitas al menos una categoría y una unidad activa. Créala desde Catálogo > Categorías y unidades y vuelve a Decants.",
                     modifier = Modifier.padding(16.dp),
                     color = BSPOSTheme.colors.textPrimary,
                     style = MaterialTheme.typography.bodyMedium
@@ -296,6 +289,8 @@ private fun DecantMetricCard(label: String, value: String, modifier: Modifier = 
     }
 }
 
+private fun Product.decantPoolMl(): Int? = remoteReservedDecantMl ?: remoteAvailableMl
+
 @Composable
 private fun ProductCard(product: Product, quantity: Long, category: String?, showStock: Boolean, showCost: Boolean, showProductCode: Boolean, onClick: () -> Unit, onLongClick: () -> Unit, decantMode: Boolean = false, decantSource: Product? = null, onPrepare: (() -> Unit)? = null, photosOnly: Boolean = false, onImageSearch: (() -> Unit)? = null) {
     val statusColor = when {
@@ -324,7 +319,7 @@ private fun ProductCard(product: Product, quantity: Long, category: String?, sho
             if (decantMode) {
                 Text("Decant · ${product.remoteVolumeMl ?: "—"} ml", color = BSPOSTheme.colors.primary, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
                 Text("Fuente: ${decantSource?.name ?: "Pendiente de sincronizar"}", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text("Disponible: ${decantSource?.remoteAvailableMl ?: "—"} ml en botella", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelSmall)
+                Text("Reservado: ${decantSource?.decantPoolMl() ?: "—"} ml para decants", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelSmall)
             } else if (showProductCode) Text(category ?: product.internalCode, color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Spacer(Modifier.height(7.dp))
             Text("Venta: ${money(product.salePrice)}", color = BSPOSTheme.colors.textPrimary, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold)
@@ -342,7 +337,7 @@ private fun ProductCard(product: Product, quantity: Long, category: String?, sho
 private fun DecantReportDialog(products: List<Product>, quantities: Map<UUID, Long>, sourceProducts: List<Product>, onDismiss: () -> Unit) {
     val ready = products.sumOf { quantities[it.id] ?: 0L }
     val mlReady = products.sumOf { (quantities[it.id] ?: 0L) * (it.remoteVolumeMl ?: 0) }
-    val mlAvailable = sourceProducts.sumOf { it.remoteAvailableMl ?: 0 }
+    val mlAvailable = sourceProducts.sumOf { it.decantPoolMl() ?: 0 }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Reporte de decants", fontWeight = FontWeight.ExtraBold) },
@@ -399,10 +394,8 @@ private fun DecantBottleDialog(
     val selected = sourceProducts.getOrNull(selectedIndex)
     val sealed = selected?.let { quantities[it.id] ?: 0L } ?: 0L
     val quantity = quantityText.toIntOrNull() ?: 0
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        dragHandle = { BottomSheetDefaults.DragHandle() },
-        containerColor = BSPOSTheme.colors.surface
+    BSPOSModalBottomSheet(
+        onDismissRequest = onDismiss
     ) {
         Column(
             modifier = Modifier
@@ -447,7 +440,7 @@ private fun DecantBottleDialog(
                         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                             DecantSummaryRow("Botellas selladas", sealed.toString())
                             DecantSummaryRow("Botellas abiertas", (source.remoteOpenedBottles ?: 0).toString())
-                            DecantSummaryRow("Ml disponibles", "${source.remoteAvailableMl ?: 0} ml")
+                            DecantSummaryRow("Ml reservados", "${source.decantPoolMl() ?: 0} ml")
                         }
                     }
                     OutlinedTextField(
@@ -479,7 +472,7 @@ private fun DecantPrepareDialog(products: List<Product>, quantities: Map<UUID, L
     val source = sourceProducts.firstOrNull { it.remoteProductId == selected?.remoteSourceProductId }
     val size = selected?.remoteVolumeMl ?: 0
     val stock = selected?.let { quantities[it.id] ?: 0L } ?: 0L
-    val available = source?.remoteAvailableMl ?: 0
+    val available = source?.decantPoolMl() ?: 0
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Preparar decants", fontWeight = FontWeight.ExtraBold) },
@@ -494,7 +487,7 @@ private fun DecantPrepareDialog(products: List<Product>, quantities: Map<UUID, L
                             Text(selected.name, fontWeight = FontWeight.Bold)
                             Text("${size} ml · $stock listos para vender", style = MaterialTheme.typography.bodySmall, color = BSPOSTheme.colors.textSecondary)
                             Text("Fuente: ${source?.name ?: "pendiente"}", style = MaterialTheme.typography.bodySmall, color = BSPOSTheme.colors.textSecondary)
-                            Text("Botella: ${available} ml disponibles", style = MaterialTheme.typography.bodySmall, color = BSPOSTheme.colors.textSecondary)
+                             Text("Pool reservado: ${available} ml", style = MaterialTheme.typography.bodySmall, color = BSPOSTheme.colors.textSecondary)
                         }
                     }
                     Text("La disponibilidad se calcula automáticamente. Preparar aquí no crea stock paralelo ni cambia el costo de la botella.", style = MaterialTheme.typography.bodySmall, color = BSPOSTheme.colors.textSecondary)
@@ -604,7 +597,7 @@ private fun ProductForm(current: Product?, currentQuantity: Long, categories: Li
                                 }
                             }
                             Text(
-                                source.remoteAvailableMl?.let { "$it ml disponibles para decantar" } ?: "Existencia de ml pendiente de sincronizar",
+                                source.decantPoolMl()?.let { "$it ml reservados para decants" } ?: "Pool de ml pendiente de sincronizar",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = BSPOSTheme.colors.textSecondary
                             )

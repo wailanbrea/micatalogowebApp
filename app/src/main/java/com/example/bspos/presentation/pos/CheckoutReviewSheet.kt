@@ -27,6 +27,8 @@ import com.example.bspos.core.money.LocalCurrency
 import com.example.bspos.core.money.MoneyUtils
 import com.example.bspos.core.ui.theme.BSPOSTheme
 import com.example.bspos.domain.model.Customer
+import com.example.bspos.presentation.common.BSPOSAlertDialog as AlertDialog
+import com.example.bspos.presentation.common.BSPOSModalBottomSheet
 import java.math.BigDecimal
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -54,7 +56,9 @@ internal fun CheckoutReviewSheet(
     onQuantity: (UUID, Long) -> Unit, onUnitPrice: (UUID, Long) -> Unit,
     onClear: () -> Unit, onDiscount: (Long) -> Unit, onDate: (LocalDate) -> Unit,
     onConfirm: (String?, String?, String?) -> Unit,
-    showCosts: Boolean = false
+    showCosts: Boolean = false,
+    errorMessage: String? = null,
+    onCreditConfirm: ((Long, String, String?, String?, String?) -> Unit)? = null
 ) {
     val total = subtotal - discount.coerceIn(0L, subtotal)
     val context = LocalContext.current
@@ -64,6 +68,13 @@ internal fun CheckoutReviewSheet(
     var notes by remember { mutableStateOf("") }
     var reference by remember { mutableStateOf("") }
     var dueDate by remember { mutableStateOf("") }
+    var downPayment by remember { mutableStateOf("") }
+    var downPaymentMethod by remember { mutableStateOf("cash") }
+    val creditValidation = validatePaymentWithAutomaticCredit(total,
+        if (downPaymentMethod == "cash") downPayment else "",
+        if (downPaymentMethod == "card") downPayment else "",
+        if (downPaymentMethod == "bank_transfer") downPayment else "",
+        true, customer != null, customer?.let { (it.creditLimit - it.balance).coerceAtLeast(0) }, creditEnabled, dueDate)
     var showNotes by remember { mutableStateOf(false) }
     var discountText by remember(discount) { mutableStateOf(amountText(discount)) }
     var showClear by remember { mutableStateOf(false) }
@@ -72,19 +83,13 @@ internal fun CheckoutReviewSheet(
     var showServerDateInfo by remember { mutableStateOf(false) }
     val receivedCents = amountCents(received)
     val valid = cart.isNotEmpty() && !isProcessing && (method != CheckoutReviewMethod.CASH || (MoneyUtils.parseDecimalToCents(received) != null && receivedCents >= total)) &&
-        (method != CheckoutReviewMethod.CREDIT || customer != null)
+        (method != CheckoutReviewMethod.CREDIT || (customer != null && creditValidation.canSubmit))
     val knownCosts = cart.all { it.product.averageCost > 0L }
     val estimatedMargin = if (knownCosts) total - cart.sumOf { Math.multiplyExact(it.quantity, it.product.averageCost) } else null
 
-    ModalBottomSheet(
+    BSPOSModalBottomSheet(
         onDismissRequest = { if (!isProcessing) onDismiss() },
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        containerColor = BSPOSTheme.colors.surface,
-        contentWindowInsets = { WindowInsets(0, 0, 0, 0) },
-        dragHandle = {
-            Surface(Modifier.padding(top = 10.dp, bottom = 6.dp).width(28.dp).height(4.dp),
-                shape = RoundedCornerShape(4.dp), color = BSPOSTheme.colors.outline) {}
-        }
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ) {
         Column(Modifier.fillMaxWidth().fillMaxHeight(0.94f).imePadding()) {
             Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 14.dp)) {
@@ -209,13 +214,34 @@ internal fun CheckoutReviewSheet(
                     }
                     if (method == CheckoutReviewMethod.CASH && receivedCents < total) Text("El recibido debe cubrir el total.", color = BSPOSTheme.colors.error, fontSize = 12.sp)
                     if (method == CheckoutReviewMethod.TRANSFER) OutlinedTextField(reference, { reference = it }, label = { Text("Referencia bancaria (opcional)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                    if (method == CheckoutReviewMethod.CREDIT) OutlinedTextField(dueDate, { dueDate = it }, label = { Text("Vencimiento (AAAA-MM-DD)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    if (method == CheckoutReviewMethod.CREDIT) {
+                        OutlinedTextField(downPayment, { downPayment = it.take(30) },
+                            label = { Text("Abono inicial (${currency.symbol})") }, enabled = !isProcessing,
+                            singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            modifier = Modifier.fillMaxWidth().testTag("credit-down-payment"))
+                        Text("Dejar vacío equivale a no abonar.", style = MaterialTheme.typography.bodySmall)
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            listOf("cash" to "Efectivo", "card" to "Tarjeta", "bank_transfer" to "Transferencia").forEach { (id, label) ->
+                                FilterChip(downPaymentMethod == id, { downPaymentMethod = id }, label = { Text(label) }, enabled = !isProcessing)
+                            }
+                        }
+                        CheckoutValueRow("Saldo pendiente calculado", money(creditValidation.credit))
+                        creditValidation.error?.let { Text(it, color = BSPOSTheme.colors.error, fontSize = 12.sp) }
+                        if (downPaymentMethod == "bank_transfer") OutlinedTextField(reference, { reference = it }, label = { Text("Referencia bancaria (opcional)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                        if (creditValidation.credit > 0) OutlinedTextField(dueDate, { dueDate = it }, label = { Text("Vencimiento (AAAA-MM-DD)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    }
+                    errorMessage?.let { Text(it, color = BSPOSTheme.colors.error, fontSize = 12.sp) }
                     TextButton(onClick = onMixed, enabled = !isProcessing, contentPadding = PaddingValues(0.dp)) { Text("Dividir entre métodos de pago", fontSize = 12.sp) }
                 }
             }
             HorizontalDivider(color = BSPOSTheme.colors.outline)
             Surface(color = BSPOSTheme.colors.surface) {
-                Button(onClick = { onConfirm(notes.trim().ifBlank { null }, reference.trim().ifBlank { null }, dueDate.trim().ifBlank { null }) },
+                Button(onClick = {
+                    if (method == CheckoutReviewMethod.CREDIT && onCreditConfirm != null) {
+                        onCreditConfirm(creditValidation.sum - creditValidation.credit, downPaymentMethod,
+                            notes.trim().ifBlank { null }, reference.trim().ifBlank { null }, creditValidation.dueDate)
+                    } else onConfirm(notes.trim().ifBlank { null }, reference.trim().ifBlank { null }, dueDate.trim().ifBlank { null })
+                },
                     enabled = valid, modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 20.dp, vertical = 12.dp).height(48.dp).testTag("checkout-confirm"),
                     shape = RoundedCornerShape(10.dp)) {
                     if (isProcessing) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp) else Text("Confirmar · ${money(total)}", fontSize = 13.sp, fontWeight = FontWeight.Bold)

@@ -17,6 +17,7 @@ data class AppSettings(
     val allowNegativeStock: Boolean = false,
     val automaticBackupsEnabled: Boolean = false,
     val routesEnabled: Boolean = false,
+    val showSupportOnDashboard: Boolean = true,
     val currency: CurrencyUnit = CurrencyUnit.DOP,
     val invoice: InvoiceConfig = InvoiceConfig()
 )

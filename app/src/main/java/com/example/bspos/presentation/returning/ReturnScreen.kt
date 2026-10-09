@@ -20,7 +20,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.ShoppingBag
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -55,6 +54,7 @@ import com.example.bspos.domain.model.SaleStatus
 import com.example.bspos.presentation.common.DialogScrollableColumn
 import com.example.bspos.domain.usecase.CashRefundAmounts
 import com.example.bspos.domain.usecase.RefundableLine
+import com.example.bspos.presentation.common.BSPOSAlertDialog as AlertDialog
 import java.util.Locale
 
 @Composable

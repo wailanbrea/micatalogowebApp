@@ -1,6 +1,7 @@
 package com.example.bspos.presentation.settings
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,6 +17,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Backup
+import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.Settings
@@ -37,6 +39,8 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.key
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -52,6 +56,7 @@ import com.example.bspos.domain.model.MiCatalogoConnectionState
 import com.example.bspos.domain.model.MiCatalogoShop
 import com.example.bspos.domain.model.SellerMenuOptions
 import com.example.bspos.domain.model.MiCatalogoSeller
+import com.example.bspos.domain.model.ShopMenuOption
 
 @Composable
 fun SettingsScreen(
@@ -65,6 +70,16 @@ fun SettingsScreen(
     val pendingSales by viewModel.pendingSales.collectAsState()
     val pendingPayments by viewModel.pendingPayments.collectAsState()
     val pendingCatalogs by viewModel.pendingCatalogs.collectAsState()
+    var selectedShopId by rememberSaveable(miCatalogoConnection.accountEmail) { mutableStateOf<String?>(null) }
+    val selectedShop = resolveSettingsShop(miCatalogoUi.shops, selectedShopId, miCatalogoConnection.activeShopId)
+    var section by rememberSaveable(teamOnly) { mutableStateOf(if (teamOnly) "team" else "device") }
+    val sections = buildList {
+        if (!teamOnly) add("device" to "Este dispositivo")
+        if (selectedShop?.canManageSellers == true) add("team" to "Equipo y permisos")
+        if (selectedShop?.canManageMenuVisibility == true) add("menus" to "Menús de tienda")
+        if (!teamOnly) add("sync" to "Sincronización")
+    }
+    val activeSection = section.takeIf { key -> sections.any { it.first == key } } ?: sections.firstOrNull()?.first
     LaunchedEffect(miCatalogoConnection.isConfigured) {
         if (miCatalogoConnection.isConfigured) viewModel.loadShops()
     }
@@ -73,11 +88,35 @@ fun SettingsScreen(
             Box(Modifier.size(46.dp).clip(RoundedCornerShape(15.dp)).background(BSPOSTheme.colors.primaryLight), contentAlignment = Alignment.Center) { Icon(Icons.Default.Settings, null, tint = BSPOSTheme.colors.primary) }
             Spacer(Modifier.width(12.dp))
             Column {
-                Text(if (teamOnly) "Equipo" else "Preferencias operativas", fontWeight = FontWeight.ExtraBold)
-                if (teamOnly) Text("Administra usuarios, vendedores y permisos por tienda.", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodySmall)
+                Text(if (teamOnly) "Equipo y permisos" else "Ajustes", fontWeight = FontWeight.ExtraBold)
+                Text("Selecciona la tienda y la sección que quieres configurar.", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodySmall)
             }
         }
-        if (!teamOnly) settings?.let { current ->
+        selectedShop?.let { shop ->
+            Card(colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface)) {
+                Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Tienda que configuras", style = MaterialTheme.typography.labelLarge, color = BSPOSTheme.colors.textSecondary)
+                    Text(shop.name, fontWeight = FontWeight.ExtraBold)
+                    if (miCatalogoUi.shops.size > 1) {
+                        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            miCatalogoUi.shops.forEach { option ->
+                                FilterChip(selected = shop.id == option.id, onClick = { selectedShopId = option.id }, label = { Text(option.name) })
+                            }
+                        }
+                    }
+                    Text("Los menús y vendedores que edites pertenecen únicamente a esta tienda.", style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        }
+        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            sections.forEach { (id, label) -> FilterChip(activeSection == id, { section = id }, label = { Text(label) }) }
+        }
+        miCatalogoUi.successMessage?.let { Text(it, color = BSPOSTheme.colors.success) }
+        miCatalogoUi.errorMessage?.let { Text(it, color = BSPOSTheme.colors.error) }
+        if (miCatalogoUi.isLoadingShops) LinearProgressIndicator(Modifier.fillMaxWidth())
+        if (activeSection == "device") settings?.let { current ->
+            Text("Preferencias de este dispositivo", fontWeight = FontWeight.Bold)
+            Text("Moneda, factura y opciones locales se comparten entre las tiendas que uses en esta instalación.", style = MaterialTheme.typography.bodySmall, color = BSPOSTheme.colors.textSecondary)
             Text("Moneda", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelLarge)
             CurrencyCard(current.currency, viewModel::setCurrency)
             Text("Factura y PDF", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelLarge)
@@ -86,23 +125,96 @@ fun SettingsScreen(
             SettingCard("Permitir stock negativo", "Al activarlo, ventas y ajustes podrán superar la existencia disponible.", Icons.Default.Inventory2, BSPOSTheme.colors.warning, BSPOSTheme.colors.warningLight, current.allowNegativeStock, viewModel::setAllowNegativeStock)
             SettingCard("Respaldos automáticos", "Activa la política de respaldo cuando esté configurada.", Icons.Default.Backup, BSPOSTheme.colors.success, BSPOSTheme.colors.successLight, current.automaticBackupsEnabled, viewModel::setAutomaticBackups)
             SettingCard("Módulo de rutas", "Habilita rutas comerciales, cargas y operaciones de distribución.", Icons.Default.Inventory2, BSPOSTheme.colors.primary, BSPOSTheme.colors.primaryLight, current.routesEnabled, viewModel::setRoutesEnabled)
+            SettingCard("Botón de soporte en Resumen", "Muestra u oculta el acceso al chat interno desde la pantalla Resumen.", Icons.Outlined.ChatBubbleOutline, BSPOSTheme.colors.primary, BSPOSTheme.colors.primaryLight, current.showSupportOnDashboard, viewModel::setShowSupportOnDashboard)
          }
-        miCatalogoUi.shops.filter { it.canManageSellers }.forEach { shop ->
-            SellerCreateCard(shop, miCatalogoUi.isCreatingSeller, viewModel::createSeller)
-            SellerMenuPermissionsCard(shop, miCatalogoUi.updatingSellerMenuId, viewModel::updateSellerMenus)
+        selectedShop?.let { shop ->
+            key(shop.id) {
+                if (activeSection == "team" && shop.canManageSellers) {
+                    var creating by rememberSaveable { mutableStateOf(false) }
+                    Text("Permisos de usuarios / vendedores", fontWeight = FontWeight.Bold)
+                    Text("En la ficha de cada vendedor pulsa Seleccionar menús, marca o desmarca y guarda.", style = MaterialTheme.typography.bodySmall)
+                    TextButton(onClick = { creating = !creating }) { Text(if (creating) "Ocultar formulario de creación" else "Crear / invitar vendedor") }
+                    if (creating) SellerCreateCard(shop, miCatalogoUi.isCreatingSeller, viewModel::createSeller)
+                    SellerMenuPermissionsCard(shop, miCatalogoUi.updatingSellerMenuId, viewModel::updateSellerMenus)
+                }
+                if (activeSection == "menus" && shop.canManageMenuVisibility) {
+                    ShopMenuVisibilityCard(shop, miCatalogoUi.updatingMenuVisibilityShopId, viewModel::updateShopMenuVisibility)
+                }
+            }
         }
-        if (!teamOnly) MiCatalogoConnectionCard(miCatalogoConnection, miCatalogoUi, viewModel::connectMiCatalogo, viewModel::logout, viewModel::loadShops, viewModel::syncShop, viewModel::syncPosSales)
-        if (pendingOperations.isNotEmpty() || pendingSales.isNotEmpty() || pendingPayments.isNotEmpty()) {
+        if (activeSection == "sync" || !miCatalogoConnection.isConfigured) {
+        MiCatalogoConnectionCard(miCatalogoConnection, miCatalogoUi, viewModel::connectMiCatalogo, viewModel::logout, viewModel::loadShops, viewModel::syncShop, viewModel::syncPosSales, selectedShop)
+        val shopOperations = pendingOperations.filter { selectedShop == null || it.shopId == selectedShop.id }
+        val shopSales = pendingSales.filter { selectedShop == null || it.remoteShopId == selectedShop.id }
+        val shopPayments = pendingPayments.filter { selectedShop == null || it.shopId == selectedShop.id }
+        if (shopOperations.isNotEmpty() || shopSales.isNotEmpty() || shopPayments.isNotEmpty()) {
             Text("Sincronización pendiente", fontWeight = FontWeight.Bold)
             Text("Un conflicto detiene las operaciones posteriores de esa tienda. Reintentar conserva el identificador y los importes originales; no corrige ni descarta un conteo o precio en conflicto.", style = MaterialTheme.typography.bodySmall)
-            pendingSales.forEach { row -> PendingSyncCard("Venta · ${row.remoteShopId}",row.saleId.toString(),row.lastError,
+            shopSales.forEach { row -> PendingSyncCard("Venta · ${row.remoteShopId}",row.saleId.toString(),row.lastError,
                 row.state == com.example.bspos.domain.model.PosSaleOutboxState.BLOCKED) { viewModel.retrySale(row.saleId) } }
-            pendingOperations.forEach { row -> PendingSyncCard("Operación · ${row.shopId}",row.id,row.error,row.state == "BLOCKED") { viewModel.retryOperation(row.id) } }
-            pendingPayments.forEach { row -> PendingSyncCard("Abono · ${row.shopId}",row.id,row.error,row.state == "BLOCKED") { viewModel.retryPayment(row.id) } }
+            shopOperations.forEach { row -> PendingSyncCard("Operación · ${row.shopId}",row.id,row.error,row.state == "BLOCKED") { viewModel.retryOperation(row.id) } }
+            shopPayments.forEach { row -> PendingSyncCard("Abono · ${row.shopId}",row.id,row.error,row.state == "BLOCKED") { viewModel.retryPayment(row.id) } }
         }
-        pendingCatalogs.forEach { row -> PendingSyncCard("Descarga de catálogo · ${row.shopId}", row.revision,
+        pendingCatalogs.filter { selectedShop == null || it.shopId == selectedShop.id }.forEach { row -> PendingSyncCard("Descarga de catálogo · ${row.shopId}", row.revision,
             row.error ?: "La operación ya está confirmada; falta descargar precios y existencias actualizados.", true) { viewModel.syncPosSales() } }
+        }
         Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.secondaryNavy)) { Column(Modifier.padding(18.dp)) { Text("MiCatalogo", color = BSPOSTheme.colors.textOnPrimary, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold); Text("Tu catálogo en movimiento", color = BSPOSTheme.colors.textOnNavy); Spacer(Modifier.size(8.dp)); Text("Creada por BSolutions.Dev", color = BSPOSTheme.colors.primary) } }
+    }
+}
+
+@Composable
+private fun ShopMenuVisibilityCard(
+    shop: MiCatalogoShop,
+    updatingShopId: String?,
+    onUpdate: (MiCatalogoShop, List<String>) -> Unit
+) {
+    val fallbackOptions = remember {
+        SellerMenuOptions.map { option -> ShopMenuOption(option.key, option.label, "Módulos", false) }
+    }
+    val options = if (shop.menuOptions.isNotEmpty()) shop.menuOptions else fallbackOptions
+    val allKeys = options.map { it.key }.toSet()
+    var expanded by rememberSaveable(shop.id) { mutableStateOf(false) }
+    var enabled by remember(shop.id, shop.enabledMenuKeys, options) {
+        mutableStateOf((shop.enabledMenuKeys?.toSet() ?: allKeys).intersect(allKeys))
+    }
+    Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface)) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Settings, contentDescription = null, tint = BSPOSTheme.colors.primary)
+                Spacer(Modifier.width(8.dp))
+                Column {
+                    Text("Menús de la tienda · ${shop.name}", fontWeight = FontWeight.ExtraBold)
+                    Text("Se aplica a la web y a Android para todos los usuarios de esta tienda.", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+            Text("Ocultar un módulo no borra productos, ventas ni configuraciones. Los menús de control del owner permanecen protegidos.", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodySmall)
+            TextButton(onClick = { expanded = !expanded }) { Text(if (expanded) "Ocultar módulos" else "Elegir módulos de esta tienda") }
+            if (expanded) options.groupBy { it.group }.forEach { (group, groupOptions) ->
+                Text(group, fontWeight = FontWeight.Bold, color = BSPOSTheme.colors.textPrimary)
+                groupOptions.forEach { option ->
+                    val checked = option.key in enabled || option.protected
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(option.label, fontWeight = FontWeight.SemiBold)
+                            if (option.protected) Text("Protegido para el owner", color = BSPOSTheme.colors.primary, style = MaterialTheme.typography.labelSmall)
+                        }
+                        Switch(
+                            checked = checked,
+                            enabled = updatingShopId == null && !option.protected,
+                            onCheckedChange = { value -> enabled = if (value) enabled + option.key else enabled - option.key }
+                        )
+                    }
+                }
+            }
+            Button(
+                onClick = { onUpdate(shop, options.filter { it.key in enabled || it.protected }.map { it.key }) },
+                enabled = updatingShopId == null,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                if (updatingShopId == shop.id) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                else Text("Guardar visibilidad de menús")
+            }
+        }
     }
 }
 
@@ -222,7 +334,8 @@ private fun MiCatalogoConnectionCard(
     onLogout: () -> Unit,
     onReloadShops: () -> Unit,
     onSync: (MiCatalogoShop) -> Unit,
-    onSyncPosSales: () -> Unit
+    onSyncPosSales: () -> Unit,
+    selectedShop: MiCatalogoShop? = null
 ) {
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
@@ -256,10 +369,10 @@ private fun MiCatalogoConnectionCard(
                 }
                 Button(onClick = onSyncPosSales, enabled = !state.isSyncingPosSales, modifier = Modifier.fillMaxWidth()) {
                     if (state.isSyncingPosSales) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                    else Text("Enviar ventas, entradas y devoluciones")
+                    else Text("Enviar operaciones pendientes de todas tus tiendas")
                 }
                 Button(onClick = onLogout, modifier = Modifier.fillMaxWidth()) { Text("Cerrar sesion") }
-                state.shops.forEach { shop -> MiCatalogoShopCard(shop, state.syncingShopId == shop.id, state.syncingShopId != null, onSync) }
+                state.shops.filter { selectedShop == null || it.id == selectedShop.id }.forEach { shop -> MiCatalogoShopCard(shop, state.syncingShopId == shop.id, state.syncingShopId != null, onSync) }
                 if (!state.isLoadingShops && state.shops.isEmpty()) {
                     Text("No hay tiendas disponibles para esta cuenta.", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodySmall)
                 }

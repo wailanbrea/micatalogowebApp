@@ -37,6 +37,7 @@ data class Product(
     val remoteIsCombo: Boolean = false,
     val remoteVolumeMl: Int? = null,
     val remoteAvailableMl: Int? = null,
+    val remoteReservedDecantMl: Int? = null,
     val remoteOpenedBottles: Int? = null,
     val remoteSourceProductId: String? = null,
     val remoteProductSlug: String? = null,

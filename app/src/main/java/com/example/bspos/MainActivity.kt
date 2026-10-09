@@ -103,8 +103,7 @@ class MainActivity : FragmentActivity() {
                     when (appUpdateState) {
                         is AppUpdateState.Available,
                         is AppUpdateState.Downloading,
-                        is AppUpdateState.Failed,
-                        is AppUpdateState.CheckFailed -> AppUpdateDialog(
+                        is AppUpdateState.Failed -> AppUpdateDialog(
                             appUpdateState,
                             appUpdateViewModel::download,
                             onRetryCheck = { appUpdateViewModel.checkForUpdate() },

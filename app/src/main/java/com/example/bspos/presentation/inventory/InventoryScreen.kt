@@ -34,7 +34,6 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.WarningAmber
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -79,6 +78,7 @@ import com.example.bspos.domain.model.InventoryMovement
 import com.example.bspos.domain.model.InventoryMovementType
 import com.example.bspos.domain.model.MiCatalogoInventoryImportPreview
 import com.example.bspos.domain.model.Product
+import com.example.bspos.presentation.common.BSPOSAlertDialog as AlertDialog
 import com.example.bspos.presentation.common.DialogScrollableColumn
 import coil.compose.AsyncImage
 import java.util.Locale

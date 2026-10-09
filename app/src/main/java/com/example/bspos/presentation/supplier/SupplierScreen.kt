@@ -22,7 +22,6 @@ import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -51,6 +50,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.example.bspos.core.ui.theme.BSPOSTheme
 import com.example.bspos.domain.model.Supplier
 import com.example.bspos.domain.usecase.SupplierInput
+import com.example.bspos.presentation.common.BSPOSAlertDialog as AlertDialog
 import com.example.bspos.presentation.common.DialogScrollableColumn
 
 @Composable

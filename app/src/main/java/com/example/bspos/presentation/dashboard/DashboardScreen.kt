@@ -58,6 +58,7 @@ import com.example.bspos.domain.model.SaleItem
 import com.example.bspos.domain.model.SalePaymentType
 import com.example.bspos.domain.model.SaleStatus
 import com.example.bspos.domain.model.MiCatalogoBusinessPresentation
+import com.example.bspos.presentation.common.BSPOSAlertDialog as AlertDialog
 import com.example.bspos.presentation.common.DialogScrollableColumn
 import com.example.bspos.presentation.pos.InvoicePdfGenerator
 import com.example.bspos.presentation.pos.PosCartLine
@@ -88,7 +89,8 @@ fun DashboardScreen(
     onStockFilter: (String) -> Unit = {},
     onPhotos: () -> Unit = {},
     onProfile: () -> Unit = {},
-    onHelp: () -> Unit = {},
+    onSupport: () -> Unit = {},
+    onHideSupport: () -> Unit = {},
     showEncargos: Boolean = false,
     routesEnabled: Boolean = false,
     sellerMode: Boolean = false,
@@ -98,6 +100,7 @@ fun DashboardScreen(
     showProducts: Boolean = true,
     shopId: String? = null,
     showCustomers: Boolean = false,
+    showSupport: Boolean = true,
     onAllSales: () -> Unit = {},
     presentation: MiCatalogoBusinessPresentation = MiCatalogoBusinessPresentation(),
     businessName: String = "tu negocio",
@@ -107,7 +110,7 @@ fun DashboardScreen(
 ) {
     if (sellerMode) {
         SellerDashboardScreen(shopId, businessName, showSales, showProducts, showCustomers,
-            onNewSale, onProducts, onCustomers, onAllSales, viewModel)
+            onNewSale, onProducts, onCustomers, onAllSales, onSupport, onHideSupport, showSupport, viewModel)
         return
     }
     val sales by viewModel.sales.collectAsState()
@@ -203,7 +206,8 @@ fun DashboardScreen(
         onNewSale = onNewSale, onCollections = onCollections, onInventory = onInventory,
         onStockFilter = onStockFilter, onMovements = onMovements, onProducts = onProducts,
         onPhotos = onPhotos, onEncargos = onEncargos, onDayClose = onDayClose,
-        onStorefront = onStorefront, onProfile = onProfile, onHelp = onHelp,
+        onStorefront = onStorefront, onProfile = onProfile,
+        onSupport = onSupport, onHideSupport = onHideSupport, showSupport = showSupport,
         onAllSales = { showAllSales = true }, onSale = viewModel::selectSale
     )
     if (showAllSales) {
@@ -801,9 +805,9 @@ internal fun SaleDetailDialog(
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(
             modifier = Modifier.fillMaxWidth(.94f).heightIn(max = 760.dp),
-            shape = RoundedCornerShape(24.dp),
-            color = BSPOSTheme.colors.background,
-            tonalElevation = 3.dp
+            shape = BSPOSTheme.shapes.extraLarge,
+            color = BSPOSTheme.colors.surface,
+            tonalElevation = 6.dp
         ) {
             DialogScrollableColumn {
                 Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {

@@ -27,6 +27,7 @@ data class MiCatalogoSettingsUiState(
     val isUpdatingProfile: Boolean = false,
     val isCreatingSeller: Boolean = false,
     val updatingSellerMenuId: String? = null,
+    val updatingMenuVisibilityShopId: String? = null,
     val shops: List<MiCatalogoShop> = emptyList(),
     val successMessage: String? = null,
     val errorMessage: String? = null
@@ -61,6 +62,7 @@ class SettingsViewModel @Inject constructor(
     fun setAllowNegativeStock(enabled: Boolean) = viewModelScope.launch { repository.setAllowNegativeStock(enabled) }
     fun setAutomaticBackups(enabled: Boolean) = viewModelScope.launch { repository.setAutomaticBackupsEnabled(enabled) }
     fun setRoutesEnabled(enabled: Boolean) = viewModelScope.launch { repository.setRoutesEnabled(enabled) }
+    fun setShowSupportOnDashboard(enabled: Boolean) = viewModelScope.launch { repository.setShowSupportOnDashboard(enabled) }
     fun setCurrency(currency: CurrencyUnit) = viewModelScope.launch { repository.setCurrency(currency) }
     fun saveInvoiceConfig(config: InvoiceConfig) = viewModelScope.launch { repository.setInvoiceConfig(config) }
 
@@ -100,6 +102,18 @@ class SettingsViewModel @Inject constructor(
                 loadShops()
             }
             is MiCatalogoResult.Failure -> miCatalogoUi.value = miCatalogoUi.value.copy(updatingSellerMenuId = null, errorMessage = result.message)
+        }
+    }
+
+    fun updateShopMenuVisibility(shop: MiCatalogoShop, enabledMenuKeys: List<String>) = viewModelScope.launch {
+        if (miCatalogoUi.value.updatingMenuVisibilityShopId != null) return@launch
+        miCatalogoUi.value = miCatalogoUi.value.copy(updatingMenuVisibilityShopId = shop.id, successMessage = null, errorMessage = null)
+        when (val result = connectionRepository.updateShopMenuVisibility(shop.id, enabledMenuKeys)) {
+            is MiCatalogoResult.Success -> {
+                miCatalogoUi.value = miCatalogoUi.value.copy(updatingMenuVisibilityShopId = null, successMessage = "Menús de la tienda actualizados.")
+                loadShops()
+            }
+            is MiCatalogoResult.Failure -> miCatalogoUi.value = miCatalogoUi.value.copy(updatingMenuVisibilityShopId = null, errorMessage = result.message)
         }
     }
 

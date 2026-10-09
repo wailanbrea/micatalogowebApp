@@ -3,6 +3,8 @@ package com.example.bspos.data.micatalogo.api
 import com.example.bspos.data.micatalogo.dto.LoginRequestDto
 import com.example.bspos.data.micatalogo.dto.SellerSummaryDto
 import com.example.bspos.data.micatalogo.dto.MenuPermissionsUpdateDto
+import com.example.bspos.data.micatalogo.dto.MenuVisibilityUpdateDto
+import com.example.bspos.data.micatalogo.dto.MenuVisibilityResponseDto
 import com.example.bspos.data.micatalogo.dto.LoginResponseDto
 import com.example.bspos.data.micatalogo.dto.CatalogSnapshotDto
 import com.example.bspos.data.micatalogo.dto.AndroidUpdateDto
@@ -143,6 +145,11 @@ interface MiCatalogoApi {
         @Path("conversationId") conversationId: String
     ): Response<Unit>
 
+    @POST("api/v1/support/conversations/{conversationId}/close")
+    suspend fun closeSupportConversation(
+        @Path("conversationId") conversationId: String
+    ): Response<SupportConversationDetailDto>
+
     @POST("api/v1/shops/{shopId}/authorization-requests/{requestId}/approve")
     suspend fun approveAuthorization(
         @Path("shopId") shopId: String,
@@ -274,6 +281,12 @@ interface MiCatalogoApi {
         @Path("sellerId") sellerId: String,
         @Body request: MenuPermissionsUpdateDto
     ): Response<Map<String, List<String>>>
+
+    @PUT("api/v1/shops/{shopId}/menu-visibility")
+    suspend fun updateShopMenuVisibility(
+        @Path("shopId") shopId: String,
+        @Body request: MenuVisibilityUpdateDto
+    ): Response<MenuVisibilityResponseDto>
 
     @POST("api/v1/shops/{shopId}/sellers")
     suspend fun createSeller(

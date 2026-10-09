@@ -185,7 +185,26 @@ class PosViewModel @Inject constructor(
     fun completeCash(notes: String? = null) = complete(SalePaymentType.CASH, null, notes = notes)
     fun completeCard(notes: String? = null) = complete(SalePaymentType.CARD, null, notes = notes)
     fun completeTransfer(reference: String? = null, notes: String? = null) = complete(SalePaymentType.TRANSFER, null, reference = reference, notes = notes)
-    fun completeCredit(dueDate: String? = null, notes: String? = null) = _customer.value?.let { complete(SalePaymentType.CREDIT, it, dueDate = dueDate, notes = notes) }
+    fun completeCredit(dueDate: String? = null, notes: String? = null, downPayment: Long = 0,
+                       downPaymentMethod: String = "cash", reference: String? = null) {
+        val customer = _customer.value ?: return
+        if (downPayment == 0L) {
+            complete(SalePaymentType.CREDIT, customer, dueDate = dueDate, notes = notes)
+            return
+        }
+        val total = runCatching { _cart.value.fold(0L) { sum, line ->
+            Math.addExact(sum, Math.multiplyExact(line.quantity, line.unitPrice))
+        }.let { it - _discount.value.coerceIn(0L, it) } }.getOrNull()
+        if (total == null || downPayment < 0 || downPayment > total || downPaymentMethod !in setOf("cash", "card", "bank_transfer")) {
+            _checkoutResult.value = CheckoutResult(false, "Revisa el abono inicial y el método de pago")
+            return
+        }
+        val payments = buildList {
+            add(com.example.bspos.domain.usecase.PosPaymentSplitInput(downPaymentMethod, downPayment, reference, notes))
+            if (total > downPayment) add(com.example.bspos.domain.usecase.PosPaymentSplitInput("credit", total - downPayment))
+        }
+        completeSplit(payments, dueDate)
+    }
 
     fun completeSplit(payments: List<com.example.bspos.domain.usecase.PosPaymentSplitInput>, dueDate: String? = null) {
         val lines = _cart.value

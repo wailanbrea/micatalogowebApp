@@ -35,6 +35,8 @@ import com.example.bspos.data.micatalogo.dto.FeatureProductDto
 import com.example.bspos.data.micatalogo.dto.FeatureKpiDto
 import com.example.bspos.data.micatalogo.dto.FeatureRowDto
 import com.example.bspos.data.micatalogo.dto.RemoteCustomerDto
+import com.example.bspos.presentation.common.BSPOSAlertDialog as AlertDialog
+import com.example.bspos.presentation.common.BSPOSModalBottomSheet
 import com.example.bspos.presentation.pos.PunttoSearchRow
 import com.example.bspos.presentation.pos.PunttoTerminalChip
 import com.example.bspos.presentation.pos.BarcodeScannerSheet
@@ -259,8 +261,7 @@ private fun QuoteCartSheet(
     val context = LocalContext.current
     var choosingCustomer by remember { mutableStateOf(false) }
     val selectedCustomer = customers.firstOrNull { it.id == selectedCustomerId }
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        containerColor = BSPOSTheme.colors.surface, contentWindowInsets = { WindowInsets(0, 0, 0, 0) }) {
+    BSPOSModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Column(Modifier.fillMaxWidth().fillMaxHeight(.94f).imePadding()) {
             Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 12.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {

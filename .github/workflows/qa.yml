@@ -1,0 +1,30 @@
+name: MiCatalogo Android QA
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Unit tests, debug build and lint
+        run: ./gradlew :app:testDebugUnitTest :app:assembleDebug :app:lintDebug --no-daemon --stacktrace
+
+      - name: Compile Android contract fixtures
+        run: ./gradlew :app:compileDebugAndroidTestKotlin :app:assembleDebugAndroidTest --no-daemon --stacktrace

@@ -51,6 +51,7 @@ data class ProductEntity(
     @ColumnInfo(name = "micatalogo_source_product_id") val miCatalogoSourceProductId: String? = null,
     @ColumnInfo(name = "micatalogo_volume_ml") val miCatalogoVolumeMl: Int? = null,
     @ColumnInfo(name = "micatalogo_available_ml") val miCatalogoAvailableMl: Int? = null,
+    @ColumnInfo(name = "micatalogo_reserved_decant_ml") val miCatalogoReservedDecantMl: Int? = null,
     @ColumnInfo(name = "micatalogo_opened_bottles") val miCatalogoOpenedBottles: Int? = null,
     @ColumnInfo(name = "micatalogo_sale_unit") val miCatalogoSaleUnit: String? = null,
     @ColumnInfo(name = "micatalogo_is_combo", defaultValue = "0") val miCatalogoIsCombo: Boolean = false,

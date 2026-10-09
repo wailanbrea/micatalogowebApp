@@ -144,7 +144,7 @@ sealed class Screen(
     data object Support : Screen("support", "Soporte", Icons.Filled.MoreHoriz, Icons.Outlined.MoreHoriz)
     data object Metrics : Screen("metrics", "Métricas y QR", Icons.Filled.BarChart, Icons.Outlined.BarChart)
     data object PublicCatalog : Screen("public_catalog", "Compartir catálogo", Icons.Filled.Store, Icons.Filled.Store)
-    data object Categories : Screen("categories", "Categorías", Icons.Filled.Inventory2, Icons.Outlined.Inventory2)
+    data object Categories : Screen("categories", "Categorías y unidades", Icons.Filled.Inventory2, Icons.Outlined.Inventory2)
     data object ShopSettings : Screen("shop_settings", "Configuración", Icons.Filled.Settings, Icons.Outlined.Settings) {
         fun routeFor(section: String?): String = section?.takeIf { it.isNotBlank() }
             ?.let { "$route?section=${Uri.encode(it)}" }

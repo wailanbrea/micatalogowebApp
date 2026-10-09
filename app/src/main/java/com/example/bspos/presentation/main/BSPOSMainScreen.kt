@@ -145,6 +145,7 @@ import com.example.bspos.presentation.purchase.PurchaseModuleScreen
 import com.example.bspos.presentation.quote.QuoteScreen
 import com.example.bspos.presentation.orders.OrdersScreen
 import com.example.bspos.presentation.support.SupportChatScreen
+import com.example.bspos.presentation.support.SupportFloatingActionButton
 import com.example.bspos.presentation.dayclose.DayCloseScreen
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import kotlinx.coroutines.launch
@@ -189,7 +190,14 @@ fun BSPOSMainScreen(
     val sellerMode = !canManageShop
     val menuPermissions = currentShop?.menuPermissions.orEmpty()
     val canSeeMenu: (String) -> Boolean = { key ->
-        canAccessMiCatalogoMenu(connection.isAdmin, canManageShop, menuPermissions, key, currentShop?.capabilities.orEmpty())
+        canAccessMiCatalogoMenu(
+            connection.isAdmin,
+            canManageShop,
+            menuPermissions,
+            key,
+            currentShop?.capabilities.orEmpty(),
+            currentShop?.enabledMenuKeys
+        )
     }
     val drawerGroups = buildList {
         add(
@@ -229,6 +237,7 @@ fun BSPOSMainScreen(
                     Screen.Inventory.takeIf { canSeeMenu("inventory") },
                     Screen.Photos.takeIf { canSeeMenu("photos") },
                     Screen.Storefront.takeIf { canSeeMenu("storefront") },
+                    Screen.Categories.takeIf { canSeeMenu("products") },
                     Screen.Services.takeIf { canSeeMenu("services") },
                     Screen.PriceHealth.takeIf { canSeeMenu("price_health") },
                     Screen.AutomaticPrices.takeIf { canSeeMenu("pricing") },
@@ -298,7 +307,6 @@ fun BSPOSMainScreen(
                     // Estas funciones siguen disponibles, pero no compiten con
                     // las entradas principales de Puntto ni duplican Catálogo.
                     Screen.Catalog.takeIf { canSeeMenu("products") },
-                    Screen.Categories.takeIf { canSeeMenu("products") },
                     Screen.Settings.takeIf { canSeeMenu("settings") },
                     Screen.Cash.takeIf { canSeeMenu("cash") },
                     Screen.Returns.takeIf { canSeeMenu("returns") },
@@ -650,7 +658,7 @@ fun BSPOSMainScreen(
                 }
             },
             topBar = {
-                if (currentBaseRoute !in setOf(Screen.POS.route, Screen.Quotes.route, Screen.Orders.route) || windowWidthSizeClass == WindowWidthSizeClass.Expanded) TopAppBar(
+                if (currentBaseRoute != Screen.Support.route && (currentBaseRoute !in setOf(Screen.POS.route, Screen.Quotes.route, Screen.Orders.route) || windowWidthSizeClass == WindowWidthSizeClass.Expanded)) TopAppBar(
                     title = {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
@@ -728,6 +736,8 @@ fun BSPOSMainScreen(
                         isTablet = windowWidthSizeClass == WindowWidthSizeClass.Expanded,
                         routesEnabled = routesEnabled,
                         currency = settings?.currency ?: CurrencyUnit.DOP,
+                        showSupportOnDashboard = settings?.showSupportOnDashboard != false,
+                        onHideSupport = { settingsViewModel.setShowSupportOnDashboard(false) },
                         sellerMode = sellerMode,
                         showSettings = canSeeMenu("settings"),
                         showAdminShops = connection.isAdmin,
@@ -771,7 +781,7 @@ private fun PublicStorePreviewDialog(
             modifier = Modifier
                 .fillMaxWidth(0.92f)
                 .fillMaxHeight(0.9f),
-            shape = BSPOSTheme.shapes.large,
+            shape = BSPOSTheme.shapes.extraLarge,
             color = BSPOSTheme.colors.surface,
             tonalElevation = 6.dp
         ) {
@@ -800,6 +810,8 @@ fun BSPOSNavHost(
     isTablet: Boolean,
     routesEnabled: Boolean,
     currency: CurrencyUnit,
+    showSupportOnDashboard: Boolean = true,
+    onHideSupport: () -> Unit = {},
     sellerMode: Boolean = false,
     showSettings: Boolean = false,
     showAdminShops: Boolean = false,
@@ -814,6 +826,7 @@ fun BSPOSNavHost(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val canOpenSupport = !sellerMode || canSeeMenu("support")
     val publicStoreUrl = shopSlug?.trim()?.takeIf { it.isNotBlank() }?.let {
         "${BuildConfig.MICATALOGO_API_BASE_URL.trimEnd('/')}/tienda/$it"
     }
@@ -861,7 +874,8 @@ fun BSPOSNavHost(
             popExitTransition = { fadeOut(animationSpec = tween(130)) + slideOutHorizontally(animationSpec = tween(180)) { it / 12 } }
         ) {
         composable(Screen.Dashboard.route) {
-            DashboardScreen(
+            Box(Modifier.fillMaxSize()) {
+                DashboardScreen(
                 onNewSale = { if (canSeeMenu("sales")) navController.navigate(Screen.POS.route) },
                 onCollections = { if (canSeeMenu("collections")) navController.navigate(Screen.CreditLedger.route) },
                 onInventory = { if (canSeeMenu("inventory")) navController.navigate(Screen.Inventory.route) },
@@ -874,7 +888,8 @@ fun BSPOSNavHost(
                 onDayClose = { if (canSeeMenu("day_close")) navController.navigate(Screen.DayClose.route) },
                 onPhotos = { if (canSeeMenu("photos")) navController.navigate(Screen.Photos.route) },
                 onProfile = { navController.navigate(Screen.Profile.route) },
-                onHelp = { navController.navigate(Screen.Help.route) },
+                onSupport = { if (canOpenSupport) navController.navigate(Screen.Support.route) },
+                onHideSupport = onHideSupport,
                 onStockFilter = { filter ->
                     if (canSeeMenu("inventory")) {
                         navController.navigate(Screen.Inventory.route)
@@ -896,11 +911,19 @@ fun BSPOSNavHost(
                 showProducts = canSeeMenu("products"),
                 shopId = shopId,
                 showCustomers = canSeeMenu("customers"),
+                showSupport = false,
                 onAllSales = { if (canSeeMenu("sales")) navController.navigate(Screen.SalesHistory.route) },
                 presentation = presentation,
                 businessName = businessName,
                 isExpanded = isTablet
-            )
+                )
+                if (canOpenSupport) {
+                    SupportFloatingActionButton(
+                        onClick = { navController.navigate(Screen.Support.route) },
+                        modifier = Modifier.align(Alignment.BottomEnd)
+                    )
+                }
+            }
         }
         composable(Screen.POS.route) {
             RestrictedMenuDestination(canSeeMenu("sales"), navController) {
@@ -1004,7 +1027,7 @@ fun BSPOSNavHost(
                 navController = navController,
                 canSeeMenu = canSeeMenu,
                 showSensitiveFinance = !sellerMode || canSeeMenu("finance")
-            )
+                )
         }
         composable(Screen.AutomaticPrices.route) {
             RestrictedMenuDestination(canSeeMenu("pricing"), navController) {
@@ -1079,7 +1102,7 @@ fun BSPOSNavHost(
         }
         composable(Screen.Practice.route) { FeatureDestination("practice", canSeeMenu("practice"), navController, canSeeMenu) }
         composable(Screen.Support.route) {
-            RestrictedMenuDestination(canSeeMenu("support"), navController) {
+            RestrictedMenuDestination(canOpenSupport, navController) {
                 SupportChatScreen(onNavigateBack = { navController.popBackStack() })
             }
         }

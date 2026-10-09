@@ -11,6 +11,9 @@ data class MiCatalogoShop(
     val presentation: MiCatalogoBusinessPresentation = MiCatalogoBusinessPresentation(),
     val quota: MiCatalogoShopQuota? = null,
     val menuPermissions: List<String> = emptyList(),
+    val enabledMenuKeys: List<String>? = null,
+    val canManageMenuVisibility: Boolean = false,
+    val menuOptions: List<ShopMenuOption> = emptyList(),
     val canManageSellers: Boolean = false,
     val sellers: List<MiCatalogoSeller> = emptyList()
 )
@@ -57,6 +60,13 @@ data class MiCatalogoSeller(
 )
 
 data class SellerMenuOption(val key: String, val label: String)
+
+data class ShopMenuOption(
+    val key: String,
+    val label: String,
+    val group: String,
+    val protected: Boolean
+)
 
 val SellerMenuOptions = listOf(
     SellerMenuOption("sales", "Ventas"),
@@ -113,7 +123,8 @@ fun canAccessMiCatalogoMenu(
     canManageShop: Boolean,
     menuPermissions: Collection<String>,
     menu: String,
-    capabilities: Map<String, String> = emptyMap()
+    capabilities: Map<String, String> = emptyMap(),
+    enabledMenuKeys: Collection<String>? = null
 ): Boolean {
     val requiredCapability = when (menu) {
         "products" -> "products"
@@ -128,7 +139,9 @@ fun canAccessMiCatalogoMenu(
         else -> null
     }
     if (requiredCapability != null && capabilities.isNotEmpty() && capabilities[requiredCapability] != "enabled") return false
-    return isPlatformOwner || canManageShop || (
+    val protectedForOwner = menu in ownerOnlyMenuKeys && (isPlatformOwner || canManageShop)
+    if (!protectedForOwner && enabledMenuKeys != null && menu !in enabledMenuKeys) return false
+    return protectedForOwner || isPlatformOwner || canManageShop || (
     menu !in ownerOnlyMenuKeys && menu in menuPermissions
     )
 }

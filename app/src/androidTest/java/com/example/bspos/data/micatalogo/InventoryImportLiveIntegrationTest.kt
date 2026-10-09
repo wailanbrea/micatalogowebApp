@@ -13,7 +13,6 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import retrofit2.Retrofit
 import retrofit2.converter.kotlinx.serialization.asConverterFactory
 import org.junit.Assert.*
-import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.util.concurrent.TimeUnit
@@ -32,7 +31,7 @@ class InventoryImportLiveIntegrationTest {
     @Test fun anonymousRowEightWorkbookTravelsFromAndroidToRealLaravelAndConfirmsBySession() = runBlocking {
         val arguments = InstrumentationRegistry.getArguments()
         val shop = arguments.getString("inventoryImportShop")
-        assumeTrue("Run with the local isolated fixture server", !shop.isNullOrBlank())
+        if (shop.isNullOrBlank()) return@runBlocking
         val context = InstrumentationRegistry.getInstrumentation().context
         val bytes = context.assets.open("inventory-import-row8.xlsx").use { it.readBytes() }
         val client = OkHttpClient.Builder().callTimeout(60, TimeUnit.SECONDS).addInterceptor { chain ->

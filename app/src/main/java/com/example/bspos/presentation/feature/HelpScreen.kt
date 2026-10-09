@@ -18,7 +18,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -38,6 +37,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.bspos.core.ui.theme.BSPOSTheme
+import com.example.bspos.presentation.common.BSPOSAlertDialog as AlertDialog
 import com.example.bspos.presentation.navigation.Screen
 
 private data class HelpGuide(
@@ -59,7 +59,7 @@ private val guides = listOf(
     HelpGuide("Catálogo", "Intermedio", "Inventario y lotes", "Cada entrada conserva su costo y las ventas salen por FIFO.", listOf("Registra cada recepción como un lote.", "Usa movimientos para aumentos, pérdidas o conteos.", "Consulta el detalle para ver cantidades y costos."), Screen.Inventory),
     HelpGuide("Catálogo", "Intermedio", "Decants", "Vende perfume por mililitros sin perder la cuenta del costo de la botella.", listOf("Selecciona la botella fuente.", "Define presentación, ml, costo y precio.", "Vende el decant y revisa el ml restante y la recuperación del costo."), Screen.Decants),
     HelpGuide("Catálogo", "Básico", "Importar", "Carga tu inventario desde Excel o CSV y revísalo antes de guardar.", listOf("Elige archivo, catálogo existente o creación rápida.", "Mapea columnas y valida números e imágenes.", "Confirma una sola importación para evitar duplicados."), Screen.Import),
-    HelpGuide("Cobros", "Básico", "Clientes y crédito", "Registra clientes, ventas a crédito y sus abonos.", listOf("Crea o selecciona el cliente.", "Confirma una venta a crédito desde Terminal.", "Registra abonos y revisa el saldo pendiente."), Screen.Customers),
+    HelpGuide("Cobros", "Básico", "Clientes y crédito", "Registra clientes, ventas a crédito y sus abonos.", listOf("Crea o selecciona el cliente.", "Confirma una venta a crédito desde Ventas.", "Registra abonos y revisa el saldo pendiente."), Screen.Customers),
     HelpGuide("Finanzas", "Básico", "Ganancias", "Lee ventas, costo FIFO, gastos y utilidad del período.", listOf("Selecciona un período.", "Compara ventas netas con costo y gastos.", "Abre el detalle por producto para decidir qué comprar."), Screen.Finance),
     HelpGuide("Finanzas", "Básico", "Gastos y caja", "Los gastos y movimientos de caja completan la visión financiera.", listOf("Abre una caja para el día.", "Registra entradas, retiros y gastos.", "Cierra el día comparando efectivo esperado y contado."), Screen.Cash),
     HelpGuide("Análisis", "Básico", "Reportes", "Consulta ventas, ganancia, cobros y stock bajo por período.", listOf("Elige la fecha inicial y final.", "Revisa los indicadores y la tabla.", "Exporta CSV o Excel para compartirlo."), Screen.Reports),

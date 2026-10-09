@@ -59,6 +59,7 @@ class ProductUseCases @Inject constructor(
             remoteComboItems = input.comboItems,
             remoteVolumeMl = if (input.remoteSaleUnit != null) input.remoteVolumeMl else current.remoteVolumeMl,
             remoteAvailableMl = current.remoteAvailableMl,
+            remoteReservedDecantMl = current.remoteReservedDecantMl,
             remoteOpenedBottles = current.remoteOpenedBottles,
             remoteSourceProductId = if (input.remoteSaleUnit != null) input.remoteSourceProductId else current.remoteSourceProductId,
             lastPurchaseCost = current.lastPurchaseCost,

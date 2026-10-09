@@ -33,6 +33,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.example.bspos.core.ui.theme.BSPOSTheme
 import com.example.bspos.domain.model.BluetoothPrinter
 import com.example.bspos.domain.model.ReceiptPaperWidth
+import com.example.bspos.presentation.common.BSPOSAlertDialog as AlertDialog
 import com.example.bspos.presentation.common.UiErrorBus
 
 private sealed interface BluetoothConnectAction {

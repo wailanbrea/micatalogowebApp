@@ -30,7 +30,6 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Button
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -63,6 +62,7 @@ import com.example.bspos.data.micatalogo.dto.FeatureRowDto
 import com.example.bspos.data.micatalogo.dto.FeatureSectionDto
 import com.example.bspos.data.micatalogo.dto.AuthorizationRequestDto
 import com.example.bspos.data.micatalogo.dto.OrderConfirmRequestDto
+import com.example.bspos.presentation.common.BSPOSAlertDialog as AlertDialog
 
 @Composable
 fun FeatureModuleScreen(
@@ -170,7 +170,13 @@ private fun FeatureContent(
         val salesRows = if (feature != "sales" || salesStatus == "Todos") decantRows else decantRows.filter { row ->
             when (salesStatus) {
                 "Pagadas" -> row.status.contains("pagad", ignoreCase = true)
-                "A crédito" -> row.status.contains("crédito", ignoreCase = true) || row.status.contains("credito", ignoreCase = true)
+                // `pending` is the API status for a sale whose full balance is
+                // still on credit. Keep accepting the old server label while
+                // newer responses use the normalized "A crédito" label.
+                "A crédito" -> row.status.contains("crédito", ignoreCase = true) ||
+                    row.status.contains("credito", ignoreCase = true) ||
+                    row.status.contains("pendiente", ignoreCase = true) ||
+                    row.status.contains("pending", ignoreCase = true)
                 "Parciales" -> row.status.contains("parcial", ignoreCase = true)
                 "Anuladas" -> row.status.contains("anulad", ignoreCase = true)
                 else -> true
@@ -193,7 +199,9 @@ private fun FeatureContent(
         item {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.weight(1f)) {
-                    if (definition.description.isNotBlank()) {
+                    // Ventas starts directly with its period and status filters;
+                    // do not show the generic explanatory label above them.
+                    if (feature != "sales" && definition.description.isNotBlank()) {
                         Text(definition.description, color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
                     }
                 }
@@ -658,7 +666,7 @@ private fun OrderConfirmationDialog(
                 }
                 Text("Método de pago", fontWeight = FontWeight.Bold)
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("cash" to "Efectivo", "card" to "Tarjeta", "transfer" to "Transferencia").forEach { (value, label) ->
+                    listOf("cash" to "Efectivo", "card" to "Tarjeta", "bank_transfer" to "Transferencia").forEach { (value, label) ->
                         FilterChip(selected = paymentMethod == value, onClick = { paymentMethod = value }, label = { Text(label) })
                     }
                 }

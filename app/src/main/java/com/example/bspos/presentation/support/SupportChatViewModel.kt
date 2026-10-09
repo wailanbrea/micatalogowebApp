@@ -25,6 +25,7 @@ data class SupportChatUiState(
     val messages: List<SupportMessageDto> = emptyList(),
     val isInbox: Boolean = false,
     val sending: Boolean = false,
+    val closing: Boolean = false,
     val error: String? = null
 )
 
@@ -112,6 +113,10 @@ class SupportChatViewModel @Inject constructor(
 
     fun sendMessage(message: String) {
         val conversation = _state.value.activeConversation ?: return
+        if (conversation.status == "closed") {
+            _state.value = _state.value.copy(error = "Este chat ya fue concluido. Inicia una nueva conversación para continuar.")
+            return
+        }
         val text = message.trim()
         if (text.isBlank()) return
         viewModelScope.launch {
@@ -130,6 +135,31 @@ class SupportChatViewModel @Inject constructor(
                 )
             }.onFailure { error ->
                 _state.value = _state.value.copy(sending = false, error = error.message ?: "No se pudo enviar el mensaje.")
+            }
+        }
+    }
+
+    fun closeConversation() {
+        val conversation = _state.value.activeConversation ?: return
+        if (conversation.status == "closed" || _state.value.closing) return
+        viewModelScope.launch {
+            _state.value = _state.value.copy(closing = true, error = null)
+            runCatching {
+                val response = api.get().closeSupportConversation(conversation.id)
+                check(response.isSuccessful) { responseError(response, "No se pudo concluir el chat.") }
+                response.body() ?: error("El servidor no devolvió el chat concluido.")
+            }.onSuccess { detail ->
+                _state.value = _state.value.copy(
+                    closing = false,
+                    activeConversation = detail.conversation,
+                    messages = detail.messages,
+                    conversations = _state.value.conversations.map {
+                        if (it.id == detail.conversation.id) detail.conversation else it
+                    },
+                    error = null
+                )
+            }.onFailure { error ->
+                _state.value = _state.value.copy(closing = false, error = error.message ?: "No se pudo concluir el chat.")
             }
         }
     }

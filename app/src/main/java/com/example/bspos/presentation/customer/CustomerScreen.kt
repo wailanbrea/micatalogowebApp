@@ -29,6 +29,7 @@ import com.example.bspos.core.money.MoneyUtils
 import com.example.bspos.domain.model.Customer
 import com.example.bspos.domain.model.MiCatalogoBusinessPresentation
 import com.example.bspos.domain.usecase.CustomerInput
+import com.example.bspos.presentation.common.BSPOSAlertDialog as AlertDialog
 import com.example.bspos.presentation.common.DialogScrollableColumn
 import java.util.Locale
 

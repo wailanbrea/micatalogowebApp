@@ -31,6 +31,7 @@ import com.example.bspos.core.money.LocalCurrency
 import com.example.bspos.core.money.MoneyUtils
 import com.example.bspos.core.ui.theme.BSPOSTheme
 import com.example.bspos.data.micatalogo.dto.*
+import com.example.bspos.presentation.common.BSPOSAlertDialog as AlertDialog
 import java.math.BigDecimal
 import java.math.RoundingMode
 import java.text.DecimalFormat

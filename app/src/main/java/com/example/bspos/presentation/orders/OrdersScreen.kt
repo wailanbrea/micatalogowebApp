@@ -33,7 +33,6 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.ReceiptLong
 import androidx.compose.material.icons.outlined.Search
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -62,15 +61,26 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import java.util.Locale
 import com.example.bspos.core.ui.theme.BSPOSTheme
+import com.example.bspos.core.money.LocalCurrency
+import com.example.bspos.core.money.MoneyUtils
 import com.example.bspos.data.micatalogo.dto.FeatureKpiDto
 import com.example.bspos.data.micatalogo.dto.FeatureRowDto
 import com.example.bspos.data.micatalogo.dto.RemoteCustomerDto
+import com.example.bspos.presentation.common.BSPOSAlertDialog as AlertDialog
+import com.example.bspos.presentation.common.CheckoutStyleBottomSheet
+import com.example.bspos.presentation.common.CheckoutStylePrimaryButton
+import com.example.bspos.presentation.common.CheckoutStyleSectionLabel
+import com.example.bspos.presentation.support.SupportFloatingActionButton
+import java.math.BigDecimal
 
 @Composable
 fun OrdersScreen(
@@ -307,15 +317,10 @@ private fun OrdersContent(
         }
 
         if (isOrders) {
-            androidx.compose.material3.FloatingActionButton(
+            SupportFloatingActionButton(
                 onClick = onOpenChat,
-                modifier = Modifier.align(Alignment.BottomEnd).padding(end = 18.dp, bottom = 18.dp),
-                containerColor = BSPOSTheme.colors.textPrimary,
-                contentColor = BSPOSTheme.colors.surface,
-                shape = RoundedCornerShape(50)
-            ) {
-                Icon(Icons.Outlined.ChatBubbleOutline, contentDescription = "Abrir chat con nosotros")
-            }
+                modifier = Modifier.align(Alignment.BottomEnd)
+            )
         }
     }
 }
@@ -719,104 +724,74 @@ private fun OrderDetailDialog(
     onWhatsApp: (() -> Unit)?,
     onConfirm: (() -> Unit)?
 ) {
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
-    ) {
-        Surface(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-            shape = RoundedCornerShape(26.dp),
-            color = BSPOSTheme.colors.background,
-            tonalElevation = 4.dp
-        ) {
-            Column(
-                modifier = Modifier.fillMaxWidth().heightIn(max = 760.dp).verticalScroll(rememberScrollState()).padding(20.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Column(Modifier.weight(1f)) {
-                        Text("PEDIDO", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.ExtraBold)
-                        Text(row.primary, color = BSPOSTheme.colors.textPrimary, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
-                        Text("Recibido desde la tienda", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodySmall)
-                    }
-                    Text(
-                        row.status.ifBlank { "Pendiente" }.uppercase(),
-                        color = BSPOSTheme.colors.primary,
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.ExtraBold
-                    )
-                }
-
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (onWhatsApp != null) {
-                        OutlinedButton(onClick = onWhatsApp, modifier = Modifier.weight(1f)) { Text("WhatsApp") }
-                    }
-                    if (onConfirm != null) {
-                        Button(onClick = onConfirm, modifier = Modifier.weight(1f)) { Text("Confirmar pedido") }
-                    } else if (onWhatsApp == null) {
-                        OutlinedButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) { Text("Cerrar") }
+    CheckoutStyleBottomSheet(
+        title = "Pedido",
+        badge = row.status.ifBlank { "Pendiente" }.uppercase(),
+        amount = row.value,
+        onDismiss = onDismiss,
+        footer = {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (onWhatsApp != null) {
+                    OutlinedButton(onClick = onWhatsApp, modifier = Modifier.weight(1f).height(48.dp), shape = RoundedCornerShape(10.dp)) {
+                        Text("WhatsApp", fontSize = 13.sp, fontWeight = FontWeight.Bold)
                     }
                 }
-
-                HorizontalDivider(color = BSPOSTheme.colors.outline)
-                Text("CLIENTE", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.ExtraBold)
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    OrderMeta("Nombre", row.customerName ?: "Cliente general", Modifier.weight(1f))
-                    OrderMeta("WhatsApp", row.customerPhone ?: "No indicado", Modifier.weight(1f))
+                if (onConfirm != null) {
+                    CheckoutStylePrimaryButton("Confirmar pedido", onConfirm, modifier = Modifier.weight(1f))
+                } else if (onWhatsApp == null) {
+                    CheckoutStylePrimaryButton("Cerrar", onDismiss)
                 }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    OrderMeta("Estado", row.status.ifBlank { "Pendiente" }, Modifier.weight(1f))
-                    OrderMeta("Origen", row.origin ?: "Tienda", Modifier.weight(1f))
-                }
-
-                HorizontalDivider(color = BSPOSTheme.colors.outline)
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Productos del pedido", color = BSPOSTheme.colors.textPrimary, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold, modifier = Modifier.weight(1f))
-                    Text("${row.itemCount.coerceAtLeast(row.items.sumOf { it.quantity })} artículo(s)", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodySmall)
-                }
-                if (row.items.isEmpty()) {
-                    Text("Los productos de este pedido estarán disponibles cuando el servidor entregue el detalle completo.", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
-                } else {
-                    Card(shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface)) {
-                        Column(Modifier.fillMaxWidth()) {
-                            row.items.forEachIndexed { index, item ->
-                                Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 13.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Column(Modifier.weight(1f)) {
-                                        Text(item.name, color = BSPOSTheme.colors.textPrimary, fontWeight = FontWeight.Bold, maxLines = 2)
-                                        Text("${item.quantity} × ${item.unitPrice}", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodySmall)
-                                    }
-                                    Text(item.lineTotal, color = BSPOSTheme.colors.textPrimary, fontWeight = FontWeight.ExtraBold)
-                                }
-                                if (index < row.items.lastIndex) HorizontalDivider(color = BSPOSTheme.colors.outline)
-                            }
-                            HorizontalDivider(color = BSPOSTheme.colors.outline)
-                            Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 15.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Text("Total", color = BSPOSTheme.colors.textPrimary, fontWeight = FontWeight.ExtraBold, modifier = Modifier.weight(1f))
-                                Text(row.value, color = BSPOSTheme.colors.textPrimary, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold)
-                            }
-                        }
-                    }
-                }
-                Text(
-                    if (row.canConfirm) "Confirma el pedido solo cuando hayas revisado disponibilidad y el método de pago. La confirmación lo convierte en venta y actualiza inventario, caja y factura." else "Este pedido ya fue procesado. Puedes consultar la venta generada desde Ventas.",
-                    color = BSPOSTheme.colors.textSecondary,
-                    style = MaterialTheme.typography.bodySmall
-                )
             }
         }
+    ) {
+        Text(row.primary, color = BSPOSTheme.colors.textPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+        Text("Recibido desde la tienda", color = BSPOSTheme.colors.textSecondary, fontSize = 12.sp)
+        CheckoutStyleSectionLabel("CLIENTE")
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            OrderMeta("Nombre", row.customerName ?: "Cliente general", Modifier.weight(1f))
+            OrderMeta("WhatsApp", row.customerPhone ?: "No indicado", Modifier.weight(1f))
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            OrderMeta("Estado", row.status.ifBlank { "Pendiente" }, Modifier.weight(1f))
+            OrderMeta("Origen", row.origin ?: "Tienda", Modifier.weight(1f))
+        }
+        CheckoutStyleSectionLabel("PRODUCTOS DEL PEDIDO")
+        if (row.items.isEmpty()) {
+            Text("Los productos de este pedido estarán disponibles cuando el servidor entregue el detalle completo.", color = BSPOSTheme.colors.textSecondary, fontSize = 12.sp)
+        } else {
+            Surface(shape = RoundedCornerShape(14.dp), border = BorderStroke(1.dp, BSPOSTheme.colors.outline), color = BSPOSTheme.colors.surface) {
+                Column(Modifier.fillMaxWidth()) {
+                    row.items.forEachIndexed { index, item ->
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(item.name, color = BSPOSTheme.colors.textPrimary, fontSize = 13.sp, lineHeight = 17.sp, fontWeight = FontWeight.Medium, maxLines = 2)
+                                Text("${item.quantity} × ${item.unitPrice}", color = BSPOSTheme.colors.textSecondary, fontSize = 10.sp)
+                            }
+                            Text(item.lineTotal, color = BSPOSTheme.colors.textPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                        if (index < row.items.lastIndex) HorizontalDivider(color = BSPOSTheme.colors.outline)
+                    }
+                }
+            }
+        }
+        Text(
+            if (row.canConfirm) "Confirma el pedido solo cuando hayas revisado disponibilidad y el método de pago." else "Este pedido ya fue procesado. Puedes consultar la venta generada desde Ventas.",
+            color = BSPOSTheme.colors.textSecondary,
+            fontSize = 12.sp
+        )
     }
 }
 
 @Composable
 private fun OrderMeta(label: String, value: String, modifier: Modifier = Modifier) {
     Column(modifier) {
-        Text(label, color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelSmall)
-        Text(value, color = BSPOSTheme.colors.textPrimary, fontWeight = FontWeight.Bold, maxLines = 2)
+        Text(label.uppercase(), color = BSPOSTheme.colors.textSecondary, fontSize = 10.sp, letterSpacing = 1.sp)
+        Text(value, color = BSPOSTheme.colors.textPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 2)
     }
 }
 
 @Composable
-private fun OrderConfirmDialog(
+internal fun OrderConfirmDialog(
     row: FeatureRowDto,
     customers: List<RemoteCustomerDto>,
     busy: Boolean,
@@ -826,31 +801,68 @@ private fun OrderConfirmDialog(
     var kind by remember { mutableStateOf("paid") }
     var method by remember { mutableStateOf("cash") }
     var customer by remember { mutableStateOf<RemoteCustomerDto?>(null) }
-    var creditAmount by remember { mutableStateOf("") }
+    var downPayment by remember { mutableStateOf("") }
     var reference by remember { mutableStateOf("") }
     val needsCustomer = kind == "credit" || kind == "mixed"
-    val creditValid = kind == "paid" || kind == "cash" || kind == "credit" || creditAmount.toBigDecimalOrNull()?.signum() == 1
-    AlertDialog(
-        onDismissRequest = { if (!busy) onDismiss() },
-        title = { Text("Confirmar ${row.primary}") },
-        text = {
-            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("Total: ${row.value}", fontWeight = FontWeight.Bold)
-                Text("Método de venta", style = MaterialTheme.typography.labelLarge)
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+    val totalCents = remember(row.id, row.value) { MoneyUtils.parsePesosStringToCents(row.value) }
+    val mixedCreditCents = if (kind == "mixed") calculateMixedCredit(totalCents, downPayment) else null
+    val creditValid = kind != "mixed" || mixedCreditCents != null
+    CheckoutStyleBottomSheet(
+        title = "Confirmar pedido",
+        badge = when (kind) { "credit" -> "CRÉDITO"; "mixed" -> "MIXTO"; else -> "CONTADO" },
+        amount = row.value,
+        onDismiss = onDismiss,
+        dismissEnabled = !busy,
+        footer = {
+            CheckoutStylePrimaryButton(
+                text = "Confirmar venta",
+                onClick = {
+                    val creditAmount = mixedCreditCents?.let { BigDecimal.valueOf(it, 2).toPlainString() }
+                    onConfirm(kind, method, customer?.id, creditAmount, reference)
+                },
+                enabled = !busy && (!needsCustomer || customer != null) && creditValid,
+                busy = busy
+            )
+        }
+    ) {
+                Text(row.primary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                CheckoutStyleSectionLabel("MÉTODO DE VENTA")
+                Row(
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
                     listOf("paid" to "Contado", "credit" to "Crédito", "mixed" to "Mixto").forEach { (value, label) ->
-                        FilterChip(selected = kind == value, onClick = { kind = value }, label = { Text(label) })
+                        FilterChip(selected = kind == value, onClick = { kind = value }, label = { Text(label, maxLines = 1, softWrap = false) })
                     }
                 }
-                Text("Forma de pago", style = MaterialTheme.typography.labelLarge)
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    listOf("cash" to "Efectivo", "card" to "Tarjeta", "transfer" to "Transferencia").forEach { (value, label) ->
-                        FilterChip(selected = method == value, onClick = { method = value }, label = { Text(label) })
+                CheckoutStyleSectionLabel("FORMA DE PAGO")
+                Row(
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    listOf("cash" to "Efectivo", "card" to "Tarjeta", "bank_transfer" to "Transferencia").forEach { (value, label) ->
+                        FilterChip(selected = method == value, onClick = { method = value }, label = { Text(label, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis) })
                     }
                 }
-                if (kind == "mixed") OutlinedTextField(creditAmount, { creditAmount = it }, label = { Text("Monto a crédito") }, singleLine = true)
+                if (kind == "mixed") {
+                    OutlinedTextField(
+                        value = downPayment,
+                        onValueChange = { downPayment = it },
+                        label = { Text("Abono inicial (${LocalCurrency.current.symbol})") },
+                        supportingText = {
+                            when {
+                                mixedCreditCents != null -> Text("Saldo pendiente a crédito: ${MoneyUtils.formatCents(mixedCreditCents, LocalCurrency.current)}")
+                                downPayment.isNotBlank() -> Text("El abono debe ser mayor que cero y menor que el total.")
+                            }
+                        },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        singleLine = true,
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
                 if (needsCustomer) {
-                    Text("Cliente con crédito", style = MaterialTheme.typography.labelLarge)
+                    CheckoutStyleSectionLabel("CLIENTE CON CRÉDITO")
                     if (customers.isEmpty()) Text("No hay clientes sincronizados. Registra primero el cliente desde Clientes.", color = BSPOSTheme.colors.error)
                     else customers.filter { it.isActive != false }.take(8).forEach { item ->
                         FilterChip(
@@ -860,17 +872,8 @@ private fun OrderConfirmDialog(
                         )
                     }
                 }
-                OutlinedTextField(reference, { reference = it }, label = { Text("Referencia (opcional)") }, singleLine = true)
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = { onConfirm(kind, method, customer?.id, if (kind == "credit") null else creditAmount, reference) },
-                enabled = !busy && (!needsCustomer || customer != null) && creditValid
-            ) { if (busy) CircularProgressIndicator(Modifier.width(18.dp).height(18.dp), strokeWidth = 2.dp) else Text("Confirmar venta") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss, enabled = !busy) { Text("Cancelar") } }
-    )
+                OutlinedTextField(reference, { reference = it }, label = { Text("Referencia (opcional)") }, singleLine = true, shape = RoundedCornerShape(10.dp), modifier = Modifier.fillMaxWidth())
+    }
 }
 
 @Composable

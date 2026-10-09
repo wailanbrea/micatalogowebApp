@@ -18,6 +18,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -102,7 +103,9 @@ internal fun ResumenOverview(
     onDayClose: () -> Unit,
     onStorefront: () -> Unit,
     onProfile: () -> Unit,
-    onHelp: () -> Unit,
+    onSupport: () -> Unit = {},
+    onHideSupport: () -> Unit = {},
+    showSupport: Boolean = true,
     onAllSales: () -> Unit,
     onSale: (Sale) -> Unit,
 ) {
@@ -162,7 +165,8 @@ internal fun ResumenOverview(
                 }
             }
         }
-        item { ResumenSetup(active.isNotEmpty(), sales.isNotEmpty(), onProducts, onNewSale, onStorefront, onProfile, onHelp) }
+        if (showSupport) item { SupportSummaryCard(onSupport = onSupport, onHide = onHideSupport) }
+        item { ResumenSetup(active.isNotEmpty(), sales.isNotEmpty(), onProducts, onNewSale, onStorefront, onProfile) }
         item {
             Surface(shape = RoundedCornerShape(8.dp), border = BorderStroke(1.dp, Line), color = Color.White) {
                 Row(Modifier.padding(3.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -199,6 +203,21 @@ internal fun ResumenOverview(
                         MetricCell("TICKET PROMEDIO", amount(average), resumenComparison(average, priorAverage), Modifier.weight(1f), if (average < priorAverage) Red else Green)
                         VerticalDivider(color = Line)
                         MetricCell("POR COBRAR", amount(receivable), if (receivable == 0L) "al día" else "${balances.size} clientes pendientes", Modifier.weight(1f), if (receivable > 0L) ResumenAccent else Green)
+                    }
+                }
+            }
+        }
+        if (showEncargos) item {
+            SummaryPanel("Encargos", Icons.Default.CalendarMonth, "Ver agenda", onEncargos) {
+                when {
+                    ordersError != null -> Text(ordersError, color = ResumenMuted, fontSize = 13.sp)
+                    pendingOrders == null -> Text("Consultando encargos…", color = ResumenMuted, fontSize = 13.sp)
+                    pendingOrders.isEmpty() -> Text("Nada pendiente de entregar.", color = ResumenMuted, fontSize = 13.sp)
+                    else -> pendingOrders.take(5).forEach { row ->
+                        Row(Modifier.fillMaxWidth().clickable(onClick = onEncargos).padding(vertical = 6.dp)) {
+                            Column(Modifier.weight(1f)) { Text(row.primary, color = ResumenInk, fontSize = 13.sp); Text(row.secondary, color = ResumenMuted, fontSize = 11.sp) }
+                            Text(row.status, color = ResumenAccent, fontSize = 11.sp)
+                        }
                     }
                 }
             }
@@ -268,21 +287,6 @@ internal fun ResumenOverview(
                 }
             }
         }
-        if (showEncargos) item {
-            SummaryPanel("Encargos", Icons.Default.CalendarMonth, "Ver agenda", onEncargos) {
-                when {
-                    ordersError != null -> Text(ordersError, color = ResumenMuted, fontSize = 13.sp)
-                    pendingOrders == null -> Text("Consultando encargos…", color = ResumenMuted, fontSize = 13.sp)
-                    pendingOrders.isEmpty() -> Text("Nada pendiente de entregar.", color = ResumenMuted, fontSize = 13.sp)
-                    else -> pendingOrders.take(5).forEach { row ->
-                        Row(Modifier.fillMaxWidth().clickable(onClick = onEncargos).padding(vertical = 6.dp)) {
-                            Column(Modifier.weight(1f)) { Text(row.primary, color = ResumenInk, fontSize = 13.sp); Text(row.secondary, color = ResumenMuted, fontSize = 11.sp) }
-                            Text(row.status, color = ResumenAccent, fontSize = 11.sp)
-                        }
-                    }
-                }
-            }
-        }
         if (showCollections) item {
             SummaryPanel("Por cobrar", Icons.Default.AccountBalanceWallet, "Crédito", onCollections) {
                 if (balances.isEmpty()) Text("Sin cuentas por cobrar.", color = ResumenMuted, fontSize = 13.sp)
@@ -326,10 +330,9 @@ internal fun ResumenOverview(
 }
 
 @Composable
-private fun ResumenSetup(hasProduct: Boolean, hasSale: Boolean, onProduct: () -> Unit, onSale: () -> Unit, onStorefront: () -> Unit, onProfile: () -> Unit, onHelp: () -> Unit) {
+private fun ResumenSetup(hasProduct: Boolean, hasSale: Boolean, onProduct: () -> Unit, onSale: () -> Unit, onStorefront: () -> Unit, onProfile: () -> Unit) {
     var hidden by rememberSaveable { mutableStateOf(false) }
     var expanded by rememberSaveable { mutableStateOf(false) }
-    var guide by remember { mutableStateOf(false) }
     val steps = listOf(Triple("Cuenta conectada", true, onProfile), Triple("Agrega tu primer producto", hasProduct, onProduct), Triple("Haz tu primera venta", hasSale, onSale))
     Surface(Modifier.fillMaxWidth(), color = BSPOSTheme.colors.primaryLight, shape = RoundedCornerShape(10.dp), border = BorderStroke(1.dp, ResumenAccent.copy(alpha = .25f))) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -350,15 +353,6 @@ private fun ResumenSetup(hasProduct: Boolean, hasSale: Boolean, onProduct: () ->
                         }
                     }
                 }
-                Surface(color = Color.White, shape = RoundedCornerShape(12.dp), border = BorderStroke(1.dp, Line)) {
-                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(Modifier.size(62.dp).clip(RoundedCornerShape(8.dp)).background(BSPOSTheme.colors.secondaryNavy), contentAlignment = Alignment.Center) { Icon(Icons.Default.PlayArrow, null, tint = Color.White, modifier = Modifier.size(30.dp)) }
-                            Spacer(Modifier.width(12.dp)); Column { Text("¿Primera vez? Mira cómo funciona MiCatalogo", color = ResumenInk, fontSize = 14.sp, fontWeight = FontWeight.Bold); Text("Guía de inicio", color = ResumenMuted, fontSize = 12.sp) }
-                        }
-                        OutlinedButton(onClick = { guide = true }, shape = RoundedCornerShape(8.dp), border = BorderStroke(1.dp, Line), colors = ButtonDefaults.outlinedButtonColors(contentColor = ResumenInk)) { Icon(Icons.Default.PlayArrow, null); Text("Ver ahora") }
-                    }
-                }
                 Row(Modifier.fillMaxWidth().clickable { expanded = !expanded }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(if (expanded) "⌄" else "›", color = ResumenMuted); Spacer(Modifier.width(10.dp)); Text("Termina tu tienda", color = ResumenMuted, fontSize = 13.sp); Spacer(Modifier.width(10.dp)); Text("6 pasos", color = ResumenMuted, fontFamily = FontFamily.Monospace, fontSize = 11.sp)
                 }
@@ -368,7 +362,6 @@ private fun ResumenSetup(hasProduct: Boolean, hasSale: Boolean, onProduct: () ->
             }
         }
     }
-    if (guide) AlertDialog(onDismissRequest = { guide = false }, title = { Text("Cómo funciona MiCatalogo") }, text = { Text("1. Agrega tus productos y existencias.\n\n2. Define tus métodos de pago si lo necesitas.\n\n3. Registra una venta desde Terminal; no necesitas abrir Caja.\n\n4. Comparte tu catálogo desde Mi tienda.\n\nEn Resumen puedes consultar ventas, ganancias, inventario y clientes pendientes por periodo.") }, confirmButton = { TextButton(onClick = { guide = false; onHelp() }) { Text("Abrir Ayuda") } }, dismissButton = { TextButton(onClick = { guide = false }) { Text("Cerrar") } })
 }
 
 @Composable
@@ -401,7 +394,7 @@ private fun SummaryPanel(title: String, icon: ImageVector, action: String, onAct
 
 @Composable
 private fun IncomeChart(bars: List<Pair<String, Long>>, total: Long, average: Long, count: Int, hourly: Boolean) {
-    var selected by remember(bars) { mutableStateOf<Pair<String, Long>?>(null) }
+    var selected by remember(bars) { mutableStateOf(bars.maxByOrNull { it.second }?.takeIf { it.second > 0L }) }
     val maxValue = bars.maxOfOrNull { it.second }?.coerceAtLeast(1L) ?: 1L
     val ceiling = if (maxValue <= 1) 1L else {
         val step = Math.pow(10.0, kotlin.math.floor(kotlin.math.log10(maxValue.toDouble()))).toLong().coerceAtLeast(1)
@@ -411,23 +404,45 @@ private fun IncomeChart(bars: List<Pair<String, Long>>, total: Long, average: Lo
         Column(Modifier.padding(18.dp)) {
             MonoLabel("INGRESOS")
             Spacer(Modifier.height(24.dp))
-            Row(Modifier.fillMaxWidth()) {
-                Column(Modifier.width(46.dp)) { bars.forEach { (label, _) -> Box(Modifier.height(if (hourly) 16.dp else 24.dp), contentAlignment = Alignment.CenterStart) { Text(label, color = ResumenMuted, fontFamily = FontFamily.Monospace, fontSize = 9.sp, maxLines = 1) } } }
-                Box(Modifier.weight(1f)) {
-                    Canvas(Modifier.fillMaxWidth().height((bars.size * if (hourly) 16 else 24).dp)) {
-                        (0..4).forEach { tick -> val x = size.width * tick / 4; drawLine(Line, Offset(x, 0f), Offset(x, size.height), 1.dp.toPx()) }
+            Box(Modifier.fillMaxWidth().height(180.dp)) {
+                Canvas(Modifier.fillMaxSize()) {
+                    (0..4).forEach { tick ->
+                        val y = size.height * tick / 4
+                        drawLine(Line, Offset(0f, y), Offset(size.width, y), 1.dp.toPx())
                     }
-                    Column {
-                        bars.forEach { bar ->
-                            Box(Modifier.fillMaxWidth().height(if (hourly) 16.dp else 24.dp).clickable { selected = bar }.semantics { contentDescription = "${bar.first}: ${bar.second} centavos en ventas" }, contentAlignment = Alignment.CenterStart) {
-                                if (bar.second > 0) Box(Modifier.fillMaxWidth((bar.second.toFloat() / ceiling).coerceIn(0f, 1f)).height(12.dp).clip(RoundedCornerShape(topEnd = 6.dp, bottomEnd = 6.dp)).background(ResumenAccent))
+                    if (bars.isNotEmpty()) {
+                        val slotWidth = size.width / bars.size
+                        val barWidth = (slotWidth * .68f).coerceAtLeast(2.dp.toPx())
+                        bars.forEachIndexed { index, bar ->
+                            if (bar.second > 0L) {
+                                val barHeight = (size.height * (bar.second.toFloat() / ceiling).coerceIn(0f, 1f)).coerceAtLeast(6.dp.toPx())
+                                drawRoundRect(
+                                    color = ResumenAccent,
+                                    topLeft = Offset(index * slotWidth + (slotWidth - barWidth) / 2f, size.height - barHeight),
+                                    size = Size(barWidth, barHeight),
+                                    cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx())
+                                )
                             }
                         }
                     }
                 }
+                Row(Modifier.fillMaxSize()) {
+                    bars.forEachIndexed { index, bar ->
+                        Box(
+                            Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                                .clickable { selected = bar }
+                                .semantics { contentDescription = "${bar.first}: ${bar.second} centavos en ventas" }
+                        )
+                    }
+                }
             }
-            Row(Modifier.fillMaxWidth().padding(start = 46.dp, top = 6.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                (0..4).forEach { tick -> val value = ceiling.toDouble() * tick / 4 / 100; Text(if (ceiling == 1L) String.format(Locale.US, "%.1f", tick / 4.0) else if (value >= 1000) "${String.format(Locale.US, "%.1f", value / 1000).removeSuffix(".0")}k" else value.toInt().toString(), color = ResumenMuted, fontFamily = FontFamily.Monospace, fontSize = 9.sp) }
+            Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                val labelIndexes = if (hourly) listOf(0, 6, 12, 18, 23) else listOf(0, bars.size / 4, bars.size / 2, (bars.size * 3) / 4, bars.lastIndex)
+                labelIndexes.distinct().forEach { index ->
+                    Text(bars.getOrNull(index)?.first.orEmpty(), color = ResumenMuted, fontFamily = FontFamily.Monospace, fontSize = 9.sp)
+                }
             }
             selected?.let { Text("${it.first} · ${amount(it.second)}", color = ResumenAccent, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp)) }
             HorizontalDivider(color = Line, modifier = Modifier.padding(top = 20.dp, bottom = 12.dp))

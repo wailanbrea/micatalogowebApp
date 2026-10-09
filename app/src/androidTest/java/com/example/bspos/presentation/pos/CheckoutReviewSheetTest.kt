@@ -82,4 +82,25 @@ class CheckoutReviewSheetTest {
         compose.onNodeWithTag("checkout-total").assertTextEquals("RD$ 19,600.00")
         compose.onNodeWithTag("checkout-confirm").assertIsDisplayed()
     }
+    @Test fun creditAsksForTheInitialPaymentAndComputesTheDebt() {
+        var abono = -1L
+        val product = product("Producto de crédito de prueba", 950000, 100000)
+        val customer = com.example.bspos.domain.model.Customer(UUID.randomUUID(), "Cliente local",
+            creditLimit = 1000000, createdAt = now, updatedAt = now)
+        compose.setContent {
+            BSPOSTheme {
+                CheckoutReviewSheet(cart = listOf(PosCartLine(product, 1)), subtotal = 950000, discount = 0,
+                    customer = customer, method = CheckoutReviewMethod.CREDIT, wholesaleMode = false,
+                    saleDate = LocalDate.now(), quantities = mapOf(product.id to 1L), creditEnabled = true, isProcessing = false,
+                    onDismiss = {}, onCustomer = {}, onNewCustomer = {}, onMethodChange = {}, onMixed = {},
+                    onQuantity = { _, _ -> }, onUnitPrice = { _, _ -> }, onClear = {}, onDiscount = {}, onDate = {},
+                    onConfirm = { _, _, _ -> }, onCreditConfirm = { amount, _, _, _, _ -> abono = amount })
+            }
+        }
+        compose.onNodeWithTag("credit-down-payment").performScrollTo().performTextReplacement("1000")
+        compose.onNodeWithText("Saldo pendiente calculado").assertExists()
+        compose.onNodeWithText("RD$ 8,500.00").assertExists()
+        compose.onNodeWithTag("checkout-confirm").assertIsEnabled().performClick()
+        assertEquals(100000L, abono)
+    }
 }

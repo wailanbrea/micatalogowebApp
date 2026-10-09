@@ -47,7 +47,7 @@ fun ProductEntity.toDomain() = Product(
     createdAt = createdAt, updatedAt = updatedAt, deletedAt = deletedAt,
     remoteShopId = miCatalogoShopId, remoteProductId = miCatalogoProductId, remoteSaleUnit = miCatalogoSaleUnit,
     remoteIsCombo = miCatalogoIsCombo,
-    remoteVolumeMl = miCatalogoVolumeMl, remoteAvailableMl = miCatalogoAvailableMl, remoteOpenedBottles = miCatalogoOpenedBottles,
+    remoteVolumeMl = miCatalogoVolumeMl, remoteAvailableMl = miCatalogoAvailableMl, remoteReservedDecantMl = miCatalogoReservedDecantMl, remoteOpenedBottles = miCatalogoOpenedBottles,
     remoteSourceProductId = miCatalogoSourceProductId, remoteProductSlug = miCatalogoProductSlug,
     remoteComboItems = decodeComboItems(miCatalogoComboItemsJson)
 )
@@ -65,6 +65,7 @@ fun Product.toEntity() = ProductEntity(
     miCatalogoSourceProductId = remoteSourceProductId,
     miCatalogoVolumeMl = remoteVolumeMl,
     miCatalogoAvailableMl = remoteAvailableMl,
+    miCatalogoReservedDecantMl = remoteReservedDecantMl,
     miCatalogoOpenedBottles = remoteOpenedBottles,
     miCatalogoSaleUnit = remoteSaleUnit, miCatalogoProductSlug = remoteProductSlug,
     miCatalogoIsCombo = remoteIsCombo,

@@ -11,6 +11,7 @@ import com.example.bspos.data.micatalogo.dto.InventoryImportAttributeDto
 import com.example.bspos.data.micatalogo.dto.InventoryImportRequestDto
 import com.example.bspos.data.micatalogo.dto.InventoryImportRowDto
 import com.example.bspos.data.micatalogo.dto.MenuPermissionsUpdateDto
+import com.example.bspos.data.micatalogo.dto.MenuVisibilityUpdateDto
 import com.example.bspos.data.micatalogo.dto.MeDto
 import com.example.bspos.data.micatalogo.dto.ProfileUpdateDto
 import com.example.bspos.data.micatalogo.dto.SellerCreateRequestDto
@@ -126,6 +127,14 @@ class MiCatalogoConnectionRepositoryImpl @Inject constructor(
         onFailure = { MiCatalogoResult.Failure(it.message ?: "No se pudieron guardar los menus.") }
     )
 
+    override suspend fun updateShopMenuVisibility(shopId: String, enabledMenuKeys: List<String>): MiCatalogoResult<Unit> = runCatching {
+        val response = api.get().updateShopMenuVisibility(shopId, MenuVisibilityUpdateDto(enabledMenuKeys))
+        if (!response.isSuccessful) error(response.apiErrorMessage("No se pudieron guardar los menús de la tienda."))
+    }.fold(
+        onSuccess = { MiCatalogoResult.Success(Unit) },
+        onFailure = { MiCatalogoResult.Failure(it.message ?: "No se pudieron guardar los menús de la tienda.") }
+    )
+
     override suspend fun shops(): MiCatalogoResult<List<MiCatalogoShop>> = runCatching {
         val remoteShops = try {
             val response = api.get().shops()
@@ -163,6 +172,11 @@ class MiCatalogoConnectionRepositoryImpl @Inject constructor(
                         customersShowCredit = shop.presentation.customers.showCredit
                     ),
                     menuPermissions = shop.menuPermissions,
+                    enabledMenuKeys = shop.enabledMenuKeys,
+                    canManageMenuVisibility = shop.canManageMenuVisibility,
+                    menuOptions = shop.menuOptions.map { option ->
+                        com.example.bspos.domain.model.ShopMenuOption(option.key, option.label, option.group, option.protected)
+                    },
                     canManageSellers = shop.canManageSellers,
                     sellers = shop.sellers.map { seller ->
                         MiCatalogoSeller(

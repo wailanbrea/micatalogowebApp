@@ -26,14 +26,15 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.Send
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Divider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -51,10 +52,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.example.bspos.core.ui.theme.BSPOSTheme
 import com.example.bspos.data.micatalogo.dto.SupportConversationDto
 import com.example.bspos.data.micatalogo.dto.SupportMessageDto
+import com.example.bspos.presentation.common.CheckoutStyleBottomSheet
+import com.example.bspos.presentation.common.CheckoutStylePrimaryButton
+import com.example.bspos.presentation.common.CheckoutStyleSectionLabel
 import kotlinx.coroutines.delay
 
 @Composable
@@ -77,7 +82,7 @@ fun SupportChatScreen(
     Box(modifier.fillMaxSize().background(BSPOSTheme.colors.background)) {
         Column(Modifier.fillMaxSize()) {
             SupportChatHeader(
-                title = if (state.activeConversation == null) "Soporte" else "Conversación",
+                conversationOpen = state.activeConversation != null,
                 onBack = if (state.activeConversation != null) viewModel::clearActiveConversation else onNavigateBack,
                 onRefresh = { viewModel.load() }
             )
@@ -91,7 +96,9 @@ fun SupportChatScreen(
                     messages = state.messages,
                     isInbox = state.isInbox,
                     sending = state.sending,
+                    closing = state.closing,
                     onSend = viewModel::sendMessage,
+                    onClose = viewModel::closeConversation,
                     modifier = Modifier.weight(1f)
                 )
             } else {
@@ -132,15 +139,29 @@ fun SupportChatScreen(
 }
 
 @Composable
-private fun SupportChatHeader(title: String, onBack: () -> Unit, onRefresh: () -> Unit) {
+private fun SupportChatHeader(conversationOpen: Boolean, onBack: () -> Unit, onRefresh: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
+        Modifier
+            .fillMaxWidth()
+            .background(BSPOSTheme.colors.surface)
+            .padding(horizontal = 8.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         IconButton(onClick = onBack) {
             Icon(Icons.Default.ArrowBack, contentDescription = "Volver", tint = BSPOSTheme.colors.textPrimary)
         }
-        Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold, color = BSPOSTheme.colors.textPrimary, modifier = Modifier.weight(1f))
+        Row(
+            modifier = Modifier.weight(1f),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("Ajustes", color = BSPOSTheme.colors.textSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+            Text(" / ", color = BSPOSTheme.colors.textSecondary, fontSize = 11.sp)
+            Text("Soporte", color = BSPOSTheme.colors.textPrimary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            if (conversationOpen) {
+                Text(" / ", color = BSPOSTheme.colors.textSecondary, fontSize = 11.sp)
+                Text("Conversación", color = BSPOSTheme.colors.textPrimary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            }
+        }
         IconButton(onClick = onRefresh) { Icon(Icons.Default.Refresh, contentDescription = "Actualizar", tint = BSPOSTheme.colors.primary) }
     }
 }
@@ -216,7 +237,7 @@ private fun SupportConversationCard(conversation: SupportConversationDto, isInbo
                 Text(requester?.email.orEmpty(), color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodySmall)
                 Text(conversation.shop?.name?.let { "Tienda · $it" } ?: "Tienda no disponible", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodySmall)
             } else {
-                Text(conversation.status.replaceFirstChar { it.uppercase() }, color = BSPOSTheme.colors.primary, style = MaterialTheme.typography.labelMedium)
+                SupportStatusPill(conversation.status)
             }
             Text(
                 if (isInbox) "Solicitado · ${supportDate(conversation.createdAt)}" else "Creado · ${supportDate(conversation.createdAt)}",
@@ -236,20 +257,51 @@ private fun SupportConversationContent(
     messages: List<SupportMessageDto>,
     isInbox: Boolean,
     sending: Boolean,
+    closing: Boolean,
     onSend: (String) -> Unit,
+    onClose: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    var showCloseConfirmation by remember(conversation.id) { mutableStateOf(false) }
     var draft by remember(conversation.id) { mutableStateOf("") }
     val listState = rememberLazyListState()
     LaunchedEffect(messages.size) {
         if (messages.isNotEmpty()) listState.animateScrollToItem(messages.lastIndex)
     }
     Column(modifier.fillMaxSize().imePadding()) {
-        Card(Modifier.fillMaxWidth().padding(horizontal = 16.dp), shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface)) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(conversation.requester?.name ?: conversation.subject, fontWeight = FontWeight.Bold, color = BSPOSTheme.colors.textPrimary)
-                Text(conversation.requester?.email.orEmpty(), color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodySmall)
-                Text("Solicitud · ${supportDate(conversation.createdAt)}", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelSmall)
+        Card(Modifier.fillMaxWidth().padding(horizontal = 16.dp), shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface), border = BorderStroke(1.dp, BSPOSTheme.colors.outline)) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Surface(shape = CircleShape, color = BSPOSTheme.colors.primaryLight, modifier = Modifier.size(46.dp)) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(Icons.Outlined.ChatBubbleOutline, contentDescription = null, tint = BSPOSTheme.colors.primary, modifier = Modifier.size(23.dp))
+                        }
+                    }
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(conversation.requester?.name ?: conversation.subject, fontWeight = FontWeight.Bold, color = BSPOSTheme.colors.textPrimary)
+                        Text(conversation.requester?.email.orEmpty(), color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodySmall)
+                    }
+                    SupportStatusPill(conversation.status)
+                }
+                Divider(color = BSPOSTheme.colors.outline.copy(alpha = .7f))
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text("Solicitud de soporte", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelSmall)
+                        Text("Creada · ${supportDate(conversation.createdAt)}", color = BSPOSTheme.colors.textPrimary, style = MaterialTheme.typography.bodySmall)
+                    }
+                    if (conversation.status != "closed") {
+                        OutlinedButton(onClick = { showCloseConfirmation = true }, enabled = !closing, shape = RoundedCornerShape(12.dp)) {
+                            Text(if (closing) "Concluyendo…" else "Concluir chat")
+                        }
+                    }
+                }
+                if (conversation.status == "closed") {
+                    Text(
+                        "Concluido${conversation.closedBy?.name?.let { " por $it" }.orEmpty()} · ${supportDate(conversation.closedAt)}",
+                        color = BSPOSTheme.colors.textSecondary,
+                        style = MaterialTheme.typography.labelSmall
+                    )
+                }
             }
         }
         LazyColumn(
@@ -263,21 +315,69 @@ private fun SupportConversationContent(
                 MessageBubble(message, mine = mine)
             }
         }
-        Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedTextField(
-                value = draft,
-                onValueChange = { draft = it.take(4000) },
-                modifier = Modifier.weight(1f),
-                placeholder = { Text("Escribe un mensaje") },
-                maxLines = 4,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Default),
-                shape = RoundedCornerShape(18.dp)
-            )
-            IconButton(onClick = { onSend(draft); draft = "" }, enabled = draft.isNotBlank() && !sending) {
-                if (sending) CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp, color = BSPOSTheme.colors.primary)
-                else Icon(Icons.Outlined.Send, contentDescription = "Enviar", tint = BSPOSTheme.colors.primary)
+        if (conversation.status == "closed") {
+            Surface(
+                modifier = Modifier.fillMaxWidth().padding(12.dp),
+                shape = RoundedCornerShape(16.dp),
+                color = BSPOSTheme.colors.surfaceVariant,
+                border = BorderStroke(1.dp, BSPOSTheme.colors.outline)
+            ) {
+                Text(
+                    "Este chat está concluido. Para solicitar ayuda nuevamente, inicia un nuevo chat.",
+                    modifier = Modifier.padding(14.dp),
+                    color = BSPOSTheme.colors.textSecondary,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+        } else {
+            Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = draft,
+                    onValueChange = { draft = it.take(4000) },
+                    modifier = Modifier.weight(1f),
+                    placeholder = { Text("Escribe un mensaje") },
+                    maxLines = 4,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Default),
+                    shape = RoundedCornerShape(18.dp)
+                )
+                IconButton(onClick = { onSend(draft); draft = "" }, enabled = draft.isNotBlank() && !sending && !closing) {
+                    if (sending) CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp, color = BSPOSTheme.colors.primary)
+                    else Icon(Icons.Outlined.Send, contentDescription = "Enviar", tint = BSPOSTheme.colors.primary)
+                }
             }
         }
+    }
+    if (showCloseConfirmation) {
+        CheckoutStyleBottomSheet(
+            title = "Concluir chat",
+            badge = "SOPORTE",
+            onDismiss = { showCloseConfirmation = false },
+            dismissEnabled = !closing,
+            footer = {
+                CheckoutStylePrimaryButton(
+                    text = "Concluir chat",
+                    onClick = { showCloseConfirmation = false; onClose() },
+                    enabled = !closing,
+                    busy = closing
+                )
+            }
+        ) {
+            Text("Ambas personas verán la conversación como concluida y no se podrán enviar más mensajes en ella.", color = BSPOSTheme.colors.textSecondary, fontSize = 12.sp)
+        }
+    }
+}
+
+@Composable
+private fun SupportStatusPill(status: String) {
+    val closed = status == "closed"
+    Surface(shape = RoundedCornerShape(50), color = if (closed) BSPOSTheme.colors.surfaceVariant else BSPOSTheme.colors.successLight) {
+        Text(
+            if (closed) "Concluido" else "Abierto",
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            color = if (closed) BSPOSTheme.colors.textSecondary else BSPOSTheme.colors.success,
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.Bold
+        )
     }
 }
 
@@ -306,20 +406,41 @@ private fun NewSupportChatDialog(
 ) {
     var subject by remember { mutableStateOf("") }
     var message by remember { mutableStateOf("") }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        icon = { Icon(Icons.Outlined.ChatBubbleOutline, contentDescription = null, tint = BSPOSTheme.colors.primary) },
-        title = { Text("Nuevo chat") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("Tu solicitud llegará a wailandkey@gmail.com y quedará registrada con la hora de llegada.", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodySmall)
-                OutlinedTextField(subject, { subject = it.take(160) }, Modifier.fillMaxWidth(), singleLine = true, label = { Text("Asunto (opcional)") })
-                OutlinedTextField(message, { message = it.take(4000) }, Modifier.fillMaxWidth(), minLines = 4, maxLines = 6, label = { Text("Mensaje") })
-            }
-        },
-        confirmButton = { Button(onClick = { onStart(subject, message) }, enabled = message.isNotBlank() && !sending) { Text(if (sending) "Enviando…" else "Enviar solicitud") } },
-        dismissButton = { TextButton(onClick = onDismiss, enabled = !sending) { Text("Cancelar") } }
-    )
+    CheckoutStyleBottomSheet(
+        title = "Nuevo chat",
+        badge = "SOPORTE",
+        onDismiss = onDismiss,
+        dismissEnabled = !sending,
+        footer = {
+            CheckoutStylePrimaryButton(
+                text = "Enviar solicitud",
+                onClick = { onStart(subject, message) },
+                enabled = message.isNotBlank() && !sending,
+                busy = sending
+            )
+        }
+    ) {
+        Text("Tu solicitud llegará a wailandkey@gmail.com y quedará registrada con la hora de llegada.", color = BSPOSTheme.colors.textSecondary, fontSize = 12.sp)
+        CheckoutStyleSectionLabel("ASUNTO")
+        OutlinedTextField(
+            subject,
+            { subject = it.take(160) },
+            Modifier.fillMaxWidth(),
+            singleLine = true,
+            placeholder = { Text("Opcional", fontSize = 13.sp) },
+            shape = RoundedCornerShape(10.dp)
+        )
+        CheckoutStyleSectionLabel("MENSAJE")
+        OutlinedTextField(
+            message,
+            { message = it.take(4000) },
+            Modifier.fillMaxWidth(),
+            minLines = 4,
+            maxLines = 6,
+            placeholder = { Text("Describe cómo podemos ayudarte", fontSize = 13.sp) },
+            shape = RoundedCornerShape(10.dp)
+        )
+    }
 }
 
 private fun supportDate(value: String?): String {
