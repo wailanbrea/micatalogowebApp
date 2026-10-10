@@ -30,6 +30,7 @@ data class QuoteUiState(
     val cart: Map<FeatureProductDto, Int> = emptyMap(),
     val convertingId: String? = null,
     val convertedInvoiceNumber: String? = null,
+    val convertedInvoiceUrl: String? = null,
     val message: String? = null,
     val error: String? = null
 )
@@ -100,7 +101,13 @@ class QuoteViewModel @Inject constructor(
     fun save(customerName: String, customerPhone: String, validUntil: String, notes: String, customerId: String? = null) {
         val current = _state.value
         if (current.cart.isEmpty() || current.saving) return
-        _state.value = current.copy(saving = true, error = null, message = null, convertedInvoiceNumber = null)
+        _state.value = current.copy(
+            saving = true,
+            error = null,
+            message = null,
+            convertedInvoiceNumber = null,
+            convertedInvoiceUrl = null
+        )
         viewModelScope.launch {
             runCatching {
                 val shopId = checkNotNull(connection.activeShopId()) { "Selecciona una tienda para cotizar." }
@@ -140,6 +147,7 @@ class QuoteViewModel @Inject constructor(
                     _state.value = _state.value.copy(
                         convertingId = null,
                         convertedInvoiceNumber = response.body()?.invoiceNumber,
+                        convertedInvoiceUrl = response.body()?.invoiceUrl,
                         message = response.body()?.message ?: "Cotización convertida en venta."
                     )
                     load()

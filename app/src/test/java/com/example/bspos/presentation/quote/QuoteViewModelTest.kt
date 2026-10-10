@@ -85,7 +85,10 @@ class QuoteViewModelTest {
             var conversions = 0
             val api = proxy<MiCatalogoApi> { method, _ ->
                 when (method) {
-                    "convertQuote" -> { conversions++; Response.success(QuoteResponseDto(invoiceNumber = "FAC-001")) }
+                    "convertQuote" -> {
+                        conversions++
+                        Response.success(QuoteResponseDto(invoiceNumber = "FAC-001", invoiceUrl = "https://example.test/factura"))
+                    }
                     "feature" -> Response.success(FeatureResponseDto())
                     else -> error("Unexpected operation: $method")
                 }
@@ -96,6 +99,7 @@ class QuoteViewModelTest {
             advanceUntilIdle()
             assertEquals(1, conversions)
             assertEquals("FAC-001", model.state.value.convertedInvoiceNumber)
+            assertEquals("https://example.test/factura", model.state.value.convertedInvoiceUrl)
             assertNull(model.state.value.convertingId)
         } finally { Dispatchers.resetMain() }
     }

@@ -251,7 +251,8 @@ data class QuoteCreateRequestDto(
 data class QuoteResponseDto(
     val message: String = "",
     val quote: QuoteCreatedDto? = null,
-    @SerialName("invoice_number") val invoiceNumber: String? = null
+    @SerialName("invoice_number") val invoiceNumber: String? = null,
+    @SerialName("invoice_url") val invoiceUrl: String? = null
 )
 
 @Serializable

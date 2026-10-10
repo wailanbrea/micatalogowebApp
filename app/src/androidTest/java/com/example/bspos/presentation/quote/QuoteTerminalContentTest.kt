@@ -67,6 +67,10 @@ class QuoteTerminalContentTest {
         compose.onNodeWithText("Guardadas").performClick()
         compose.onNodeWithText("COT-001").assertIsDisplayed()
         compose.onNodeWithText("Vigentes").assertIsDisplayed()
+        compose.onNodeWithText("Convertir").performClick()
+        compose.onNodeWithText("Convertir cotización en venta").assertIsDisplayed()
+        compose.onNodeWithText("Revisar").performClick()
+        compose.onNodeWithText("Convertir cotización en venta").assertDoesNotExist()
     }
     @Test fun longQuotationKeepsSaveFixedAndReturnsToSavedQuotes() {
         show(products.associateWith { 1 })

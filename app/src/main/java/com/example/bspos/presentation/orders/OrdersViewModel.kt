@@ -91,7 +91,10 @@ class OrdersViewModel @Inject constructor(
 
             // Customers are required only by the credit/mixed confirmation dialog.
             // Load them in parallel without delaying the orders read model.
-            loadCustomers(shopId)
+            // Pedidos can be reopened after a customer is created from another
+            // screen. Always refresh this small list here so the confirmation
+            // dialog never keeps a stale customer cache.
+            loadCustomers(shopId, force = feature == "orders" || refresh)
 
             try {
                 val moduleResponse = api.get().feature(
@@ -130,8 +133,8 @@ class OrdersViewModel @Inject constructor(
         }
     }
 
-    private fun loadCustomers(shopId: String) {
-        if (customersShopId == shopId && (customersLoaded || customersJob?.isActive == true)) return
+    private fun loadCustomers(shopId: String, force: Boolean = false) {
+        if (!force && customersShopId == shopId && (customersLoaded || customersJob?.isActive == true)) return
 
         customersJob?.cancel()
         customersShopId = shopId
@@ -217,8 +220,8 @@ class OrdersViewModel @Inject constructor(
             }
 
             _state.update { it.copy(creatingCustomer = true, customerCreateError = null, createdCustomer = null) }
-            runCatching {
-                customerApi.get().createCustomer(
+            try {
+                val response = customerApi.get().createCustomer(
                     shopId,
                     CustomerUploadRequestDto(
                         clientCustomerUuid = UUID.randomUUID().toString(),
@@ -236,9 +239,11 @@ class OrdersViewModel @Inject constructor(
                         notes = "Creado desde Pedidos"
                     )
                 )
-            }.onSuccess { response ->
-                if (!response.isSuccessful) error("No se pudo crear el cliente. Revisa los datos y los permisos de Clientes.")
-                val customer = response.body() ?: error("MiCatalogo no devolvió el cliente creado.")
+                if (!response.isSuccessful) {
+                    throw IllegalStateException("No se pudo crear el cliente. Revisa los datos y los permisos de Clientes.")
+                }
+                val customer = response.body()
+                    ?: throw IllegalStateException("MiCatalogo no devolvió el cliente creado.")
                 _state.update {
                     it.copy(
                         customers = (it.customers.filterNot { existing -> existing.id == customer.id } + customer)
@@ -248,7 +253,9 @@ class OrdersViewModel @Inject constructor(
                         createdCustomer = customer
                     )
                 }
-            }.onFailure { error ->
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Throwable) {
                 _state.update {
                     it.copy(
                         creatingCustomer = false,

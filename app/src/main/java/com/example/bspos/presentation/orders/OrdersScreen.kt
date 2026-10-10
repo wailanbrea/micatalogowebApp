@@ -50,6 +50,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -59,6 +60,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -68,6 +70,8 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import java.util.Locale
 import com.example.bspos.core.ui.theme.BSPOSTheme
 import com.example.bspos.core.money.LocalCurrency
@@ -93,6 +97,7 @@ fun OrdersScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     var selectedRow by remember { mutableStateOf<FeatureRowDto?>(null) }
     var detailRow by remember { mutableStateOf<FeatureRowDto?>(null) }
     var newCustomerOpen by remember { mutableStateOf(false) }
@@ -101,7 +106,18 @@ fun OrdersScreen(
         "shipments" -> "Envíos"
         else -> "Pedidos"
     }
-    LaunchedEffect(feature) { viewModel.load(feature) }
+    // A destination can remain in the navigation back stack while another
+    // screen creates a customer. Refresh when Pedidos becomes visible again so
+    // the credit selector never shows an old customer list.
+    DisposableEffect(lifecycleOwner, feature) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                viewModel.load(feature, refresh = true)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
     LaunchedEffect(state.message) {
         if (state.message != null) selectedRow = null
     }

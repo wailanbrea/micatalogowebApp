@@ -20,6 +20,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -53,9 +54,11 @@ fun QuoteScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val focus = LocalFocusManager.current
+    val uriHandler = LocalUriHandler.current
     LaunchedEffect(Unit) { focus.clearFocus(force = true); viewModel.load() }
     QuoteTerminalContent(state, viewModel::add, viewModel::remove, viewModel::clearCart,
-        viewModel::save, viewModel::convert, onOpenSales, onOpenTerminal, onNavigateBack)
+        viewModel::save, viewModel::convert, onOpenSales, onOpenTerminal, onNavigateBack,
+        onOpenInvoice = { url -> uriHandler.openUri(url) })
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -64,7 +67,8 @@ internal fun QuoteTerminalContent(
     state: QuoteUiState,
     onAdd: (FeatureProductDto) -> Unit, onRemove: (FeatureProductDto) -> Unit, onClear: () -> Unit,
     onSave: (String, String, String, String, String?) -> Unit, onConvert: (String) -> Unit,
-    onOpenSales: () -> Unit, onOpenTerminal: () -> Unit, onNavigateBack: () -> Unit
+    onOpenSales: () -> Unit, onOpenTerminal: () -> Unit, onNavigateBack: () -> Unit,
+    onOpenInvoice: (String) -> Unit = {}
 ) {
     var query by rememberSaveable { mutableStateOf("") }
     var category by rememberSaveable { mutableStateOf<String?>(null) }
@@ -73,6 +77,7 @@ internal fun QuoteTerminalContent(
     var showGuide by remember { mutableStateOf(false) }
     var showClear by remember { mutableStateOf(false) }
     var showScanner by remember { mutableStateOf(false) }
+    var quoteToConvert by remember { mutableStateOf<FeatureRowDto?>(null) }
     var recentIds by rememberSaveable { mutableStateOf(emptyList<String>()) }
     var customerName by rememberSaveable { mutableStateOf("") }
     var selectedCustomerId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -143,25 +148,35 @@ internal fun QuoteTerminalContent(
                 IconButton(onClick = { showGuide = true }, modifier = Modifier.size(40.dp)) { Icon(Icons.Default.HelpOutline, "Ayuda de cotizaciones") }
                 IconButton(onClick = { showClear = true }, enabled = state.cart.isNotEmpty() && !state.saving, modifier = Modifier.size(40.dp)) { Icon(Icons.Default.DeleteOutline, "Vaciar cotización") }
             }
+            state.convertedInvoiceNumber?.let { invoice ->
+                Surface(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    color = BSPOSTheme.colors.successLight
+                ) {
+                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Venta generada · $invoice", fontWeight = FontWeight.Bold)
+                        Text(
+                            "La cotización ya es una venta y el inventario fue actualizado. Puedes abrir la factura para imprimirla o compartirla.",
+                            fontSize = 12.sp,
+                            color = BSPOSTheme.colors.textSecondary
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            state.convertedInvoiceUrl?.let { url ->
+                                TextButton(onClick = { onOpenInvoice(url) }) { Text("Abrir factura") }
+                            }
+                            TextButton(onClick = onOpenSales) { Text("Ver ventas") }
+                            TextButton(onClick = onOpenTerminal) { Text("Nueva venta") }
+                        }
+                    }
+                }
+            }
             if (savedTab) {
                 LazyColumn(Modifier.weight(1f).fillMaxWidth(), contentPadding = PaddingValues(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     item { QuoteSummary(state.kpis, state.rows) }
-                    state.convertedInvoiceNumber?.let { invoice ->
-                        item {
-                            Surface(shape = RoundedCornerShape(12.dp), color = BSPOSTheme.colors.successLight) {
-                                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Text("Venta generada · $invoice", fontWeight = FontWeight.Bold)
-                                    Row {
-                                        TextButton(onClick = onOpenSales) { Text("Ver ventas") }
-                                        TextButton(onClick = onOpenTerminal) { Text("Nueva venta") }
-                                    }
-                                }
-                            }
-                        }
-                    }
                     if (state.rows.isEmpty() && !state.loading) item { Text("Todavía no hay cotizaciones guardadas.", color = BSPOSTheme.colors.textSecondary) }
                     items(state.rows, key = { it.id ?: it.primary }) { row ->
-                        RecentQuoteRow(row, state.convertingId == row.id, state.convertingId == null) { row.id?.let(onConvert) }
+                        RecentQuoteRow(row, state.convertingId == row.id, state.convertingId == null) { quoteToConvert = row }
                     }
                     state.message?.let { item { Text(it, color = BSPOSTheme.colors.success) } }
                     state.error?.let { item { Text(it, color = BSPOSTheme.colors.error) } }
@@ -212,6 +227,30 @@ internal fun QuoteTerminalContent(
         text = { Text("Solo se quitarán los productos del borrador actual. Las cotizaciones guardadas no se eliminan.") },
         confirmButton = { TextButton(onClick = { onClear(); showClear = false }) { Text("Vaciar") } },
         dismissButton = { TextButton(onClick = { showClear = false }) { Text("Cancelar") } })
+    quoteToConvert?.let { row ->
+        AlertDialog(
+            onDismissRequest = { if (state.convertingId == null) quoteToConvert = null },
+            title = { Text("Convertir cotización en venta") },
+            text = {
+                Text(
+                    "Esta acción valida las existencias, descuenta el inventario y crea la factura inmediatamente. " +
+                        "Después de confirmar ya no se edita la cotización; podrás abrir la factura para imprimirla o compartirla."
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = state.convertingId == null,
+                    onClick = {
+                        row.id?.let(onConvert)
+                        quoteToConvert = null
+                    }
+                ) { Text("Convertir venta") }
+            },
+            dismissButton = {
+                TextButton(enabled = state.convertingId == null, onClick = { quoteToConvert = null }) { Text("Revisar") }
+            }
+        )
+    }
     if (showCart) QuoteCartSheet(state.cart, total, customerName, customerPhone, validUntil, notes,
         state.saving, state.error, { if (!state.saving) showCart = false },
         { customerName = it }, { customerPhone = it }, { validUntil = it }, { notes = it },
