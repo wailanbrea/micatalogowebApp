@@ -5,6 +5,8 @@ import com.example.bspos.data.micatalogo.api.MiCatalogoCustomerApi
 import com.example.bspos.data.micatalogo.api.CustomerListDto
 import com.example.bspos.data.micatalogo.dto.*
 import com.example.bspos.domain.repository.MiCatalogoConnectionRepository
+import com.example.bspos.domain.repository.MiCatalogoCatalogRepository
+import com.example.bspos.domain.model.MiCatalogoResult
 import dagger.Lazy
 import java.lang.reflect.Proxy
 import kotlinx.coroutines.Dispatchers
@@ -33,6 +35,12 @@ class QuoteViewModelTest {
             Response.success(CustomerListDto(customers.toList()))
         }
     }
+    private fun catalog() = Lazy {
+        proxy<MiCatalogoCatalogRepository> { method, _ ->
+            check(method == "syncCustomers")
+            MiCatalogoResult.Success(0)
+        }
+    }
 
     @Test fun savingCallsOnlyQuoteCreationAndBlocksDuplicateTap() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
@@ -45,7 +53,7 @@ class QuoteViewModelTest {
                     else -> error("Saving a quote must not call sales or inventory: $method")
                 }
             }
-            val model = QuoteViewModel(Lazy { api }, connection(), clients())
+            val model = QuoteViewModel(Lazy { api }, connection(), clients(), catalog())
             model.add(product)
             model.add(product)
             model.save(" Cliente ", "8298144525", "2026-10-14", "Solo cotización")
@@ -69,7 +77,7 @@ class QuoteViewModelTest {
                 check(method == "createQuote")
                 Response.error<QuoteResponseDto>(422, "{}".toResponseBody())
             }
-            val model = QuoteViewModel(Lazy { api }, connection(), clients())
+            val model = QuoteViewModel(Lazy { api }, connection(), clients(), catalog())
             model.add(product)
             model.save("", "", "", "")
             advanceUntilIdle()
@@ -93,7 +101,7 @@ class QuoteViewModelTest {
                     else -> error("Unexpected operation: $method")
                 }
             }
-            val model = QuoteViewModel(Lazy { api }, connection(), clients())
+            val model = QuoteViewModel(Lazy { api }, connection(), clients(), catalog())
             model.convert("quote-1")
             model.convert("quote-1")
             advanceUntilIdle()
@@ -114,7 +122,7 @@ class QuoteViewModelTest {
                     else -> error("Unexpected operation: $method")
                 }
             }
-            val model = QuoteViewModel(Lazy { api }, connection(), clients(RemoteCustomerDto(id = "customer-1", name = "María Gómez", phone = "8295550100")))
+            val model = QuoteViewModel(Lazy { api }, connection(), clients(RemoteCustomerDto(id = "customer-1", name = "María Gómez", phone = "8295550100")), catalog())
             model.load(); advanceUntilIdle()
             model.add(product)
             model.save("Nombre genérico anterior", "000", "2026-10-14", "", "customer-1")

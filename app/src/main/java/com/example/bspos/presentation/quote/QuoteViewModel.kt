@@ -10,6 +10,7 @@ import com.example.bspos.data.micatalogo.dto.FeatureKpiDto
 import com.example.bspos.data.micatalogo.dto.FeatureRowDto
 import com.example.bspos.data.micatalogo.dto.QuoteCreateRequestDto
 import com.example.bspos.data.micatalogo.dto.QuoteItemRequestDto
+import com.example.bspos.domain.repository.MiCatalogoCatalogRepository
 import com.example.bspos.domain.repository.MiCatalogoConnectionRepository
 import dagger.Lazy
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -39,7 +40,8 @@ data class QuoteUiState(
 class QuoteViewModel @Inject constructor(
     private val api: Lazy<MiCatalogoApi>,
     private val connection: MiCatalogoConnectionRepository,
-    private val customerApi: Lazy<MiCatalogoCustomerApi>
+    private val customerApi: Lazy<MiCatalogoCustomerApi>,
+    private val catalog: Lazy<MiCatalogoCatalogRepository>
 ) : ViewModel() {
     private val _state = MutableStateFlow(QuoteUiState())
     val state = _state.asStateFlow()
@@ -53,6 +55,9 @@ class QuoteViewModel @Inject constructor(
             }
             _state.value = _state.value.copy(customersLoading = true, customerError = null)
             viewModelScope.launch {
+                // Publish customers created locally before fetching the server
+                // list so they can be selected in a new quote immediately.
+                catalog.get().syncCustomers(shopId)
                 runCatching {
                     val response = customerApi.get().customers(shopId)
                     check(response.isSuccessful) { "No se pudieron cargar los clientes. Reabre Cotizaciones para reintentar." }

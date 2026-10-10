@@ -10,6 +10,7 @@ import com.example.bspos.data.local.dao.PaymentSyncDao
 import com.example.bspos.data.local.dao.OperationOutboxDao
 import com.example.bspos.data.local.entity.CustomerEntity
 import com.example.bspos.data.micatalogo.api.MiCatalogoCustomerApi
+import com.example.bspos.data.micatalogo.dto.CustomerUploadRequestDto
 import com.example.bspos.data.micatalogo.dto.RemoteCustomerDto
 import com.example.bspos.data.local.dao.UnitOfMeasureDao
 import com.example.bspos.data.local.entity.CategoryEntity
@@ -99,6 +100,7 @@ class MiCatalogoCatalogRepositoryImpl @Inject constructor(
 
     override suspend fun syncCustomers(shopId: String): MiCatalogoResult<Int> = syncMutex.withLock { runCatching {
         require(shopId.isNotBlank()) { "La tienda remota no es valida." }
+        syncLocalCustomers(shopId)
         val response = customerApi.customers(shopId)
         if (!response.isSuccessful) error(response.apiErrorMessage("No se pudieron actualizar los clientes."))
         val remoteCustomers = checkNotNull(response.body()) { "MiCatalogo devolvio una lista de clientes vacia." }.customers
@@ -111,6 +113,59 @@ class MiCatalogoCatalogRepositoryImpl @Inject constructor(
             MiCatalogoResult.Failure(it.message ?: "No se pudieron actualizar los clientes.")
         }
     ) }
+
+    /**
+     * Customers created from the local customer screen do not have a remote
+     * identifier yet. Publish them before downloading the authoritative list
+     * so Quotes, Collections and Orders can use them immediately.
+     * Invalid local records remain pending for a later retry and do not block
+     * the rest of the customer synchronization.
+     */
+    private suspend fun syncLocalCustomers(shopId: String) {
+        customers.findActiveCustomers()
+            .filterNot { it.miCatalogoCustomerId?.isNotBlank() == true && it.miCatalogoCustomerShopId == shopId }
+            .forEach { local ->
+                runCatching {
+                    val response = customerApi.createCustomer(shopId, local.toRemoteRequest())
+                    if (!response.isSuccessful) return@runCatching
+                    val remoteId = response.body()?.id?.takeIf { it.isNotBlank() } ?: return@runCatching
+                    customers.updateCustomer(
+                        local.copy(
+                            miCatalogoCustomerId = remoteId,
+                            miCatalogoCustomerShopId = shopId,
+                            updatedAt = Instant.now()
+                        )
+                    )
+                }
+            }
+    }
+
+    private fun CustomerEntity.toRemoteRequest(): CustomerUploadRequestDto {
+        val displayName = businessName.trim().ifBlank { "Cliente" }
+        val first = firstName?.trim().orEmpty().ifBlank { displayName }
+        val last = lastName?.trim().orEmpty()
+        val structured = firstName?.isNotBlank() == true &&
+            lastName?.isNotBlank() == true &&
+            documentNumber?.isNotBlank() == true &&
+            phone?.isNotBlank() == true &&
+            address?.isNotBlank() == true &&
+            documentType?.lowercase(Locale.ROOT) in setOf("cedula", "pasaporte")
+        return CustomerUploadRequestDto(
+            clientCustomerUuid = id.toString(),
+            firstName = first,
+            lastName = last,
+            documentType = documentType?.lowercase(Locale.ROOT)?.takeIf { it in setOf("cedula", "pasaporte") } ?: "cedula",
+            documentNumber = documentNumber.orEmpty(),
+            name = if (structured) null else displayName,
+            phone = phone.orEmpty(),
+            email = email,
+            address = address.orEmpty(),
+            whatsapp = whatsapp,
+            reference = reference,
+            creditLimit = MiCatalogoPosSaleOutboxMapper.decimalPrice(creditLimit),
+            notes = notes
+        )
+    }
 
     private suspend fun applySnapshot(
         snapshot: CatalogSnapshotDto,

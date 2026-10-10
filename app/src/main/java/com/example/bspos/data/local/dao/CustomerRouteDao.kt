@@ -16,6 +16,8 @@ import java.util.UUID
 abstract class CustomerRouteDao {
     @Query("SELECT * FROM customers WHERE deleted_at IS NULL ORDER BY business_name, id")
     abstract fun observeCustomers(): Flow<List<CustomerEntity>>
+    @Query("SELECT * FROM customers WHERE deleted_at IS NULL AND is_active = 1 ORDER BY business_name, id")
+    abstract suspend fun findActiveCustomers(): List<CustomerEntity>
     @Query("SELECT * FROM customers WHERE micatalogo_customer_id = :remoteId")
     abstract suspend fun findRemoteCustomer(remoteId: String): CustomerEntity?
     @Query("SELECT * FROM customers WHERE id = :id") abstract suspend fun findCustomer(id: UUID): CustomerEntity?
