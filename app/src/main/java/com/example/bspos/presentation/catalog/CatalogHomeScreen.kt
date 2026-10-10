@@ -21,6 +21,9 @@ import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
+import com.example.bspos.presentation.common.BSPOSButton as Button
+import com.example.bspos.presentation.common.BSPOSOutlinedButton as OutlinedButton
+import com.example.bspos.presentation.common.BSPOSActionTextButton as TextButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -242,7 +245,7 @@ fun CatalogHomeScreen(
         comboComponentProducts = comboComponentProducts
     )
     deleteTarget?.let { product ->
-        AlertDialog(onDismissRequest = { deleteTarget = null }, title = { Text("Eliminar producto") }, text = { Text("¿Eliminar ${product.name}? El producto dejará de aparecer en el catálogo.") }, confirmButton = { TextButton({ viewModel.delete(product); deleteTarget = null }) { Text("Eliminar", color = BSPOSTheme.colors.error) } }, dismissButton = { TextButton({ deleteTarget = null }) { Text("Cancelar") } })
+        AlertDialog(onDismissRequest = { deleteTarget = null }, title = { Text("Eliminar producto") }, text = { Text("¿Eliminar ${product.name}? El producto dejará de aparecer en el catálogo.") }, confirmButton = { Button({ viewModel.delete(product); deleteTarget = null }, colors = ButtonDefaults.buttonColors(containerColor = BSPOSTheme.colors.error, contentColor = BSPOSTheme.colors.textOnPrimary)) { Text("Eliminar") } }, dismissButton = { TextButton({ deleteTarget = null }) { Text("Cancelar") } })
     }
     message?.let { text -> AlertDialog(onDismissRequest = viewModel::consumeMessage, title = { Text("No se pudo completar") }, text = { Text(text) }, confirmButton = { TextButton(viewModel::consumeMessage) { Text("Cerrar") } }) }
     if (initialDecantMode) {
@@ -513,8 +516,9 @@ private fun DecantSummaryRow(label: String, value: String) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ProductForm(current: Product?, currentQuantity: Long, categories: List<Category>, units: List<UnitOfMeasure>, presentation: MiCatalogoBusinessPresentation, showCost: Boolean, showInventoryFields: Boolean, showProductCode: Boolean, onSave: (ProductInput, Long) -> Unit, onDismiss: () -> Unit, shops: List<com.example.bspos.domain.model.MiCatalogoShop>, activeShopId: String?, decantMode: Boolean = false, serviceMode: Boolean = false, sourceProducts: List<Product> = emptyList(), initialSourceRemoteId: String? = null, comboComponentProducts: List<Product> = emptyList()) {
+internal fun ProductForm(current: Product?, currentQuantity: Long, categories: List<Category>, units: List<UnitOfMeasure>, presentation: MiCatalogoBusinessPresentation, showCost: Boolean, showInventoryFields: Boolean, showProductCode: Boolean, onSave: (ProductInput, Long) -> Unit, onDismiss: () -> Unit, shops: List<com.example.bspos.domain.model.MiCatalogoShop>, activeShopId: String?, decantMode: Boolean = false, serviceMode: Boolean = false, sourceProducts: List<Product> = emptyList(), initialSourceRemoteId: String? = null, comboComponentProducts: List<Product> = emptyList()) {
     val context = LocalContext.current
     var name by remember(current?.id) { mutableStateOf(current?.name.orEmpty()) }
     var description by remember(current?.id) { mutableStateOf(current?.description.orEmpty()) }
@@ -578,23 +582,22 @@ private fun ProductForm(current: Product?, currentQuantity: Long, categories: Li
     } else {
         if (current == null) "Nuevo producto" else "Editar producto"
     }
-    Dialog(
+    BSPOSModalBottomSheet(
         onDismissRequest = onDismiss,
-        properties = DialogProperties(
-            usePlatformDefaultWidth = false,
-            dismissOnClickOutside = false,
-            dismissOnBackPress = true
+        properties = ModalBottomSheetProperties(
+            shouldDismissOnClickOutside = false,
+            shouldDismissOnBackPress = true
         )
     ) {
         Surface(
             modifier = Modifier
-                .fillMaxWidth(0.94f)
+                .fillMaxWidth()
                 .fillMaxHeight(0.92f),
-            shape = RoundedCornerShape(28.dp),
+            shape = RoundedCornerShape(0.dp),
             color = BSPOSTheme.colors.surface,
-            tonalElevation = 8.dp
+            tonalElevation = 0.dp
         ) {
-            Column(Modifier.fillMaxSize()) {
+            Column(Modifier.fillMaxSize().imePadding().navigationBarsPadding()) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()

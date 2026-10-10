@@ -13,6 +13,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import com.example.bspos.presentation.common.BSPOSButton as Button
+import com.example.bspos.presentation.common.BSPOSOutlinedButton as OutlinedButton
+import com.example.bspos.presentation.common.BSPOSActionTextButton as TextButton
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -26,7 +29,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontFamily
+import com.example.bspos.core.ui.theme.BSPOSFonts as FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
@@ -106,6 +109,8 @@ internal fun ResumenOverview(
     onSupport: () -> Unit = {},
     onHideSupport: () -> Unit = {},
     showSupport: Boolean = true,
+    firstSaleCompleted: Boolean? = null,
+    setupStatusKnown: Boolean = true,
     onAllSales: () -> Unit,
     onSale: (Sale) -> Unit,
 ) {
@@ -166,7 +171,10 @@ internal fun ResumenOverview(
             }
         }
         if (showSupport) item { SupportSummaryCard(onSupport = onSupport, onHide = onHideSupport) }
-        item { ResumenSetup(active.isNotEmpty(), sales.isNotEmpty(), onProducts, onNewSale, onStorefront, onProfile) }
+        val hasFirstSale = firstSaleCompleted ?: sales.isNotEmpty()
+        if (showSales && setupStatusKnown && !hasFirstSale) {
+            item { ResumenSetup(active.isNotEmpty(), hasFirstSale, onProducts, onNewSale, onStorefront, onProfile) }
+        }
         item {
             Surface(shape = RoundedCornerShape(8.dp), border = BorderStroke(1.dp, Line), color = Color.White) {
                 Row(Modifier.padding(3.dp), verticalAlignment = Alignment.CenterVertically) {

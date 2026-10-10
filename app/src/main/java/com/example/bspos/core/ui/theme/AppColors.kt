@@ -15,7 +15,7 @@ data class BSPOSColors(
     val secondaryNavySurface: Color = Color(0xFF14243B),// Tarjetas en Sidebar Marino
     val secondaryNavyActive: Color = Color(0xFF1E3A5F), // Item activo en Sidebar
 
-    val background: Color = Color(0xFFF4F6FA),          // Fondo General de la App
+    val background: Color = Color(0xFFFFFFFF),          // Superficie administrativa uniforme
     val surface: Color = Color(0xFFFFFFFF),             // Tarjetas y Superficies
     val surfaceVariant: Color = Color(0xFFF1F5F9),      // Campos de Texto / Separadores
     val outline: Color = Color(0xFFE2E8F0),             // Bordes sutiles

@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import javax.inject.Inject
 import com.example.bspos.data.local.dao.PaymentDao
@@ -38,7 +39,9 @@ class DashboardViewModel @Inject constructor(
     routesRepository: RouteRepository,
     paymentDao: PaymentDao,
     private val api: Lazy<MiCatalogoApi>,
-    private val connection: MiCatalogoConnectionRepository
+    private val connection: MiCatalogoConnectionRepository,
+    private val firstSaleReader: FirstSaleStatusReader,
+    private val saleOutbox: com.example.bspos.data.local.dao.PosSaleOutboxDao
 ) : ViewModel() {
     private val _sellerSummary = MutableStateFlow<SellerSummaryDto?>(null)
     val sellerSummary = _sellerSummary.asStateFlow()
@@ -47,6 +50,34 @@ class DashboardViewModel @Inject constructor(
     private val _sellerSummaryLoading = MutableStateFlow(false)
     val sellerSummaryLoading = _sellerSummaryLoading.asStateFlow()
     private var summaryJob: Job? = null
+    private var firstSaleJob: Job? = null
+    private val _firstSaleStatus = MutableStateFlow(FirstSaleStatus())
+    val firstSaleStatus = _firstSaleStatus.asStateFlow()
+    private val completedSetupShops = mutableSetOf<String>()
+
+    fun loadFirstSaleStatus(shopId: String?) {
+        firstSaleJob?.cancel()
+        if (_firstSaleStatus.value.shopId != shopId) _firstSaleStatus.value = FirstSaleStatus(shopId)
+        if (shopId != null && shopId in completedSetupShops) {
+            _firstSaleStatus.value = FirstSaleStatus(shopId, true)
+            return
+        }
+        firstSaleJob = viewModelScope.launch {
+            try {
+                val localSales = saleRepository.observeAll().first().filter { it.status == com.example.bspos.domain.model.SaleStatus.COMPLETED }
+                val localForShop = if (shopId == null) localSales.isNotEmpty()
+                    else localSales.any { saleOutbox.shopForSale(it.id) == shopId }
+                val hasSale = localForShop || (shopId != null && firstSaleReader.hasSale(shopId))
+                if (_firstSaleStatus.value.shopId == shopId) {
+                    if (hasSale && shopId != null) completedSetupShops += shopId
+                    _firstSaleStatus.value = FirstSaleStatus(shopId, hasSale)
+                }
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) {
+                // Unknown is not "no sales"; keep a previously confirmed milestone.
+            }
+        }
+    }
 
     fun loadSellerSummary(shopId: String?, period: String) {
         summaryJob?.cancel()

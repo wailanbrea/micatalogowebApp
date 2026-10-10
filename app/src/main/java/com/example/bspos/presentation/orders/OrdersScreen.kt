@@ -33,7 +33,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.ReceiptLong
 import androidx.compose.material.icons.outlined.Search
-import androidx.compose.material3.Button
+import com.example.bspos.presentation.common.BSPOSButton as Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -42,11 +42,11 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
+import com.example.bspos.presentation.common.BSPOSOutlinedButton as OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import com.example.bspos.presentation.common.BSPOSActionTextButton as TextButton
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.runtime.Composable
@@ -240,14 +240,11 @@ private fun OrdersContent(
     }
     Box(Modifier.fillMaxSize()) {
         LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(horizontal = if (isOrders) 14.dp else 20.dp, vertical = if (isOrders) 12.dp else 16.dp),
-            verticalArrangement = Arrangement.spacedBy(if (isOrders) 10.dp else 14.dp)
+            modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 18.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             item {
-                // The parent shell is the single source of truth for the screen
-                // title (for example, "Operación / Pedidos"). Keeping another
-                // title here made Pedidos, Encargos and Envíos look different from
-                // Inventario and produced duplicated labels on wide layouts.
+                Text(title, style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.ExtraBold)
                 if (!isOrders) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                         IconButton(onClick = onRefresh, enabled = !state.refreshing) {
@@ -362,30 +359,21 @@ private fun OrdersSearchAndFilters(
     onSearch: () -> Unit,
     onStatusChange: (String) -> Unit
 ) {
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        OutlinedTextField(
-            value = search,
-            onValueChange = onSearchChange,
-            modifier = Modifier.weight(.40f),
-            singleLine = true,
-            placeholder = { Text("Buscar por cli...", style = MaterialTheme.typography.bodySmall, maxLines = 1) },
-            leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null, tint = BSPOSTheme.colors.textSecondary) },
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-            keyboardActions = KeyboardActions(onSearch = { onSearch() }),
-            shape = RoundedCornerShape(12.dp)
-        )
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        com.example.bspos.presentation.common.BSPOSSearchField(search, onSearchChange, "Buscar por cliente", Modifier.weight(.37f), onSearch)
         Surface(
-            modifier = Modifier.weight(.60f),
-            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier.weight(.63f),
+            shape = RoundedCornerShape(8.dp),
             color = BSPOSTheme.colors.surface,
             border = BorderStroke(1.dp, BSPOSTheme.colors.outline)
         ) {
             Row(Modifier.fillMaxWidth().padding(3.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                 listOf("all" to "Todos", "pending" to "Pendientes", "confirmed" to "Confirmados").forEach { (value, label) ->
                     Box(
-                        Modifier.weight(1f).clip(RoundedCornerShape(8.dp)).background(if (status == value) BSPOSTheme.colors.surfaceVariant else BSPOSTheme.colors.surface).clickable { onStatusChange(value) }.padding(horizontal = 4.dp, vertical = 10.dp),
+                        Modifier.weight(1f).clip(RoundedCornerShape(6.dp)).background(if (status == value) BSPOSTheme.colors.surfaceVariant else BSPOSTheme.colors.surface).clickable { onStatusChange(value) }.padding(horizontal = 4.dp, vertical = 7.dp),
                         contentAlignment = Alignment.Center
-                    ) { Text(label, color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelSmall, maxLines = 1) }
+                    ) { Text(label, color = if (status == value) BSPOSTheme.colors.textPrimary else BSPOSTheme.colors.textSecondary, fontSize = 12.sp,
+                        fontWeight = if (status == value) FontWeight.SemiBold else FontWeight.Normal, maxLines = 1) }
                 }
             }
         }
@@ -559,6 +547,7 @@ private fun OrderKpiCell(
                     color = BSPOSTheme.colors.textPrimary,
                     fontWeight = FontWeight.ExtraBold,
                     style = MaterialTheme.typography.titleMedium,
+                    fontFamily = com.example.bspos.core.ui.theme.BSPOSFonts.Monospace,
                     maxLines = 1
                 )
             }
@@ -601,6 +590,7 @@ private fun OrdersListCard(
                     "${rows.size} de ${rows.size} pedidos",
                     color = BSPOSTheme.colors.textSecondary,
                     style = MaterialTheme.typography.labelSmall,
+                    fontFamily = com.example.bspos.core.ui.theme.BSPOSFonts.Monospace,
                     modifier = Modifier.weight(1f)
                 )
                 Text(
@@ -660,8 +650,9 @@ private fun OrderRowContent(
                 )
             }
             Spacer(Modifier.width(10.dp))
-            Text(
-                row.value,
+                Text(
+                    row.value,
+                    fontFamily = com.example.bspos.core.ui.theme.BSPOSFonts.Monospace,
                 color = BSPOSTheme.colors.textPrimary,
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.ExtraBold,
@@ -814,8 +805,8 @@ private fun OrderDetailDialog(
 @Composable
 private fun OrderMeta(label: String, value: String, modifier: Modifier = Modifier) {
     Column(modifier) {
-        Text(label.uppercase(), color = BSPOSTheme.colors.textSecondary, fontSize = 10.sp, letterSpacing = 1.sp)
-        Text(value, color = BSPOSTheme.colors.textPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 2)
+        Text(label.uppercase(), color = BSPOSTheme.colors.textSecondary, fontSize = 10.sp, letterSpacing = 1.sp, fontFamily = com.example.bspos.core.ui.theme.BSPOSFonts.Monospace)
+        Text(value, color = BSPOSTheme.colors.textPrimary, fontSize = 13.sp, fontWeight = FontWeight.Normal, maxLines = 2)
     }
 }
 
@@ -839,6 +830,8 @@ internal fun OrderConfirmDialog(
     var customer by remember { mutableStateOf<RemoteCustomerDto?>(null) }
     var downPayment by remember { mutableStateOf("") }
     var reference by remember { mutableStateOf("") }
+    val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
+    val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
     val needsCustomer = kind == "credit" || kind == "mixed"
     val totalCents = remember(row.id, row.value) { MoneyUtils.parsePesosStringToCents(row.value) }
     val mixedCreditCents = if (kind == "mixed") calculateMixedCredit(totalCents, downPayment) else null
@@ -907,7 +900,7 @@ internal fun OrderConfirmDialog(
                 if (needsCustomer) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Box(Modifier.weight(1f)) { CheckoutStyleSectionLabel("CLIENTE CON CRÉDITO") }
-                        TextButton(onClick = onCreateCustomer, enabled = !busy && !creatingCustomer) { Text("Nuevo cliente") }
+                        TextButton(onClick = { focusManager.clearFocus(); keyboard?.hide(); onCreateCustomer() }, enabled = !busy && !creatingCustomer) { Text("Nuevo cliente") }
                     }
                     if (customersLoading) Text("Cargando clientes…", color = BSPOSTheme.colors.textSecondary)
                     else if (customers.isEmpty()) Text("Aún no hay clientes. Crea uno aquí para continuar a crédito.", color = BSPOSTheme.colors.textSecondary)
@@ -955,21 +948,16 @@ internal fun NewCreditCustomerDialog(
     val parsedCredit = MoneyUtils.parseDecimalToCents(creditLimit)
     val valid = name.trim().isNotBlank() && parsedCredit != null && parsedCredit > 0L
 
-    Dialog(
-        onDismissRequest = { if (!busy) onDismiss() },
-        properties = DialogProperties(usePlatformDefaultWidth = false)
+    CheckoutStyleBottomSheet(
+        title = "Nuevo cliente a crédito", onDismiss = { if (!busy) onDismiss() }, dismissEnabled = !busy,
+        footer = {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onDismiss, enabled = !busy) { Text("Cancelar") }
+                CheckoutStylePrimaryButton("Crear y seleccionar", { onCreate(NewCreditCustomerInput(name, phone, creditLimit)) },
+                    enabled = valid && !busy, busy = busy, modifier = Modifier.weight(1f))
+            }
+        }
     ) {
-        Surface(
-            modifier = Modifier.fillMaxWidth(.92f).heightIn(max = 620.dp),
-            shape = RoundedCornerShape(26.dp),
-            color = BSPOSTheme.colors.surface,
-            tonalElevation = 6.dp
-        ) {
-            Column(
-                modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(22.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Text("Nuevo cliente a crédito", fontWeight = FontWeight.ExtraBold, style = MaterialTheme.typography.titleLarge)
                 Text("Créalo y selecciónalo sin salir de este pedido.", color = BSPOSTheme.colors.textSecondary)
                 OutlinedTextField(
                     value = name,
@@ -1006,18 +994,6 @@ internal fun NewCreditCustomerDialog(
                     shape = RoundedCornerShape(12.dp)
                 )
                 error?.let { Text(it, color = BSPOSTheme.colors.error, fontSize = 12.sp) }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
-                    TextButton(onClick = onDismiss, enabled = !busy) { Text("Cancelar") }
-                    Button(
-                        onClick = { onCreate(NewCreditCustomerInput(name, phone, creditLimit)) },
-                        enabled = valid && !busy
-                    ) {
-                        if (busy) CircularProgressIndicator(Modifier.width(18.dp).height(18.dp), strokeWidth = 2.dp)
-                        else Text("Crear y seleccionar")
-                    }
-                }
-            }
-        }
     }
 }
 

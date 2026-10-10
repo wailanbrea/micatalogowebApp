@@ -13,6 +13,7 @@ import com.example.bspos.core.ui.theme.BSPOSTheme
 import com.example.bspos.data.micatalogo.dto.FeatureProductDto
 import com.example.bspos.data.micatalogo.dto.FeatureRowDto
 import com.example.bspos.data.micatalogo.dto.RemoteCustomerDto
+import com.example.bspos.data.micatalogo.dto.FeatureOrderItemDto
 import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -67,7 +68,7 @@ class QuoteTerminalContentTest {
         compose.onNodeWithText("Guardadas").performClick()
         compose.onNodeWithText("COT-001").assertIsDisplayed()
         compose.onNodeWithText("Vigentes").assertIsDisplayed()
-        compose.onNodeWithText("Convertir").performClick()
+        compose.onNodeWithText("Convertir venta").performClick()
         compose.onNodeWithText("Convertir cotización en venta").assertIsDisplayed()
         compose.onNodeWithText("Revisar").performClick()
         compose.onNodeWithText("Convertir cotización en venta").assertDoesNotExist()
@@ -98,5 +99,23 @@ class QuoteTerminalContentTest {
         compose.onNodeWithText("María Gómez").performClick()
         compose.onNodeWithTag("quote-save").performClick()
         assertEquals("customer-1", savedCustomerId)
+    }
+
+    @Test fun savedQuoteShowsItsCapturedDetailsWithoutConvertingIt() {
+        var converted = false
+        val row = FeatureRowDto(id = "quote-detail", primary = "COT-DETAIL", customerName = "Cliente existente", value = "RD$ 950.00",
+            status = "Borrador", itemCount = 1, validUntil = "2026-10-13", canConvert = true, pdfAvailable = true,
+            items = listOf(FeatureOrderItemDto("Perfume snapshot", 1, "RD$ 950.00", "RD$ 950.00")))
+        compose.setContent { BSPOSTheme { Scaffold { padding -> Box(Modifier.fillMaxSize().padding(padding)) {
+            QuoteTerminalContent(QuoteUiState(loading = false, rows = listOf(row)), onAdd = {}, onRemove = {}, onClear = {},
+                onSave = { _, _, _, _, _ -> }, onConvert = { converted = true }, onOpenSales = {}, onOpenTerminal = {}, onNavigateBack = {}, initialSavedTab = true)
+        } } } }
+        compose.onNodeWithText("Cliente existente").performClick()
+        compose.onNodeWithText("DETALLES").assertExists()
+        compose.onNodeWithText("13/10/2026").assertExists()
+        compose.onNodeWithText("Perfume snapshot").assertExists()
+        compose.onNodeWithText("Descargar PDF").assertIsEnabled()
+        screenshot("style-quote-detail")
+        assertEquals(false, converted)
     }
 }

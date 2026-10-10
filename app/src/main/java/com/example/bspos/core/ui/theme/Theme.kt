@@ -9,6 +9,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
@@ -21,7 +22,7 @@ private val LightColorScheme = lightColorScheme(
     onSecondary = Color(0xFFFFFFFF),
     secondaryContainer = Color(0xFF14243B),
     onSecondaryContainer = Color(0xFFE2E8F0),
-    background = Color(0xFFF4F6FA),
+    background = Color(0xFFFFFFFF),
     onBackground = Color(0xFF0F172A),
     surface = Color(0xFFFFFFFF),
     onSurface = Color(0xFF0F172A),
@@ -105,6 +106,12 @@ fun BSPOSTheme(
         MaterialTheme(
             colorScheme = colorScheme,
             typography = BSPOSBaseTypography,
+            shapes = androidx.compose.material3.Shapes(
+                small = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+                medium = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+                large = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
+                extraLarge = androidx.compose.foundation.shape.RoundedCornerShape(18.dp)
+            ),
             content = content
         )
     }

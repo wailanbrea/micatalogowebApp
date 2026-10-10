@@ -6,6 +6,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
+import com.example.bspos.presentation.common.BSPOSButton as Button
+import com.example.bspos.presentation.common.BSPOSOutlinedButton as OutlinedButton
+import com.example.bspos.presentation.common.BSPOSActionTextButton as TextButton
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier

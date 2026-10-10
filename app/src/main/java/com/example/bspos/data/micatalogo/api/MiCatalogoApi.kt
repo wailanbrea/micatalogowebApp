@@ -78,6 +78,13 @@ import retrofit2.http.Query
 import retrofit2.http.Streaming
 
 interface MiCatalogoApi {
+    @GET("api/v1/shops/{shop}/decants")
+    suspend fun decants(@Path("shop") shopId: String): Response<com.example.bspos.data.micatalogo.dto.DecantWorkspaceDto>
+    @GET("api/v1/shops/{shop}/quotes/{quote}/pdf")
+    suspend fun quotePdf(@Path("shop") shopId: String, @Path("quote") quoteId: String): Response<ResponseBody>
+    @GET("api/v1/shops/{shop}/inventory-value")
+    suspend fun inventoryValue(@Path("shop") shopId: String): Response<kotlinx.serialization.json.JsonObject>
+
     @GET("api/v1/shops/{shop}/seller-summary")
     suspend fun sellerSummary(@Path("shop") shopId: String, @Query("period") period: String): Response<SellerSummaryDto>
 

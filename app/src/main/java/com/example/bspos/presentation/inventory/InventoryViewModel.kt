@@ -31,6 +31,11 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.longOrNull
 import java.util.UUID
 import javax.inject.Inject
 
@@ -46,11 +51,17 @@ class InventoryViewModel @Inject constructor(
     private val count: RegisterPhysicalInventoryCountUseCase,
     private val connection: MiCatalogoConnectionRepository,
     private val catalog: MiCatalogoCatalogRepository,
-    private val productUseCases: ProductUseCases
+    private val productUseCases: ProductUseCases,
+    private val api: dagger.Lazy<com.example.bspos.data.micatalogo.api.MiCatalogoApi>
 ) : ViewModel() {
     private val selected = MutableStateFlow<UUID?>(null)
     val stock = repository.observeStock(InventoryLocation.MAIN).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
-    val productNames = products.observeAll().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    val productNames = connection.observeConnection().flatMapLatest { state ->
+        state.activeShopId?.let(products::observeForShop) ?: products.observeAll()
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    private val _remoteValuation = MutableStateFlow<Long?>(null)
+    val remoteValuation = _remoteValuation.asStateFlow()
+    private var valuationJob: Job? = null
     val reasons = reasonsUseCases.observe().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val movements = selected.flatMapLatest { id -> if (id == null) flowOf(emptyList()) else repository.observeMovements(id, InventoryLocation.MAIN) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
@@ -96,6 +107,18 @@ class InventoryViewModel @Inject constructor(
     }
 
     fun select(productId: UUID?) { selected.value = productId }
+    fun refreshValuation() {
+        valuationJob?.cancel()
+        valuationJob = viewModelScope.launch {
+            val shop = connection.activeShopId() ?: return@launch
+            delay(600)
+            try {
+                val response = api.get().inventoryValue(shop)
+                if (connection.activeShopId() == shop) _remoteValuation.value = if (response.isSuccessful) response.body()?.get("inventory_value_cents")?.jsonPrimitive?.longOrNull else null
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { if (connection.activeShopId() == shop) _remoteValuation.value = null }
+        }
+    }
     fun showMessage(text: String) { _message.value = text }
     fun initialize(productId: UUID, quantity: Long, cost: Long) = runOperation("No se pudo registrar el inventario inicial") { initialInventory(productId, quantity, cost) }
     fun receive(productId: UUID, quantity: Long, cost: Long) = runOperation("No se pudo registrar la entrada") { receipt(productId, quantity, cost) }

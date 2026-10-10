@@ -11,6 +11,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import com.example.bspos.presentation.common.BSPOSActionTextButton as TextButton
+import com.example.bspos.presentation.common.BSPOSButton as Button
+import com.example.bspos.presentation.common.BSPOSOutlinedButton as OutlinedButton
+import com.example.bspos.presentation.common.BSPOSSectionLabel
+import com.example.bspos.presentation.common.BSPOSMoney
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -22,7 +27,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.font.FontFamily
+import com.example.bspos.core.ui.theme.BSPOSFonts as FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
@@ -50,7 +55,7 @@ fun QuoteScreen(
     onOpenSales: () -> Unit = {},
     onOpenTerminal: () -> Unit = {},
     onNavigateBack: () -> Unit = {},
-    viewModel: QuoteViewModel = hiltViewModel()
+    viewModel: QuoteViewModel = hiltViewModel(), documents: QuoteDocumentViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsState()
     val focus = LocalFocusManager.current
@@ -58,7 +63,7 @@ fun QuoteScreen(
     LaunchedEffect(Unit) { focus.clearFocus(force = true); viewModel.load() }
     QuoteTerminalContent(state, viewModel::add, viewModel::remove, viewModel::clearCart,
         viewModel::save, viewModel::convert, onOpenSales, onOpenTerminal, onNavigateBack,
-        onOpenInvoice = { url -> uriHandler.openUri(url) })
+        onOpenInvoice = { url -> uriHandler.openUri(url) }, initialSavedTab = true, onDownload = documents::download)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -68,16 +73,17 @@ internal fun QuoteTerminalContent(
     onAdd: (FeatureProductDto) -> Unit, onRemove: (FeatureProductDto) -> Unit, onClear: () -> Unit,
     onSave: (String, String, String, String, String?) -> Unit, onConvert: (String) -> Unit,
     onOpenSales: () -> Unit, onOpenTerminal: () -> Unit, onNavigateBack: () -> Unit,
-    onOpenInvoice: (String) -> Unit = {}
+    onOpenInvoice: (String) -> Unit = {}, initialSavedTab: Boolean = false, onDownload: (String, String) -> Unit = { _, _ -> }
 ) {
     var query by rememberSaveable { mutableStateOf("") }
     var category by rememberSaveable { mutableStateOf<String?>(null) }
-    var savedTab by rememberSaveable { mutableStateOf(false) }
+    var savedTab by rememberSaveable { mutableStateOf(initialSavedTab) }
     var showCart by rememberSaveable { mutableStateOf(false) }
     var showGuide by remember { mutableStateOf(false) }
     var showClear by remember { mutableStateOf(false) }
     var showScanner by remember { mutableStateOf(false) }
     var quoteToConvert by remember { mutableStateOf<FeatureRowDto?>(null) }
+    var quoteDetail by remember { mutableStateOf<FeatureRowDto?>(null) }
     var recentIds by rememberSaveable { mutableStateOf(emptyList<String>()) }
     var customerName by rememberSaveable { mutableStateOf("") }
     var selectedCustomerId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -133,7 +139,7 @@ internal fun QuoteTerminalContent(
         }
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
-            Row(Modifier.fillMaxWidth().height(58.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (!savedTab) Row(Modifier.fillMaxWidth().height(58.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onNavigateBack, modifier = Modifier.size(40.dp)) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Volver") }
                 Surface(Modifier.weight(1f).widthIn(max = 250.dp).height(42.dp), shape = RoundedCornerShape(12.dp), color = BSPOSTheme.colors.surfaceVariant) {
                     Row(Modifier.fillMaxSize()) {
@@ -171,12 +177,23 @@ internal fun QuoteTerminalContent(
                     }
                 }
             }
-            if (savedTab) {
-                LazyColumn(Modifier.weight(1f).fillMaxWidth(), contentPadding = PaddingValues(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            if (savedTab && quoteDetail != null) {
+                SavedQuoteDetail(quoteDetail!!, { quoteDetail = null }, { quoteToConvert = quoteDetail },
+                    { quoteDetail?.let { row -> row.id?.let { onDownload(it, row.primary) } } }, onOpenInvoice)
+            } else if (savedTab) {
+                LazyColumn(Modifier.weight(1f).fillMaxWidth(), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 18.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    item {
+                        BSPOSSectionLabel("Ventas")
+                        Text("Cotizaciones", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.ExtraBold)
+                        Text("Presupuestos guardados desde la terminal, listos para cobrar.", color = BSPOSTheme.colors.textSecondary)
+                        TextButton({ savedTab = false }) { Text("Nueva cotización") }
+                    }
                     item { QuoteSummary(state.kpis, state.rows) }
+                    item { com.example.bspos.presentation.common.BSPOSSearchField(query, { query = it }, "Buscar por número o cliente…", Modifier.fillMaxWidth()) }
                     if (state.rows.isEmpty() && !state.loading) item { Text("Todavía no hay cotizaciones guardadas.", color = BSPOSTheme.colors.textSecondary) }
-                    items(state.rows, key = { it.id ?: it.primary }) { row ->
-                        RecentQuoteRow(row, state.convertingId == row.id, state.convertingId == null) { quoteToConvert = row }
+                    items(state.rows.filter { "${it.primary} ${it.secondary}".contains(query, true) }, key = { it.id ?: it.primary }) { row ->
+                        RecentQuoteRow(row, state.convertingId == row.id, state.convertingId == null,
+                            onConvert = { quoteToConvert = row }, onOpen = { quoteDetail = row })
                     }
                     state.message?.let { item { Text(it, color = BSPOSTheme.colors.success) } }
                     state.error?.let { item { Text(it, color = BSPOSTheme.colors.error) } }
@@ -386,15 +403,77 @@ private fun QuoteCustomerDialog(customers: List<RemoteCustomerDto>, selectedId: 
 }
 
 @Composable
-private fun RecentQuoteRow(row: FeatureRowDto, converting: Boolean, enabled: Boolean, onConvert: () -> Unit) {
-    Card(colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface)) {
-        Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+private fun RecentQuoteRow(row: FeatureRowDto, converting: Boolean, enabled: Boolean, onConvert: () -> Unit, onOpen: () -> Unit) {
+    Card(onClick = onOpen, shape = RoundedCornerShape(16.dp), border = BorderStroke(1.dp, BSPOSTheme.colors.outline), colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface)) {
+        Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Column(Modifier.weight(1f)) {
-                Text(row.primary.ifBlank { "Cotización" }, fontWeight = FontWeight.Bold)
-                if (row.secondary.isNotBlank()) Text(row.secondary, color = BSPOSTheme.colors.textSecondary, style = androidx.compose.material3.MaterialTheme.typography.bodySmall)
-                if (row.value.isNotBlank()) Text(row.value, fontWeight = FontWeight.ExtraBold)
+                Text(row.customerName ?: row.secondary.substringBefore(" · ").ifBlank { "Cliente general" }, fontWeight = FontWeight.SemiBold)
+                Text(row.primary, fontFamily = FontFamily.Monospace, fontSize = 11.sp, color = BSPOSTheme.colors.textSecondary)
             }
-            if (row.canConvert) TextButton(onClick = onConvert, enabled = enabled && !converting) { Text(if (converting) "…" else "Convertir") }
+            QuoteStatus(row.status)
+            if (row.value.isNotBlank()) BSPOSMoney(row.value)
+        }
+        Row(Modifier.fillMaxWidth()) {
+            Column(Modifier.weight(1f)) { BSPOSSectionLabel("Vigencia"); Text(quoteDate(row.validUntil), fontFamily = FontFamily.Monospace) }
+            Column(Modifier.weight(1f)) { BSPOSSectionLabel("Artículos"); Text(if (row.itemCount > 0) "${row.itemCount} u." else row.secondary.substringAfter(" · ", "No consultado")) }
+        }
+        if (row.canConvert) Button(onClick = onConvert, enabled = enabled && !converting, modifier = Modifier.fillMaxWidth()) { Text(if (converting) "Convirtiendo…" else "Convertir venta") }
+        }
+    }
+}
+
+@Composable private fun QuoteStatus(status: String) {
+    Surface(shape = RoundedCornerShape(50), color = if (status.contains("convert", true)) BSPOSTheme.colors.successLight else BSPOSTheme.colors.warningLight) {
+        Text(status.uppercase(), Modifier.padding(horizontal = 10.dp, vertical = 5.dp), fontFamily = FontFamily.Monospace, fontSize = 10.sp)
+    }
+}
+
+private fun quoteDate(value: String?): String = value?.let {
+    runCatching { LocalDate.parse(it).format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy")) }.getOrDefault(it)
+} ?: "No indicada"
+
+@Composable private fun SavedQuoteDetail(row: FeatureRowDto, onBack: () -> Unit, onConvert: () -> Unit, onDownload: () -> Unit, onOpenInvoice: (String) -> Unit) {
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
+        item {
+            BSPOSSectionLabel("Cotización")
+            Text(row.primary, style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.ExtraBold)
+            Spacer(Modifier.height(12.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onDownload, enabled = row.pdfAvailable && row.id != null) { Text("Descargar PDF") }
+                row.invoiceUrl?.let { url -> Button({ onOpenInvoice(url) }) { Text("Ver venta") } }
+                if (row.canConvert) Button(onConvert) { Text("Convertir venta") }
+            }
+            TextButton(onBack) { Text("← Volver a cotizaciones") }
+        }
+        item {
+            Surface(shape = RoundedCornerShape(16.dp), border = BorderStroke(1.dp, BSPOSTheme.colors.outline)) {
+                Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    BSPOSSectionLabel("Detalles")
+                    Row(Modifier.fillMaxWidth()) {
+                        Column(Modifier.weight(1f)) { Text("Cliente", color = BSPOSTheme.colors.textSecondary); Text(row.customerName ?: row.secondary.substringBefore(" · ").ifBlank { "Cliente general" }) }
+                        Column(Modifier.weight(1f)) { Text("Estado", color = BSPOSTheme.colors.textSecondary); QuoteStatus(row.status) }
+                    }
+                    Row(Modifier.fillMaxWidth()) {
+                        Column(Modifier.weight(1f)) { Text("Válida hasta", color = BSPOSTheme.colors.textSecondary); Text(quoteDate(row.validUntil), fontFamily = FontFamily.Monospace) }
+                        Column(Modifier.weight(1f)) { Text("Artículos", color = BSPOSTheme.colors.textSecondary); Text(row.itemCount.takeIf { it > 0 }?.toString() ?: "No consultado") }
+                    }
+                }
+            }
+        }
+        item {
+            Surface(shape = RoundedCornerShape(16.dp), border = BorderStroke(1.dp, BSPOSTheme.colors.outline)) {
+                Column {
+                    row.items.forEach { item ->
+                        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row { Text(item.name, Modifier.weight(1f), fontWeight = FontWeight.SemiBold); BSPOSMoney(item.lineTotal) }
+                            Row { Column(Modifier.weight(1f)) { BSPOSSectionLabel("Cant."); Text(item.quantity.toString()) }; Column(Modifier.weight(1f)) { BSPOSSectionLabel("Precio unit."); BSPOSMoney(item.unitPrice) } }
+                        }
+                        HorizontalDivider(color = BSPOSTheme.colors.outline)
+                    }
+                    Row(Modifier.fillMaxWidth().padding(14.dp)) { Text("Total", Modifier.weight(1f), fontWeight = FontWeight.SemiBold); BSPOSMoney(row.value) }
+                }
+            }
         }
     }
 }
@@ -418,29 +497,18 @@ private fun QuoteSummary(kpis: List<FeatureKpiDto>, rows: List<FeatureRowDto>) {
         ?: rows.count { it.status.contains("venc", ignoreCase = true) || it.status.contains("expired", ignoreCase = true) }.toString()
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp),
+        shape = RoundedCornerShape(12.dp),
+        border = BorderStroke(1.dp, BSPOSTheme.colors.outline),
         colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface)
     ) {
-        BoxWithConstraints(Modifier.fillMaxWidth().padding(16.dp)) {
-            val metrics = listOf(
-                Triple("Vigentes", active, BSPOSTheme.colors.textPrimary),
-                Triple("Por convertir", pendingTotal, BSPOSTheme.colors.primary),
-                Triple("Vencidas", expired, BSPOSTheme.colors.warning)
-            )
-            if (maxWidth < 520.dp) {
-                Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                    metrics.chunked(2).forEach { row ->
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                            row.forEach { (label, value, color) -> QuoteMetric(label, value, color, Modifier.weight(1f)) }
-                            if (row.size == 1) Spacer(Modifier.weight(1f))
-                        }
-                    }
-                }
-            } else {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                    metrics.forEach { (label, value, color) -> QuoteMetric(label, value, color, Modifier.weight(1f)) }
-                }
+        Row(Modifier.fillMaxWidth()) {
+            Column(Modifier.weight(1f)) {
+                QuoteMetric("Vigentes", active, BSPOSTheme.colors.textPrimary, Modifier.fillMaxWidth().height(76.dp).padding(14.dp))
+                HorizontalDivider(color = BSPOSTheme.colors.outline)
+                QuoteMetric("Vencidas", expired, BSPOSTheme.colors.textPrimary, Modifier.fillMaxWidth().height(76.dp).padding(14.dp))
             }
+            VerticalDivider(Modifier.height(152.dp), color = BSPOSTheme.colors.outline)
+            QuoteMetric("Por convertir", pendingTotal, BSPOSTheme.colors.textPrimary, Modifier.weight(1f).height(152.dp).padding(14.dp))
         }
     }
 }
@@ -449,6 +517,6 @@ private fun QuoteSummary(kpis: List<FeatureKpiDto>, rows: List<FeatureRowDto>) {
 private fun QuoteMetric(label: String, value: String, color: androidx.compose.ui.graphics.Color, modifier: Modifier) {
     Column(modifier) {
         Text(label, color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelMedium)
-        Text(value, color = color, fontWeight = FontWeight.ExtraBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(value, color = color, fontWeight = FontWeight.SemiBold, fontFamily = FontFamily.Monospace, fontSize = 18.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }

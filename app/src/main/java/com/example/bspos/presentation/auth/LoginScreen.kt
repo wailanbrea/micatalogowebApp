@@ -33,7 +33,7 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
-import androidx.compose.material3.Button
+import com.example.bspos.presentation.common.BSPOSButton as Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -168,9 +168,8 @@ fun LoginScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(AppBackground)
+            .background(Color.White)
     ) {
-        LoginGeometricBackground()
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -210,7 +209,7 @@ private fun BrandHeader() {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
         CatalogBrandIcon()
         Spacer(Modifier.size(12.dp))
-        Text("Mi", fontSize = 32.sp, fontWeight = FontWeight.ExtraBold, color = Color.White)
+        Text("Mi", fontSize = 28.sp, fontWeight = FontWeight.ExtraBold, color = Navy)
         Text("Catalogo", fontSize = 32.sp, fontWeight = FontWeight.ExtraBold, color = LightBlue)
     }
 }
@@ -258,24 +257,24 @@ internal fun LoginCard(
 
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(28.dp),
+        shape = RoundedCornerShape(16.dp),
         color = Color.White,
         contentColor = Navy,
-        shadowElevation = 18.dp
+        shadowElevation = 0.dp,
+        border = androidx.compose.foundation.BorderStroke(1.dp, Border)
     ) {
         Column {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(190.dp)
-                    .background(Brush.linearGradient(listOf(Navy, Color(0xFF075CC6), BrandBlue))),
+                    .height(100.dp)
+                    .background(Color.White),
                 contentAlignment = Alignment.Center
             ) {
-                HeaderDecorations()
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("Mi Cuenta", fontSize = 32.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                    Text("Mi Cuenta", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Navy)
                     Spacer(Modifier.height(7.dp))
-                    Text("Accede a tu panel", fontSize = 15.sp, color = Color.White.copy(alpha = .76f))
+                    Text("Accede a tu panel", fontSize = 14.sp, color = TextSecondary)
                 }
             }
 
@@ -283,7 +282,7 @@ internal fun LoginCard(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(start = 22.dp, end = 22.dp, top = 68.dp, bottom = 22.dp)
+                        .padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 20.dp)
                 ) {
                     AnimatedVisibility(visible = state.errorMessage != null) {
                         state.errorMessage?.let {
@@ -313,7 +312,7 @@ internal fun LoginCard(
                                 }
                             },
                         singleLine = true,
-                        shape = RoundedCornerShape(14.dp),
+                        shape = RoundedCornerShape(8.dp),
                         placeholder = { Text("Correo electronico") },
                         leadingIcon = { Icon(Icons.Default.Email, contentDescription = null) },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next),
@@ -335,7 +334,7 @@ internal fun LoginCard(
                                 }
                             },
                         singleLine = true,
-                        shape = RoundedCornerShape(14.dp),
+                        shape = RoundedCornerShape(8.dp),
                         placeholder = { Text("Contrasena") },
                         leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
                         trailingIcon = {
@@ -380,9 +379,9 @@ internal fun LoginCard(
                     Spacer(Modifier.height(12.dp))
                     Button(
                         onClick = onLogin,
-                        modifier = Modifier.fillMaxWidth().height(58.dp),
+                         modifier = Modifier.fillMaxWidth().height(48.dp),
                         enabled = !state.isSubmitting,
-                        shape = RoundedCornerShape(15.dp),
+                         shape = RoundedCornerShape(8.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = BrandBlue,
                             contentColor = Color.White
@@ -391,7 +390,7 @@ internal fun LoginCard(
                         if (state.isSubmitting) {
                             CircularProgressIndicator(modifier = Modifier.size(20.dp), color = Color.White, strokeWidth = 2.dp)
                         } else {
-                            Text("Iniciar sesion", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                             Text("Iniciar sesion", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                             Spacer(Modifier.size(12.dp))
                             Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null)
                         }

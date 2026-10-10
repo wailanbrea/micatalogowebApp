@@ -309,6 +309,9 @@ data class FeatureRowDto(
     val origin: String? = null,
     @SerialName("item_count") val itemCount: Int = 0,
     @SerialName("created_at") val createdAt: String? = null,
+    @SerialName("valid_until") val validUntil: String? = null,
+    @SerialName("pdf_available") val pdfAvailable: Boolean = false,
+    @SerialName("invoice_url") val invoiceUrl: String? = null,
     val items: List<FeatureOrderItemDto> = emptyList()
 )
 

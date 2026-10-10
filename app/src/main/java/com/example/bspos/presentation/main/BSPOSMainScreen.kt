@@ -635,19 +635,19 @@ fun BSPOSMainScreen(
                         Triple("Inventario", Screen.Inventory, canSeeMenu("inventory"))
                     ).filter { it.third }
                     if (bottomItems.isNotEmpty()) {
-                            Row(Modifier.fillMaxWidth().background(BSPOSTheme.colors.secondaryNavy).navigationBarsPadding().padding(vertical = 8.dp)) {
+                            Row(Modifier.fillMaxWidth().background(BSPOSTheme.colors.secondaryNavy).navigationBarsPadding().padding(vertical = 4.dp)) {
                                 bottomItems.forEach { (label, screen, _) ->
                                     val selected = currentBaseRoute == screen.route
                                     val tint = if (selected) Color.White else BSPOSTheme.colors.textOnNavy.copy(alpha = .7f)
-                                    Column(Modifier.weight(1f).clickable { navigateTo(screen) }.padding(vertical = 4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                        Box(Modifier.clip(RoundedCornerShape(8.dp)).background(if (selected) BSPOSTheme.colors.primary else Color.Transparent).padding(horizontal = 12.dp, vertical = 4.dp)) {
-                                            Icon(if (selected) screen.selectedIcon else screen.unselectedIcon, label, tint = tint, modifier = Modifier.size(22.dp))
+                                     Column(Modifier.weight(1f).clickable { navigateTo(screen) }.padding(vertical = 2.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                         Box(Modifier.padding(horizontal = 12.dp, vertical = 2.dp)) {
+                                             Icon(screen.unselectedIcon, label, tint = tint, modifier = Modifier.size(22.dp))
                                         }
                                         Text(label, color = tint, fontSize = 10.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal)
                                     }
                                 }
-                                Column(Modifier.weight(1f).clickable { scope.launch { drawerState.open() } }.padding(vertical = 4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Box(Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) { Icon(Icons.Default.Menu, "Abrir menú", tint = BSPOSTheme.colors.textOnNavy.copy(alpha = .7f), modifier = Modifier.size(22.dp)) }
+                                 Column(Modifier.weight(1f).clickable { scope.launch { drawerState.open() } }.padding(vertical = 2.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                     Box(Modifier.padding(horizontal = 12.dp, vertical = 2.dp)) { Icon(Icons.Default.Menu, "Abrir menú", tint = BSPOSTheme.colors.textOnNavy.copy(alpha = .7f), modifier = Modifier.size(22.dp)) }
                                     Text("Más", color = BSPOSTheme.colors.textOnNavy.copy(alpha = .7f), fontSize = 10.sp)
                                 }
                             }
@@ -658,24 +658,27 @@ fun BSPOSMainScreen(
                 // The application shell owns the context header for every regular
                 // module. Terminal and Cotizaciones intentionally keep their compact
                 // Puntto-style header; Support is a nested conversation screen.
-                val usesCompactHeader = currentBaseRoute in setOf(Screen.POS.route, Screen.Quotes.route)
+                 val usesCompactHeader = currentBaseRoute == Screen.POS.route
                 if (currentBaseRoute != Screen.Support.route &&
                     (!usesCompactHeader || windowWidthSizeClass == WindowWidthSizeClass.Expanded)
-                ) TopAppBar(
+                 ) TopAppBar(
+                    expandedHeight = 56.dp,
                     title = {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
                                 text = "$currentGroup / ",
                                 color = BSPOSTheme.colors.textSecondary,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.SemiBold,
+                                 fontSize = 11.sp,
+                                 fontFamily = com.example.bspos.core.ui.theme.BSPOSFonts.Monospace,
+                                 fontWeight = FontWeight.Normal,
                                 maxLines = 1
                             )
                             Text(
                                 text = currentTitle,
                                 color = BSPOSTheme.colors.textPrimary,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
+                                 fontSize = 11.sp,
+                                 fontFamily = com.example.bspos.core.ui.theme.BSPOSFonts.Monospace,
+                                 fontWeight = FontWeight.Normal,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier.weight(1f, fill = false)
@@ -1037,12 +1040,9 @@ fun BSPOSNavHost(
             // decant”, “Reporte” and “Frascos” all remain actionable from the
             // same screen and the opening operation can be queued to the API.
             RestrictedMenuDestination(canSeeMenu("decants"), navController) {
-                CatalogHomeScreen(
-                    isTablet = isTablet,
+                com.example.bspos.presentation.decants.DecantsScreen(
                     presentation = presentation,
-                    showCost = !sellerMode || canSeeMenu("finance"),
-                    showProductCode = productFields.isEmpty() || "sku" in productFields || "barcode" in productFields,
-                    initialDecantMode = true
+                    showCost = !sellerMode || canSeeMenu("finance")
                 )
             }
         }
@@ -1180,6 +1180,7 @@ fun BSPOSNavHost(
             RestrictedMenuDestination(canSeeMenu("inventory"), navController) {
                 InventoryScreen(
                     onOpenProducts = if (canSeeMenu("products")) {{ navController.navigate(Screen.Catalog.route) }} else null,
+                    onOpenQuickCreate = if (canSeeMenu("products")) {{ navController.navigate(Screen.CatalogCreate.route) }} else null,
                     onOpenPrices = if (canSeeMenu("pricing")) {{ navController.navigate(Screen.AutomaticPrices.route) }} else null,
                     onOpenImport = if (canSeeMenu("import")) {{ navController.navigate(Screen.Import.route) }} else null,
                     onOpenStore = if (canSeeMenu("storefront")) ::openPublicProduct else null,

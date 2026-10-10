@@ -51,6 +51,9 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material3.*
+import com.example.bspos.presentation.common.BSPOSActionTextButton as TextButton
+import com.example.bspos.presentation.common.BSPOSButton as Button
+import com.example.bspos.presentation.common.BSPOSOutlinedButton as OutlinedButton
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.animation.AnimatedContent
@@ -77,11 +80,12 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.font.FontFamily
+import com.example.bspos.core.ui.theme.BSPOSFonts as FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Dp
@@ -253,7 +257,7 @@ fun PosScreen(
                     contentWindowInsets = WindowInsets(0, 0, 0, 0),
                     containerColor = androidx.compose.ui.graphics.Color.Transparent,
                     bottomBar = {
-                        Surface(color = Color.White, shadowElevation = 6.dp) {
+                        Surface(color = Color.White, shadowElevation = 0.dp) {
                             if (cart.isEmpty()) {
                                 Surface(
                                     modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp).dashedRoundedBorder(Color(0xFFD4D4D8)),
@@ -309,9 +313,9 @@ fun PosScreen(
                             onOpenMenu = onOpenMenu,
                             onGuide = { showingTerminalGuide = true },
                             onOptions = { showingTerminalOptions = true },
+                            onQuote = onOpenQuotes,
                             isProcessing = isProcessing
                         )
-                        Spacer(Modifier.height(8.dp))
                         PunttoSearchRow(
                             query = query,
                             placeholder = "Buscar o escanear...",
@@ -322,7 +326,6 @@ fun PosScreen(
                         )
                         Spacer(Modifier.height(8.dp))
                         PunttoKindFilterRow(catalogTab, decantsCount, servicesCount) { catalogTab = it }
-                        CategoryFilterRow(categoryOptions, selectedCategoryId) { selectedCategoryId = it }
                         HorizontalDivider(color = Color(0xFFE4E4E7), modifier = Modifier.padding(top = 10.dp))
                         if (catalogTab == "all" && query.isBlank() && selectedCategoryId == null && recentProducts.isNotEmpty()) {
                             Spacer(Modifier.height(8.dp))
@@ -379,7 +382,8 @@ fun PosScreen(
             showQuote = showQuoteAction,
             showDayClose = showDayCloseAction,
             onDayClose = { showingTerminalOptions = false; onOpenDayClose() },
-            onQuote = { showingTerminalOptions = false; onOpenQuotes() }
+            onQuote = { showingTerminalOptions = false; onOpenQuotes() },
+            categoryFilters = { CategoryFilterRow(categoryOptions, selectedCategoryId) { selectedCategoryId = it } }
         )
     }
     if (showingSplitDialog) {
@@ -523,25 +527,23 @@ private fun PunttoTerminalHeader(
     onOpenMenu: () -> Unit,
     onGuide: () -> Unit,
     onOptions: () -> Unit,
-    isProcessing: Boolean
+    isProcessing: Boolean,
+    onQuote: () -> Unit = {}
 ) {
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val showBackButton = maxWidth >= 420.dp
         Row(
-            modifier = Modifier.fillMaxWidth().height(58.dp),
+            modifier = Modifier.fillMaxWidth().height(48.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            IconButton(onClick = onOpenMenu, enabled = !isProcessing, modifier = Modifier.size(40.dp)) {
-                Icon(Icons.Default.Menu, contentDescription = "Abrir menú", tint = BSPOSTheme.colors.textSecondary)
-            }
             if (showBackButton) {
                 IconButton(onClick = onBack, enabled = !isProcessing, modifier = Modifier.size(40.dp)) {
                     Icon(Icons.Default.ArrowBack, contentDescription = "Volver", tint = BSPOSTheme.colors.textSecondary)
                 }
             }
         Surface(
-            modifier = Modifier.widthIn(max = 210.dp).weight(1f, fill = false).height(42.dp),
+            modifier = Modifier.widthIn(max = 235.dp).weight(1f, fill = false).height(42.dp),
             shape = RoundedCornerShape(12.dp),
             color = Color(0xFFF0F0F2)
         ) {
@@ -551,11 +553,12 @@ private fun PunttoTerminalHeader(
                     contentAlignment = Alignment.Center
                 ) {
                     Surface(
+                        modifier = Modifier.fillMaxSize().padding(3.dp),
                         shape = RoundedCornerShape(10.dp),
                         color = if (!wholesaleMode) Color.White else Color.Transparent,
                         shadowElevation = if (!wholesaleMode) 1.dp else 0.dp
                     ) {
-                        Text("Contado", modifier = Modifier.padding(horizontal = 18.dp, vertical = 7.dp), fontWeight = if (!wholesaleMode) FontWeight.Bold else FontWeight.Normal, color = Color(0xFF18181B))
+                        Box(contentAlignment = Alignment.Center) { Text("Detalle", fontWeight = if (!wholesaleMode) FontWeight.Bold else FontWeight.Normal, color = BSPOSTheme.colors.textPrimary, fontSize = 13.sp) }
                     }
                 }
                 Box(
@@ -563,15 +566,17 @@ private fun PunttoTerminalHeader(
                     contentAlignment = Alignment.Center
                 ) {
                     Surface(
+                        modifier = Modifier.fillMaxSize().padding(3.dp),
                         shape = RoundedCornerShape(10.dp),
                         color = if (wholesaleMode) Color.White else Color.Transparent,
                         shadowElevation = if (wholesaleMode) 1.dp else 0.dp
                     ) {
-                        Text("Mayoreo", modifier = Modifier.padding(horizontal = 18.dp, vertical = 7.dp), fontWeight = if (wholesaleMode) FontWeight.Bold else FontWeight.Normal, color = if (wholesaleMode) Color(0xFF18181B) else Color(0xFF71717A))
+                        Box(contentAlignment = Alignment.Center) { Text("Mayoreo", fontWeight = if (wholesaleMode) FontWeight.Bold else FontWeight.Normal, color = if (wholesaleMode) BSPOSTheme.colors.textPrimary else BSPOSTheme.colors.textSecondary, fontSize = 13.sp) }
                     }
                 }
             }
         }
+        OutlinedButton(onQuote, enabled = !isProcessing, contentPadding = PaddingValues(horizontal = 8.dp), shape = RoundedCornerShape(50)) { Text("Cotizar", fontSize = 12.sp) }
         IconButton(onClick = onGuide, enabled = !isProcessing, modifier = Modifier.size(40.dp)) {
             Icon(Icons.Default.HelpOutline, contentDescription = "Ayuda", tint = Color(0xFF3F3F46))
         }
@@ -592,13 +597,13 @@ internal fun PunttoSearchRow(
     showService: Boolean
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         Surface(
-            modifier = Modifier.weight(1f).height(50.dp),
-            shape = RoundedCornerShape(17.dp),
+            modifier = Modifier.weight(1f).height(44.dp),
+            shape = RoundedCornerShape(16.dp),
             color = Color.White,
             border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE4E4E7))
         ) {
@@ -611,25 +616,25 @@ internal fun PunttoSearchRow(
                         onValueChange = onQueryChange,
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
-                        textStyle = MaterialTheme.typography.bodyMedium.copy(color = Color(0xFF18181B), fontSize = 13.5.sp),
+                        textStyle = MaterialTheme.typography.bodyMedium.copy(color = BSPOSTheme.colors.textPrimary, fontSize = 16.sp),
                         decorationBox = { field ->
-                            if (query.isBlank()) Text(placeholder, color = Color(0xFFA1A1AA), fontSize = 13.5.sp)
+                            if (query.isBlank()) Text(placeholder, color = BSPOSTheme.colors.textTertiary, fontSize = 16.sp)
                             field()
                         }
                     )
                 }
-                IconButton(onClick = onScan, modifier = Modifier.size(30.dp)) {
-                    Icon(Icons.Default.QrCodeScanner, contentDescription = "Escanear código", tint = Color(0xFF3F3F46), modifier = Modifier.size(18.dp))
-                }
             }
+        }
+        OutlinedButton(onScan, modifier = Modifier.size(44.dp), contentPadding = PaddingValues(0.dp), shape = RoundedCornerShape(16.dp)) {
+            Icon(Icons.Default.QrCodeScanner, contentDescription = "Escanear código", modifier = Modifier.size(20.dp))
         }
         if (showService) {
             Button(
                 onClick = onService,
-                modifier = Modifier.height(50.dp),
+                modifier = Modifier.height(44.dp),
                 shape = RoundedCornerShape(16.dp),
                 contentPadding = PaddingValues(horizontal = 12.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E1E20))
+                colors = ButtonDefaults.buttonColors(containerColor = BSPOSTheme.colors.secondaryNavy)
             ) {
                 Icon(Icons.Default.Build, contentDescription = null, modifier = Modifier.size(17.dp))
                 Spacer(Modifier.width(6.dp))
@@ -646,14 +651,13 @@ private fun PunttoKindFilterRow(
     servicesCount: Int,
     onSelected: (String) -> Unit
 ) {
-    if (decantsCount == 0 && servicesCount == 0) return
     Row(
         modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 14.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         PunttoTerminalChip(selected == "all" || selected == "products", "Productos", onClick = { onSelected("products") })
-        if (decantsCount > 0) PunttoTerminalChip(selected == "decants", "Decants ($decantsCount)", onClick = { onSelected("decants") })
-        if (servicesCount > 0) PunttoTerminalChip(selected == "services", "Servicios ($servicesCount)", onClick = { onSelected("services") })
+        PunttoTerminalChip(selected == "decants", "Decants ($decantsCount)", onClick = { onSelected("decants") })
+        PunttoTerminalChip(selected == "services", "Servicios ($servicesCount)", onClick = { onSelected("services") })
     }
 }
 
@@ -662,7 +666,7 @@ internal fun PunttoTerminalChip(selected: Boolean, label: String, onClick: () ->
     Surface(
         modifier = Modifier.clip(RoundedCornerShape(18.dp)).clickable { onClick() },
         shape = RoundedCornerShape(18.dp),
-        color = if (selected) Color(0xFF212124) else Color.White,
+        color = if (selected) BSPOSTheme.colors.secondaryNavy else BSPOSTheme.colors.surface,
         border = if (selected) null else androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE4E4E7))
     ) {
         Text(
@@ -702,7 +706,7 @@ private fun PunttoProductList(
             val selected = selectedQuantities[product.id] ?: 0L
             val canIncrease = product.remoteSaleUnit == "service" || selected < available
             Row(
-                modifier = Modifier.fillMaxWidth().clickable(enabled = canIncrease) { onAdd(product) }.padding(horizontal = 14.dp, vertical = 12.dp),
+                modifier = Modifier.fillMaxWidth().clickable(enabled = canIncrease) { onAdd(product) }.padding(horizontal = 16.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 TerminalProductThumbnail(product)
@@ -781,14 +785,15 @@ private fun TerminalProductThumbnail(product: Product) {
     }
 }
 
-private fun Modifier.dashedRoundedBorder(color: Color, strokeWidth: Dp = 1.dp, cornerRadius: Dp = 18.dp): Modifier = drawBehind {
+private fun Modifier.dashedRoundedBorder(color: Color, strokeWidth: Dp = 1.dp, cornerRadius: Dp = 18.dp): Modifier = drawWithContent {
+    drawContent()
     val stroke = strokeWidth.toPx()
     drawRoundRect(
         color = color,
         topLeft = Offset(stroke / 2, stroke / 2),
         size = Size(size.width - stroke, size.height - stroke),
         cornerRadius = CornerRadius(cornerRadius.toPx()),
-        style = Stroke(width = stroke, pathEffect = PathEffect.dashPathEffect(floatArrayOf(8.dp.toPx(), 6.dp.toPx()), 0f))
+        style = Stroke(width = stroke, pathEffect = PathEffect.dashPathEffect(floatArrayOf(3.dp.toPx(), 2.dp.toPx()), 0f))
     )
 }
 
@@ -931,10 +936,11 @@ private fun TerminalModeRow(onQuote: () -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun TerminalOptionsSheet(onDismiss: () -> Unit, onDayClose: () -> Unit, onQuote: () -> Unit, showQuote: Boolean, showDayClose: Boolean) {
+private fun TerminalOptionsSheet(onDismiss: () -> Unit, onDayClose: () -> Unit, onQuote: () -> Unit, showQuote: Boolean, showDayClose: Boolean, categoryFilters: @Composable () -> Unit = {}) {
     BSPOSModalBottomSheet(onDismissRequest = onDismiss) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).navigationBarsPadding(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("Opciones de la terminal", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
+            categoryFilters()
 
             if (showQuote) TextButton(onClick = onQuote, modifier = Modifier.fillMaxWidth()) { Text("Crear cotización", modifier = Modifier.fillMaxWidth()) }
             if (showDayClose) TextButton(onClick = onDayClose, modifier = Modifier.fillMaxWidth()) { Text("Cierre de día", modifier = Modifier.fillMaxWidth()) }

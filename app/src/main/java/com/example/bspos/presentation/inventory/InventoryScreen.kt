@@ -1,6 +1,7 @@
 package com.example.bspos.presentation.inventory
 
 import android.content.Context
+import androidx.compose.foundation.clickable
 import android.net.Uri
 import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -34,7 +35,7 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.WarningAmber
-import androidx.compose.material3.Button
+import com.example.bspos.presentation.common.BSPOSButton as Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -45,11 +46,11 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
+import com.example.bspos.presentation.common.BSPOSOutlinedButton as OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import com.example.bspos.presentation.common.BSPOSActionTextButton as TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -65,6 +66,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -98,8 +100,11 @@ fun InventoryScreen(
     viewModel: InventoryViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
-    val stock by viewModel.stock.collectAsState()
+    val allStock by viewModel.stock.collectAsState()
     val products by viewModel.productNames.collectAsState()
+    val stock = allStock.filter { row -> products.any { it.id == row.productId } }
+    val remoteValuation by viewModel.remoteValuation.collectAsState()
+    LaunchedEffect(products, stock) { viewModel.refreshValuation() }
     val movements by viewModel.movements.collectAsState()
     val allMovements by viewModel.allMovements.collectAsState()
     val reasons by viewModel.reasons.collectAsState()
@@ -112,6 +117,7 @@ fun InventoryScreen(
     val message by viewModel.message.collectAsState()
     var filter by remember(initialStockFilter) { mutableStateOf(when (initialStockFilter) { "in_stock" -> 2; "out" -> 1; else -> 0 }) }
     var inventoryTab by remember { mutableStateOf(0) }
+    var selectedIds by remember { mutableStateOf<Set<UUID>>(emptySet()) }
     var query by remember { mutableStateOf("") }
     var showFilters by remember { mutableStateOf(false) }
     var photoFilter by remember { mutableStateOf(false) }
@@ -129,8 +135,8 @@ fun InventoryScreen(
     val names = products.associate { it.id to it.name }
     val productById = products.associateBy { it.id }
     val quantityByProductId = stock.groupBy { it.productId }.mapValues { (_, rows) -> rows.sumOf { it.quantity } }
-    val activeProducts = products.filter { it.isActive && it.deletedAt == null }
-    val archivedProducts = products.filter { !it.isActive || it.deletedAt != null }
+    val activeProducts = products.filter { it.isActive && it.deletedAt == null && it.remoteSaleUnit != "decant" }
+    val archivedProducts = products.filter { (!it.isActive || it.deletedAt != null) && it.remoteSaleUnit != "decant" }
     val comboProducts = activeProducts.filter { it.remoteIsCombo }
     val productsForTab = when (inventoryTab) {
         1 -> archivedProducts
@@ -148,15 +154,18 @@ fun InventoryScreen(
     val unavailable = activeProducts.count { (quantityByProductId[it.id] ?: 0L) <= 0L }
     val productsWithStock = activeProducts.count { (quantityByProductId[it.id] ?: 0L) > 0L }
     val lowStock = activeProducts.count { product -> product.minimumStock > 0L && (quantityByProductId[product.id] ?: 0L) <= product.minimumStock }
-    val totalUnits = stock.sumOf { it.quantity }
-    val capitalAtCost = if (showCosts) stock.sumOf { row -> row.quantity * (productById[row.productId]?.averageCost ?: 0L) } else 0L
+    val totalUnits = stock.filter { productById[it.productId]?.remoteSaleUnit != "decant" }.sumOf { it.quantity }
+    val capitalAtCost = if (showCosts) remoteValuation ?: stock.sumOf { row ->
+        val product = productById[row.productId]
+        if (product?.remoteSaleUnit == "decant") 0L else row.quantity * (product?.averageCost ?: 0L)
+    } else 0L
     val productsWithoutPhoto = products.count { it.isActive && it.deletedAt == null && it.imagePath.isNullOrBlank() }
     val stockEditableProducts = products.filter { !it.remoteIsCombo && it.remoteSaleUnit != "decant" && it.remoteSaleUnit != "service" && (it.remoteShopId == null || it.remoteShopId in editableShopIds) }
     val productsWithoutStock = stockEditableProducts.filter { product -> stock.none { it.productId == product.id } }
     val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
         val result = runCatching {
-            val csv = buildInventoryCsv(products, stock, includeCosts = showCosts)
+            val csv = buildInventoryCsv(if (selectedIds.isEmpty()) products else products.filter { it.id in selectedIds }, stock, includeCosts = showCosts)
             context.contentResolver.openOutputStream(uri)?.use { output ->
                 output.write(csv.toByteArray(Charsets.UTF_8))
             } ?: error("No se pudo abrir el destino del archivo.")
@@ -188,13 +197,17 @@ fun InventoryScreen(
 
     LazyColumn(
         modifier = Modifier.fillMaxSize().background(BSPOSTheme.colors.background),
-        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 18.dp),
+        verticalArrangement = Arrangement.spacedBy(0.dp)
     ) {
-        if (initialImport) item {
+        if (!initialImport) inventorySection {
+            Text("Inventario", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.ExtraBold)
+            Text("Tus productos y lo que tienes en existencia.", color = BSPOSTheme.colors.textSecondary)
+        }
+        if (initialImport) inventorySection {
             Text("Carga Excel, CSV o PDF y revisa los datos antes de guardarlos.", color = BSPOSTheme.colors.textSecondary)
         }
-        item {
+        inventorySection(spaceAfter = 4.dp) {
             if (initialImport) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     ImportChoiceButton(
@@ -227,77 +240,59 @@ fun InventoryScreen(
                         contentPadding = PaddingValues(horizontal = 6.dp)
                     ) { Text("Añadir del catálogo", style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis) }
                     OutlinedButton(
-                        onClick = { importRequested = true },
-                        enabled = importShop != null && !isLoadingImport,
+                        onClick = { onOpenPrices?.invoke() },
+                        enabled = onOpenPrices != null,
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(12.dp),
                         contentPadding = PaddingValues(horizontal = 6.dp)
-                    ) { Text("Importar", style = MaterialTheme.typography.labelMedium, maxLines = 1) }
-                    Button(onClick = { onOpenProducts?.invoke() }, enabled = onOpenProducts != null, modifier = Modifier.weight(1f), shape = RoundedCornerShape(12.dp), contentPadding = PaddingValues(horizontal = 6.dp)) {
-                        Icon(Icons.Default.Add, null)
-                        Spacer(Modifier.width(5.dp))
-                        Text("Nuevo producto", style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
+                    ) { Text("Precios y costos", maxLines = 1) }
                 }
             }
         }
-        item {
+        inventorySection(spaceAfter = 4.dp) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = { showGlobalMovements = true }, enabled = allMovements.isNotEmpty(), modifier = Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 6.dp)) { Text("Movimientos", style = MaterialTheme.typography.labelMedium, maxLines = 1) }
-                OutlinedButton(onClick = { onOpenPrices?.invoke() }, enabled = onOpenPrices != null, modifier = Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 6.dp)) { Text("Precios y costos", style = MaterialTheme.typography.labelMedium, maxLines = 1) }
-                OutlinedButton(onClick = { exportLauncher.launch("inventario-${System.currentTimeMillis()}.csv") }, enabled = products.isNotEmpty(), modifier = Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 6.dp)) { Text("Exportar", style = MaterialTheme.typography.labelMedium, maxLines = 1) }
+                OutlinedButton(onClick = { showGlobalMovements = true }, enabled = allMovements.isNotEmpty(), modifier = Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 6.dp)) { Text("Movimientos", maxLines = 1) }
+                OutlinedButton(onClick = { exportLauncher.launch("inventario-${System.currentTimeMillis()}.csv") }, enabled = products.isNotEmpty(), contentPadding = PaddingValues(horizontal = 12.dp)) { Text("Exportar", maxLines = 1) }
+                OutlinedButton(onClick = { importRequested = true }, enabled = importShop != null && !isLoadingImport, modifier = Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 6.dp)) { Text("Importar", maxLines = 1) }
             }
         }
-        item {
+        inventorySection {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(
                 onClick = { onOpenProducts?.invoke() },
                 enabled = onOpenProducts != null,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.weight(1f),
                 shape = RoundedCornerShape(12.dp)
-            ) { Text("Configurar combos desde Productos", maxLines = 1, overflow = TextOverflow.Ellipsis) }
-        }
-        item {
-            InventorySummaryRow(
-                capitalAtCost = capitalAtCost,
-                productCount = activeProducts.size,
-                productsWithStock = productsWithStock,
-                totalUnits = totalUnits,
-                lowStock = lowStock,
-                exhausted = unavailable,
-                averageMargin = averageMargin(activeProducts).takeIf { showCosts },
-                showCosts = showCosts
-            )
+            ) { Text("Configurar combos", maxLines = 1, overflow = TextOverflow.Ellipsis) }
+            Button({ (onOpenQuickCreate ?: onOpenProducts)?.invoke() }, enabled = onOpenProducts != null || onOpenQuickCreate != null, modifier = Modifier.weight(1f)) { Text("Nuevo producto") }
+            }
         }
         if (productsWithoutPhoto > 0) {
-            item {
-                Card(onClick = { onOpenProducts?.invoke() }, enabled = onOpenProducts != null, shape = RoundedCornerShape(14.dp), colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.warningLight)) {
+            inventorySection {
+                Card(onClick = { onOpenProducts?.invoke() }, enabled = onOpenProducts != null, shape = RoundedCornerShape(10.dp), border = androidx.compose.foundation.BorderStroke(1.dp, BSPOSTheme.colors.outline), colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface)) {
                     Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.WarningAmber, null, tint = BSPOSTheme.colors.warning)
                         Spacer(Modifier.width(10.dp))
-                        Text("$productsWithoutPhoto ${if (productsWithoutPhoto == 1) "producto sin foto" else "productos sin foto"} · revisar", color = BSPOSTheme.colors.warning, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                        Text("$productsWithoutPhoto ${if (productsWithoutPhoto == 1) "producto sin foto" else "productos sin foto"} · revisar", color = BSPOSTheme.colors.textPrimary, fontWeight = FontWeight.Normal, modifier = Modifier.weight(1f))
                         Icon(Icons.AutoMirrored.Filled.ArrowForward, null, tint = BSPOSTheme.colors.warning)
                     }
                 }
             }
         }
-        item {
+        inventorySection {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                InventoryTabChip("Activos", activeProducts.size, inventoryTab == 0, Modifier.weight(1f)) { inventoryTab = 0 }
-                InventoryTabChip("Archivados", archivedProducts.size, inventoryTab == 1, Modifier.weight(1f)) { inventoryTab = 1 }
-                InventoryTabChip("Combos", comboProducts.size, inventoryTab == 2, Modifier.weight(1f)) { inventoryTab = 2 }
+                InventoryTabChip("Activos", activeProducts.size, inventoryTab == 0) { inventoryTab = 0 }
+                InventoryTabChip("Archivados", archivedProducts.size, inventoryTab == 1) { inventoryTab = 1 }
+                InventoryTabChip("Combos", comboProducts.size, inventoryTab == 2) { inventoryTab = 2 }
             }
         }
-        item {
+        inventorySection {
+            InventorySummaryRow(capitalAtCost, activeProducts.size, productsWithStock, totalUnits, lowStock, unavailable,
+                averageMargin(activeProducts).takeIf { showCosts }, showCosts, estimated = remoteValuation == null)
+        }
+        inventorySection {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(
-                    value = query,
-                    onValueChange = { query = it },
-                    modifier = Modifier.weight(1f),
-                    singleLine = true,
-                    leadingIcon = { Icon(Icons.Default.Search, null, tint = BSPOSTheme.colors.primary) },
-                    placeholder = { Text("Buscar por nombre o SKU...") },
-                    shape = RoundedCornerShape(14.dp)
-                )
+                com.example.bspos.presentation.common.BSPOSSearchField(query, { query = it }, "Buscar por nombre o SKU…", Modifier.weight(1f))
                 OutlinedButton(onClick = { showFilters = !showFilters }, shape = RoundedCornerShape(14.dp)) {
                     Icon(Icons.Default.FilterList, null)
                     Spacer(Modifier.width(4.dp))
@@ -305,15 +300,10 @@ fun InventoryScreen(
                 }
             }
         }
-        if (showFilters) {
-            item {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(selected = filter == 0, onClick = { filter = 0 }, label = { Text("Todos") })
-                    FilterChip(selected = filter == 2, onClick = { filter = 2 }, label = { Text("Con existencia") })
-                    FilterChip(selected = filter == 1, onClick = { filter = 1 }, label = { Text("Agotados") })
-                    FilterChip(selected = lowStockFilter, onClick = { lowStockFilter = !lowStockFilter }, label = { Text("Nivel bajo") })
-                    FilterChip(selected = photoFilter, onClick = { photoFilter = !photoFilter }, label = { Text("Con foto") })
-                }
+        if (selectedIds.isNotEmpty()) inventorySection {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("${selectedIds.size} seleccionado(s)", Modifier.weight(1f))
+                TextButton({ selectedIds = emptySet() }) { Text("Limpiar selección") }
             }
         }
         if (filteredProducts.isEmpty()) {
@@ -326,11 +316,18 @@ fun InventoryScreen(
                     quantity = quantity,
                     onClick = { selectedProduct = product.id; viewModel.select(product.id) },
                     onReceive = if (stockEditableProducts.any { it.id == product.id }) { { receiptProductId = product.id; receiptForm = true } } else null,
-                    onEdit = { onOpenProducts?.invoke() }
+                    onEdit = { onOpenProducts?.invoke() }, selected = product.id in selectedIds,
+                    onSelected = { checked -> selectedIds = if (checked) selectedIds + product.id else selectedIds - product.id },
+                    first = product.id == filteredProducts.first().id, last = product.id == filteredProducts.last().id
                 )
             }
         }
-        item {
+        inventorySection {
+            Row(Modifier.fillMaxWidth().background(BSPOSTheme.colors.surfaceVariant).padding(14.dp)) {
+                Text("${filteredProducts.size} de ${productsForTab.size} referencias", Modifier.weight(1f), fontSize = 10.sp, fontFamily = com.example.bspos.core.ui.theme.BSPOSFonts.Monospace)
+                Text("${filteredProducts.sumOf { quantityByProductId[it.id] ?: 0L }} uds.", fontSize = 10.sp, fontFamily = com.example.bspos.core.ui.theme.BSPOSFonts.Monospace)
+            }
+            Spacer(Modifier.height(16.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton({ reasonForm = true }, Modifier.weight(1f)) { Text("Motivos") }
                 OutlinedButton({ adjustmentForm = true }, Modifier.weight(1f), enabled = stockEditableProducts.isNotEmpty() && reasons.any { it.isActive }) { Text("Ajuste") }
@@ -354,6 +351,23 @@ fun InventoryScreen(
         }
     }
 
+    if (showFilters) com.example.bspos.presentation.common.CheckoutStyleBottomSheet(
+        title = "Filtros", onDismiss = { showFilters = false }, footer = {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton({ filter = 0; lowStockFilter = false; photoFilter = false }) { Text("Limpiar") }
+                Button({ showFilters = false }, Modifier.weight(1f)) { Text("Ver productos ${filteredProducts.size}") }
+            }
+        }
+    ) {
+        com.example.bspos.presentation.common.BSPOSSectionLabel("Existencia")
+        listOf(0 to "Todos", 1 to "Agotados", 2 to "Con existencia").forEach { (value, label) ->
+            Row(Modifier.fillMaxWidth().clickable { filter = value }.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                androidx.compose.material3.RadioButton(filter == value, { filter = value }); Text(label)
+            }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) { androidx.compose.material3.Checkbox(lowStockFilter, { lowStockFilter = it }); Text("Nivel bajo") }
+        Row(verticalAlignment = Alignment.CenterVertically) { androidx.compose.material3.Checkbox(photoFilter, { photoFilter = it }); Text("Con foto") }
+    }
     if (initialForm) InitialInventoryForm(productsWithoutStock, { id, quantity, cost -> viewModel.initialize(id, quantity, cost); initialForm = false }, { initialForm = false })
     if (receiptForm && stockEditableProducts.isNotEmpty()) {
         val receiptProducts = receiptProductId?.let { selectedId ->
@@ -761,19 +775,24 @@ private fun InventoryMovementCard(movement: InventoryMovement) {
     }
 }
 
+private fun androidx.compose.foundation.lazy.LazyListScope.inventorySection(spaceAfter: androidx.compose.ui.unit.Dp = 16.dp, content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit) {
+    item { Column(Modifier.fillMaxWidth().padding(bottom = spaceAfter), content = content) }
+}
+
 @Composable
-private fun InventorySummaryRow(capitalAtCost: Long, productCount: Int, productsWithStock: Int, totalUnits: Long, lowStock: Int, exhausted: Int, averageMargin: Int?, showCosts: Boolean) {
+private fun InventorySummaryRow(capitalAtCost: Long, productCount: Int, productsWithStock: Int, totalUnits: Long, lowStock: Int, exhausted: Int, averageMargin: Int?, showCosts: Boolean, estimated: Boolean = false) {
+    Surface(shape = RoundedCornerShape(12.dp), border = androidx.compose.foundation.BorderStroke(1.dp, BSPOSTheme.colors.outline)) {
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val metrics = buildList {
-            if (showCosts) add(InventoryMetric("Capital al costo", MoneyUtils.formatCents(capitalAtCost, LocalCurrency.current), "Valor de tu existencia", BSPOSTheme.colors.primary))
+            if (showCosts) add(InventoryMetric("Capital al costo", MoneyUtils.formatCents(capitalAtCost, LocalCurrency.current), if (estimated) "Estimación local; FIFO pendiente de consulta" else "Costo FIFO · incluye Decants y envases", BSPOSTheme.colors.textPrimary))
             add(InventoryMetric("Productos", productCount.toString(), "$totalUnits unidades · $productsWithStock con existencia", BSPOSTheme.colors.textPrimary))
             add(InventoryMetric("Nivel bajo", lowStock.toString(), "$exhausted agotados", if (lowStock > 0) BSPOSTheme.colors.warning else BSPOSTheme.colors.success))
             if (showCosts && averageMargin != null) add(InventoryMetric("Margen prom.", "$averageMargin%", "Sobre el precio de venta", BSPOSTheme.colors.success))
         }
         if (maxWidth < 540.dp) {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
                 metrics.chunked(2).forEach { row ->
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(0.dp)) {
                         row.forEach { metric -> InventoryMetricCard(metric, Modifier.weight(1f)) }
                     }
                 }
@@ -782,18 +801,19 @@ private fun InventorySummaryRow(capitalAtCost: Long, productCount: Int, products
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) { metrics.forEach { metric -> InventoryMetricCard(metric, Modifier.weight(1f)) } }
         }
     }
+    }
 }
 
 private data class InventoryMetric(val label: String, val value: String, val subtitle: String, val color: androidx.compose.ui.graphics.Color)
 
 @Composable
 private fun InventoryMetricCard(metric: InventoryMetric, modifier: Modifier = Modifier) {
-    Card(modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface)) {
-        Column(Modifier.padding(14.dp)) {
+    Surface(modifier.fillMaxWidth(), color = BSPOSTheme.colors.surfaceVariant.copy(alpha = .25f), border = androidx.compose.foundation.BorderStroke(.5.dp, BSPOSTheme.colors.outline)) {
+        Column(Modifier.heightIn(min = 90.dp).padding(14.dp)) {
             Text(metric.label, color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelMedium)
             Spacer(Modifier.height(4.dp))
-            Text(metric.value, color = metric.color, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(metric.subtitle, color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(metric.value, color = BSPOSTheme.colors.textPrimary, fontSize = 18.sp, fontFamily = com.example.bspos.core.ui.theme.BSPOSFonts.Monospace, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(metric.subtitle, color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelSmall, fontFamily = com.example.bspos.core.ui.theme.BSPOSFonts.Monospace, maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
     }
 }
@@ -809,17 +829,15 @@ private fun averageMargin(products: List<Product>): Int {
 
 @Composable
 private fun InventoryTabChip(label: String, count: Int, selected: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    FilterChip(
-        selected = selected,
-        onClick = onClick,
-        label = { Text("$label $count", fontWeight = FontWeight.Bold, maxLines = 1) },
-        modifier = modifier,
-        colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(
-            selectedContainerColor = BSPOSTheme.colors.secondaryNavy,
-            selectedLabelColor = androidx.compose.ui.graphics.Color.White,
-            containerColor = BSPOSTheme.colors.surface
-        )
-    )
+    Surface(modifier.clickable(onClick = onClick), shape = RoundedCornerShape(8.dp),
+        color = if (selected) BSPOSTheme.colors.secondaryNavy else BSPOSTheme.colors.surface,
+        border = androidx.compose.foundation.BorderStroke(1.dp, if (selected) BSPOSTheme.colors.secondaryNavy else BSPOSTheme.colors.outline)) {
+        Row(Modifier.padding(horizontal = 14.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(label, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = if (selected) BSPOSTheme.colors.textOnNavy else BSPOSTheme.colors.textPrimary)
+            Text(count.toString(), fontFamily = com.example.bspos.core.ui.theme.BSPOSFonts.Monospace, fontSize = 12.sp,
+                color = if (selected) BSPOSTheme.colors.textOnNavy else BSPOSTheme.colors.textSecondary)
+        }
+    }
 }
 
 @Composable
@@ -963,44 +981,32 @@ private fun buildInventoryCsv(products: List<Product>, stock: List<com.example.b
 private fun escapeCsv(value: String): String = "\"${value.replace("\"", "\"\"")}\""
 
 @Composable
-private fun StockCard(product: Product, quantity: Long, onClick: () -> Unit, onReceive: (() -> Unit)?, onEdit: () -> Unit) {
+private fun StockCard(product: Product, quantity: Long, onClick: () -> Unit, onReceive: (() -> Unit)?, onEdit: () -> Unit,
+    selected: Boolean, onSelected: (Boolean) -> Unit, first: Boolean, last: Boolean) {
     val color = when {
         quantity <= 0 -> BSPOSTheme.colors.error
         product.minimumStock > 0L && quantity <= product.minimumStock -> BSPOSTheme.colors.warning
         else -> BSPOSTheme.colors.success
     }
     var menuOpen by remember(product.id) { mutableStateOf(false) }
-    Card(onClick = onClick, shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface)) {
-        Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(54.dp).clip(RoundedCornerShape(12.dp)).background(BSPOSTheme.colors.primaryLight), contentAlignment = Alignment.Center) {
+    Card(onClick = onClick, shape = RoundedCornerShape(topStart = if (first) 16.dp else 0.dp, topEnd = if (first) 16.dp else 0.dp,
+        bottomStart = if (last) 16.dp else 0.dp, bottomEnd = if (last) 16.dp else 0.dp), border = androidx.compose.foundation.BorderStroke(1.dp, BSPOSTheme.colors.outline),
+        colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface)) {
+        Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            androidx.compose.material3.Checkbox(selected, onSelected, Modifier.size(24.dp))
+            Spacer(Modifier.width(10.dp))
+            Box(Modifier.size(36.dp).clip(RoundedCornerShape(8.dp)).background(BSPOSTheme.colors.surfaceVariant), contentAlignment = Alignment.Center) {
                 if (!product.imagePath.isNullOrBlank()) AsyncImage(product.imagePath, product.name, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
                 else Icon(Icons.Default.Inventory2, null, tint = BSPOSTheme.colors.primary, modifier = Modifier.size(28.dp))
             }
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                Text(product.name, fontWeight = FontWeight.ExtraBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(product.name, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 if (product.remoteIsCombo) {
                     Text("Combo · stock calculado por componentes", color = BSPOSTheme.colors.primary, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
-                Text("SKU ${product.internalCode}", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Spacer(Modifier.height(6.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.width(76.dp).height(5.dp).clip(RoundedCornerShape(50)).background(color.copy(alpha = .18f))) {
-                        Box(Modifier.fillMaxWidth((quantity.toFloat() / product.minimumStock.coerceAtLeast(10L)).coerceIn(.08f, 1f)).height(5.dp).background(color))
-                    }
-                    Spacer(Modifier.width(6.dp))
-                    Text("$quantity uds.", color = color, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
-                }
-            }
-            Column(horizontalAlignment = Alignment.End) {
-                Text(MoneyUtils.formatCents(product.salePrice, LocalCurrency.current), fontWeight = FontWeight.ExtraBold)
-                Surface(shape = RoundedCornerShape(50), color = color.copy(alpha = .12f)) {
-                    Row(Modifier.padding(horizontal = 7.dp, vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.CheckCircle, null, tint = color, modifier = Modifier.size(13.dp))
-                        Spacer(Modifier.width(3.dp))
-                        Text(if (quantity <= 0) "Agotado" else if (product.minimumStock > 0L && quantity <= product.minimumStock) "Bajo" else "OK", color = color, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
-                    }
-                }
+                Text(product.internalCode.ifBlank { "—" }, color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelSmall, fontFamily = com.example.bspos.core.ui.theme.BSPOSFonts.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             Box {
                 IconButton(onClick = { menuOpen = true }) { Icon(Icons.Default.MoreVert, "Acciones") }
@@ -1010,6 +1016,18 @@ private fun StockCard(product: Product, quantity: Long, onClick: () -> Unit, onR
                     DropdownMenuItem(text = { Text("Editar producto") }, onClick = { menuOpen = false; onEdit() })
                 }
             }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Box(Modifier.width(44.dp).height(4.dp).clip(RoundedCornerShape(50)).background(color.copy(alpha = .18f))) {
+                Box(Modifier.fillMaxWidth((quantity.toFloat() / product.minimumStock.coerceAtLeast(10L)).coerceIn(.08f, 1f)).height(4.dp).background(color))
+            }
+            Text(quantity.toString(), Modifier.weight(1f), fontFamily = com.example.bspos.core.ui.theme.BSPOSFonts.Monospace, fontSize = 12.sp)
+            com.example.bspos.presentation.common.BSPOSMoney(MoneyUtils.formatCents(product.salePrice, LocalCurrency.current))
+            Surface(shape = RoundedCornerShape(4.dp), color = color.copy(alpha = .12f)) {
+                Text(if (quantity <= 0) "Agotado" else if (product.minimumStock > 0L && quantity <= product.minimumStock) "Bajo" else "OK", Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+                    fontFamily = com.example.bspos.core.ui.theme.BSPOSFonts.Monospace, color = color, fontSize = 10.sp)
+            }
+        }
         }
     }
 }

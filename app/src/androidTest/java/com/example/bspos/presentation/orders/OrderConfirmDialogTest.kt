@@ -42,7 +42,7 @@ class OrderConfirmDialogTest {
         compose.onNodeWithText("Transferencia").performClick()
         compose.onNodeWithText("Abono inicial (RD$)").performTextReplacement("2000")
         compose.onNodeWithText("Saldo pendiente a crédito: RD$ 7,500.00").assertExists()
-        compose.onNodeWithText("Juan Pis").performClick()
+        compose.onNodeWithText("Juan Pis").performScrollTo().performClick()
         compose.onNodeWithText("Confirmar venta").assertIsEnabled().performClick()
 
         assertEquals(listOf("mixed", "bank_transfer", "customer-juan-pis", "7500.00", ""), result)
@@ -136,7 +136,8 @@ class OrderConfirmDialogTest {
 
         compose.onNodeWithText("Mixto").performClick()
         compose.onNodeWithText("Abono inicial (RD$)").performTextReplacement("100")
-        compose.onNodeWithText("Nuevo cliente").performClick()
+        compose.onNodeWithText("Nuevo cliente").performScrollTo().performClick()
+        compose.waitUntil(5_000) { compose.onAllNodesWithText("Nombre completo").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText("Nombre completo").performTextReplacement("Nuevo cliente")
         compose.onNodeWithText("Límite de crédito (RD$)").performTextReplacement("1000")
         compose.onNodeWithText("Crear y seleccionar").performClick()

@@ -123,6 +123,8 @@ fun DashboardScreen(
     val payments by viewModel.payments.collectAsState()
     val pendingOrders by viewModel.pendingOrders.collectAsState()
     val ordersError by viewModel.ordersError.collectAsState()
+    val firstSaleStatus by viewModel.firstSaleStatus.collectAsState()
+    LaunchedEffect(shopId, sales) { if (showSales) viewModel.loadFirstSaleStatus(shopId) }
     LaunchedEffect(businessName, showEncargos) { if (showEncargos) viewModel.loadPendingOrders() }
     val selectedSale by viewModel.selectedSale.collectAsState()
     val selectedItems by viewModel.selectedItems.collectAsState()
@@ -208,6 +210,8 @@ fun DashboardScreen(
         onPhotos = onPhotos, onEncargos = onEncargos, onDayClose = onDayClose,
         onStorefront = onStorefront, onProfile = onProfile,
         onSupport = onSupport, onHideSupport = onHideSupport, showSupport = showSupport,
+        firstSaleCompleted = firstSaleStatus.takeIf { it.shopId == shopId }?.hasSale,
+        setupStatusKnown = firstSaleStatus.shopId == shopId && firstSaleStatus.hasSale != null,
         onAllSales = { showAllSales = true }, onSale = viewModel::selectSale
     )
     if (showAllSales) {

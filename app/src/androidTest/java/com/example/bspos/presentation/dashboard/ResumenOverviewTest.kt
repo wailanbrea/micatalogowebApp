@@ -19,7 +19,7 @@ import org.junit.runner.RunWith
 class ResumenOverviewTest {
     @get:Rule val compose = createComposeRule()
 
-    private fun show(sales: List<Sale> = emptyList(), showEncargos: Boolean = false) {
+    private fun show(sales: List<Sale> = emptyList(), showEncargos: Boolean = false, historicalSale: Boolean? = null, known: Boolean = true) {
         compose.setContent {
             BSPOSTheme {
                 ResumenOverview(
@@ -29,7 +29,8 @@ class ResumenOverviewTest {
                     showSales = true, showCollections = true, showInventory = true, showEncargos = showEncargos, showCost = true,
                     onNewSale = {}, onCollections = {}, onInventory = {}, onStockFilter = {}, onMovements = {},
                     onProducts = {}, onPhotos = {}, onEncargos = {}, onDayClose = {},
-                    onStorefront = {}, onProfile = {}, onSupport = {}, onAllSales = {}, onSale = {}
+                    onStorefront = {}, onProfile = {}, onSupport = {}, onAllSales = {}, onSale = {},
+                    firstSaleCompleted = historicalSale, setupStatusKnown = known
                 )
             }
         }
@@ -55,5 +56,22 @@ class ResumenOverviewTest {
         compose.waitForIdle()
         compose.onNodeWithText("VENTAS").performScrollTo().assertIsDisplayed()
         assertTrue(compose.onAllNodesWithText("RD$ 1,500.00").fetchSemanticsNodes().isNotEmpty())
+    }
+
+    @Test fun existingRemoteSaleHidesFirstStepsDespiteEmptyDeviceHistory() {
+        show(historicalSale = true)
+        compose.onNodeWithText("Haz tu primera venta").assertDoesNotExist()
+        compose.onNodeWithText("PRIMEROS PASOS", substring = true).assertDoesNotExist()
+        compose.onNodeWithText("Buenas, Mi negocio").assertIsDisplayed()
+    }
+
+    @Test fun newShopKeepsTheFirstSaleInstruction() {
+        show(historicalSale = false)
+        compose.onNodeWithText("Haz tu primera venta").assertExists()
+    }
+
+    @Test fun unknownRemoteStatusDoesNotTellAnExistingOwnerToMakeTheirFirstSale() {
+        show(known = false)
+        compose.onNodeWithText("Haz tu primera venta").assertDoesNotExist()
     }
 }

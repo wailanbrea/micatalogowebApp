@@ -518,6 +518,9 @@ class CatalogSyncIntegrationTest {
     }
 
     private class SnapshotApi(var snapshot: CatalogSnapshotDto) : MiCatalogoApi {
+        override suspend fun decants(shopId: String): Response<com.example.bspos.data.micatalogo.dto.DecantWorkspaceDto> = error("Not used by catalog tests")
+        override suspend fun quotePdf(shopId: String, quoteId: String): Response<okhttp3.ResponseBody> = error("Not used by catalog tests")
+        override suspend fun inventoryValue(shopId: String): Response<kotlinx.serialization.json.JsonObject> = error("Not used by catalog tests")
         var saleCalls: MutableList<String>? = null
         var saleShopCalls: MutableList<String>? = null
         var saleStatus = 200
