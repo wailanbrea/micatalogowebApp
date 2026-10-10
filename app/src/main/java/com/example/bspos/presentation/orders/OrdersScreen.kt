@@ -927,7 +927,7 @@ internal fun OrderConfirmDialog(
 }
 
 @Composable
-private fun NewCreditCustomerDialog(
+internal fun NewCreditCustomerDialog(
     busy: Boolean,
     error: String?,
     onDismiss: () -> Unit,

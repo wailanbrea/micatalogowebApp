@@ -2,6 +2,9 @@ package com.example.bspos.presentation.orders
 
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.example.bspos.core.ui.theme.BSPOSTheme
 import com.example.bspos.data.micatalogo.dto.FeatureRowDto
@@ -96,5 +99,51 @@ class OrderConfirmDialogTest {
 
         assertEquals(1, customerFormCloseCalls)
         assertEquals("customer-created", selectedCustomerId)
+    }
+
+    @Test fun creatingCustomerKeepsTheMixedOrderConfirmationOpen() {
+        var orderOpen by mutableStateOf(true)
+        var customerFormOpen by mutableStateOf(false)
+        var createdCustomer by mutableStateOf<RemoteCustomerDto?>(null)
+        val customer = RemoteCustomerDto(id = "customer-created", name = "Nuevo cliente", isActive = true)
+
+        compose.setContent {
+            BSPOSTheme {
+                if (orderOpen) {
+                    OrderConfirmDialog(
+                        row = FeatureRowDto(id = "order-mixed", primary = "Pedido mixto", value = "RD$ 600.00", canConfirm = true),
+                        customers = listOfNotNull(createdCustomer),
+                        customersLoading = false,
+                        createdCustomer = createdCustomer,
+                        busy = false,
+                        onDismiss = { orderOpen = false },
+                        onCreateCustomer = { customerFormOpen = true },
+                        onConsumeCreatedCustomer = { createdCustomer = null },
+                        onCreatedCustomerSelected = { customerFormOpen = false },
+                        onConfirm = { _, _, _, _, _ -> }
+                    )
+                }
+                if (customerFormOpen) {
+                    NewCreditCustomerDialog(
+                        busy = false,
+                        error = null,
+                        onDismiss = { customerFormOpen = false },
+                        onCreate = { createdCustomer = customer }
+                    )
+                }
+            }
+        }
+
+        compose.onNodeWithText("Mixto").performClick()
+        compose.onNodeWithText("Abono inicial (RD$)").performTextReplacement("100")
+        compose.onNodeWithText("Nuevo cliente").performClick()
+        compose.onNodeWithText("Nombre completo").performTextReplacement("Nuevo cliente")
+        compose.onNodeWithText("Límite de crédito (RD$)").performTextReplacement("1000")
+        compose.onNodeWithText("Crear y seleccionar").performClick()
+
+        compose.waitForIdle()
+        assertEquals(true, orderOpen)
+        compose.onNodeWithText("Confirmar pedido").assertExists()
+        compose.onNodeWithText("Confirmar venta").assertIsEnabled()
     }
 }
