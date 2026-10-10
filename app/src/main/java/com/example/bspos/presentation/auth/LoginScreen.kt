@@ -168,8 +168,10 @@ fun LoginScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.White)
+            .background(AppBackground)
     ) {
+        LoginGeometricBackground()
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -209,7 +211,7 @@ private fun BrandHeader() {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
         CatalogBrandIcon()
         Spacer(Modifier.size(12.dp))
-        Text("Mi", fontSize = 28.sp, fontWeight = FontWeight.ExtraBold, color = Navy)
+        Text("Mi", fontSize = 28.sp, fontWeight = FontWeight.ExtraBold, color = Color.White)
         Text("Catalogo", fontSize = 32.sp, fontWeight = FontWeight.ExtraBold, color = LightBlue)
     }
 }
