@@ -4,6 +4,7 @@ import com.example.bspos.core.database.AppDatabaseTransactor
 import com.example.bspos.data.local.dao.CategoryDao
 import com.example.bspos.data.local.dao.OperationOutboxDao
 import com.example.bspos.data.local.entity.OperationOutboxEntity
+import com.example.bspos.data.local.entity.CustomerEntity
 import com.example.bspos.data.local.entity.ProductEntity
 import kotlinx.serialization.json.*
 import java.math.BigInteger
@@ -71,6 +72,33 @@ class RemoteMutationRecorder @Inject constructor(private val transactor: AppData
         val shop = product.miCatalogoShopId ?: return
         val remote = checkNotNull(product.miCatalogoProductId)
         enqueue(shop, listOf(remote), buildJsonObject { put("type", "product_archive"); put("product_id", remote) }, at)
+    }
+
+    /**
+     * Customers are business records too. Keep the local projection for
+     * offline POS work, but always enqueue the authoritative customer change
+     * when the account has an active MiCatalogo shop.
+     */
+    suspend fun customer(customer: CustomerEntity, at: Instant = customer.updatedAt) {
+        val shop = customer.miCatalogoCustomerShopId ?: return
+        val clientUuid = customer.id.toString()
+        enqueue(shop, emptyList(), buildJsonObject {
+            put("type", "customer_upsert")
+            put("client_customer_uuid", clientUuid)
+            put("name", customer.businessName)
+            customer.firstName?.let { put("first_name", it) }
+            customer.lastName?.let { put("last_name", it) }
+            customer.documentType?.let { put("document_type", it) }
+            customer.documentNumber?.let { put("document_number", it) }
+            customer.phone?.let { put("phone", it) }
+            customer.email?.let { put("email", it) }
+            customer.address?.let { put("address", it) }
+            customer.whatsapp?.let { put("whatsapp", it) }
+            customer.reference?.let { put("reference", it) }
+            customer.notes?.let { put("notes", it) }
+            put("credit_limit", MiCatalogoPosSaleOutboxMapper.decimalPrice(customer.creditLimit))
+            put("is_active", customer.isActive && customer.deletedAt == null)
+        }, at, UUID.randomUUID().toString())
     }
 
     suspend fun enqueue(shop: String, products: List<String>, payload: JsonObject, at: Instant,
