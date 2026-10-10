@@ -7,6 +7,9 @@ interface MiCatalogoCatalogRepository {
     /** Downloads a read-only remote snapshot and applies it only to the local BSPOS database. */
     suspend fun syncCatalog(shopId: String): MiCatalogoResult<MiCatalogoCatalogSyncResult>
 
+    /** Refreshes remote customers and their authoritative credit balances. */
+    suspend fun syncCustomers(shopId: String): MiCatalogoResult<Int>
+
     /** Hides remote products belonging to shops outside the current account scope. */
     suspend fun archiveRemoteProductsExcept(shopIds: Set<String>)
 }

@@ -97,6 +97,21 @@ class MiCatalogoCatalogRepositoryImpl @Inject constructor(
         }
     ) }
 
+    override suspend fun syncCustomers(shopId: String): MiCatalogoResult<Int> = syncMutex.withLock { runCatching {
+        require(shopId.isNotBlank()) { "La tienda remota no es valida." }
+        val response = customerApi.customers(shopId)
+        if (!response.isSuccessful) error(response.apiErrorMessage("No se pudieron actualizar los clientes."))
+        val remoteCustomers = checkNotNull(response.body()) { "MiCatalogo devolvio una lista de clientes vacia." }.customers
+        transactor.runInTransaction { applyCustomers(shopId, remoteCustomers) }
+        remoteCustomers.size
+    }.fold(
+        onSuccess = { MiCatalogoResult.Success(it) },
+        onFailure = {
+            if (it is CancellationException) throw it
+            MiCatalogoResult.Failure(it.message ?: "No se pudieron actualizar los clientes.")
+        }
+    ) }
+
     private suspend fun applySnapshot(
         snapshot: CatalogSnapshotDto,
         imagePaths: Map<String, CatalogImagePaths>,

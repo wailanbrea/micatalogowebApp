@@ -64,6 +64,11 @@ fun CollectionScreen(viewModel: CollectionViewModel = hiltViewModel()) {
         .filter { customer == null || it.customerId == customer?.id }
         .filter { sale -> if (tab == "Por cobrar") sale.pendingAmount > 0 else sale.pendingAmount <= 0 }
     val customersById = customers.associateBy { it.id }
+    val customersWithBalance = customers
+        .filter { it.isActive && it.deletedAt == null && it.balance > 0L && (customer == null || it.id == customer?.id) }
+        .sortedByDescending { it.balance }
+    val localSaleCustomerIds = filteredSales.mapNotNull { it.customerId }.toSet()
+    val remoteOnlyCustomers = customersWithBalance.filterNot { it.id in localSaleCustomerIds }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize().background(BSPOSTheme.colors.background),
@@ -115,10 +120,21 @@ fun CollectionScreen(viewModel: CollectionViewModel = hiltViewModel()) {
                 }
             }
             item {
-                Text("Facturas pendientes", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold)
+                Text("Cuentas por cobrar", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold)
             }
             if (filteredSales.isEmpty()) {
-                item { CreditEmptyState(tab) }
+                if (remoteOnlyCustomers.isEmpty()) {
+                    item { CreditEmptyState(tab) }
+                } else {
+                    item { Text("Clientes con saldo pendiente", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold) }
+                    items(remoteOnlyCustomers, key = { "customer-${it.id}" }) { debtor ->
+                        RemoteCustomerDebtCard(
+                            customer = debtor,
+                            method = method,
+                            onCollect = { amount -> viewModel.collectRemote(debtor, amount, method) }
+                        )
+                    }
+                }
             } else {
                 items(filteredSales, key = { it.id }) { sale ->
                     val saleCustomer = sale.customerId?.let(customersById::get)
@@ -135,6 +151,16 @@ fun CollectionScreen(viewModel: CollectionViewModel = hiltViewModel()) {
                             }
                         }
                     )
+                }
+                if (remoteOnlyCustomers.isNotEmpty()) {
+                    item { Text("Otros clientes con saldo", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold) }
+                    items(remoteOnlyCustomers, key = { "customer-${it.id}" }) { debtor ->
+                        RemoteCustomerDebtCard(
+                            customer = debtor,
+                            method = method,
+                            onCollect = { amount -> viewModel.collectRemote(debtor, amount, method) }
+                        )
+                    }
                 }
             }
         } else {
@@ -187,6 +213,44 @@ private fun PendingSaleCard(
                 Button(
                     onClick = { if (value > 0L && value <= sale.pendingAmount) onCollect(value) },
                     enabled = customer != null && value > 0L && value <= sale.pendingAmount
+                ) { Text("Cobrar") }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RemoteCustomerDebtCard(
+    customer: Customer,
+    method: PaymentMethod,
+    onCollect: (Long) -> Unit
+) {
+    var amount by remember(customer.id, customer.balance) {
+        mutableStateOf(MoneyUtils.formatCentsCompact(customer.balance))
+    }
+    val value = MoneyUtils.parsePesosStringToCents(amount)
+    Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface)) {
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(customer.fullName, fontWeight = FontWeight.ExtraBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text("Saldo pendiente: ${money(customer.balance)}", color = BSPOSTheme.colors.warning)
+                    Text("Cobro remoto · ${method.label}", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+                }
+                Text(money(customer.balance), fontWeight = FontWeight.ExtraBold)
+            }
+            Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(
+                    value = amount,
+                    onValueChange = { amount = it.filter { char -> char.isDigit() || char == '.' } },
+                    modifier = Modifier.weight(1f),
+                    label = { Text("Monto a cobrar") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    singleLine = true
+                )
+                Button(
+                    onClick = { if (value > 0L && value <= customer.balance) onCollect(value) },
+                    enabled = value > 0L && value <= customer.balance
                 ) { Text("Cobrar") }
             }
         }
