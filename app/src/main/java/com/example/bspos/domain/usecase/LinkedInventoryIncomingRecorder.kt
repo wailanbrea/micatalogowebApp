@@ -32,13 +32,13 @@ internal object LinkedInventoryIncomingRecorder {
         val ledger = siblings.mapNotNull { sibling ->
             val unit = if (sibling.miCatalogoSaleUnit == "ml") 1L else checkNotNull(sibling.miCatalogoVolumeMl).toLong()
             require(unit > 0)
-            val stock = inventory.findStock(sibling.id, movement.location.type, movement.location.id)?.quantity ?: 0L
+            val stock = inventory.findStock(sibling.id, movement.location.type, movement.location.id, product.tenant.shopId)?.quantity ?: 0L
             val target = after / unit
             val delta = target - stock
             if (delta == 0L) null else InventoryMovementEntity(UUID.randomUUID(), sibling.id, movement.location.type,
                 movement.location.id, if (delta > 0) InventoryMovementType.PHYSICAL_COUNT_IN else InventoryMovementType.PHYSICAL_COUNT_OUT,
                 delta, stock, target, sibling.averageCost, Math.multiplyExact(delta, sibling.averageCost),
-                notes = "Actualización de botella fuente", createdAt = movement.createdAt)
+                notes = "Actualización de botella fuente", createdAt = movement.createdAt, tenant=product.tenant)
         }
         if (ledger.isNotEmpty()) inventory.recordMovements(ledger, false)
     }

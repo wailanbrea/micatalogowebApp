@@ -22,7 +22,8 @@ class PaymentSyncRepository @Inject constructor(private val queue: PaymentSyncDa
                 return@forEach
             }
             try {
-                val customer = checkNotNull(customers.findCustomer(UUID.fromString(row.customerId)))
+                val customer = checkNotNull(customers.findCustomer(UUID.fromString(row.customerId),row.shopId))
+                require(row.dependencies.split(',').all { sales.shopForSale(UUID.fromString(it))==row.shopId }) { "Los abonos pertenecen a otra tienda" }
                 val remoteId = checkNotNull(customer.miCatalogoCustomerId)
                 val response = api.payment(row.shopId, remoteId, json.decodeFromString<CustomerPaymentDto>(row.payload))
                 when {

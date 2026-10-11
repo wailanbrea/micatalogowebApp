@@ -11,11 +11,11 @@ import java.util.UUID
 
 @Dao
 interface SupplierDao {
-    @Query("SELECT * FROM suppliers WHERE deleted_at IS NULL ORDER BY name, id")
-    fun observeAll(): Flow<List<SupplierEntity>>
+    @Query("SELECT * FROM suppliers WHERE remote_shop_id=:shopId AND tenancy_status='assigned' AND deleted_at IS NULL ORDER BY name, id")
+    fun observeAll(shopId: String? = null): Flow<List<SupplierEntity>>
 
-    @Query("SELECT * FROM suppliers WHERE id = :id")
-    suspend fun findById(id: UUID): SupplierEntity?
+    @Query("SELECT * FROM suppliers WHERE id = :id AND remote_shop_id=:shopId AND tenancy_status='assigned'")
+    suspend fun findById(id: UUID, shopId: String? = null): SupplierEntity?
 
     @Insert
     suspend fun insert(supplier: SupplierEntity)
@@ -23,6 +23,6 @@ interface SupplierDao {
     @Update
     suspend fun update(supplier: SupplierEntity): Int
 
-    @Query("UPDATE suppliers SET deleted_at = :at, updated_at = :at WHERE id = :id AND deleted_at IS NULL")
-    suspend fun softDelete(id: UUID, at: Instant): Int
+    @Query("UPDATE suppliers SET deleted_at = :at, updated_at = :at WHERE id = :id AND remote_shop_id=:shopId AND tenancy_status='assigned' AND deleted_at IS NULL")
+    suspend fun softDelete(id: UUID, at: Instant, shopId: String? = null): Int
 }

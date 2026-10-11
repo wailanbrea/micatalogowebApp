@@ -72,6 +72,8 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.key
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -162,6 +164,21 @@ fun BSPOSMainScreen(
     onRetryStartup: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    val sessionSettings: SettingsViewModel = hiltViewModel()
+    val sessionConnection by sessionSettings.miCatalogoConnection.collectAsState()
+    key(sessionConnection.accountEmail, sessionConnection.activeShopId) {
+        ShopScopedMainScreen(windowWidthSizeClass,startupSnapshot,onRetryStartup,modifier)
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ShopScopedMainScreen(
+    windowWidthSizeClass: WindowWidthSizeClass,
+    startupSnapshot: StartupSnapshot,
+    onRetryStartup: () -> Unit,
+    modifier: Modifier
+) {
     val settingsViewModel: SettingsViewModel = hiltViewModel()
     val settings by settingsViewModel.settings.collectAsState()
     val connection by settingsViewModel.miCatalogoConnection.collectAsState()
@@ -170,12 +187,16 @@ fun BSPOSMainScreen(
         settingsViewModel.hydrateShops(startupSnapshot.shops)
     }
     val availableShops = accountState.shops.ifEmpty { startupSnapshot.shops }
-    val activeShopId = connection.activeShopId ?: startupSnapshot.activeShopId
+    val activeShopId = connection.activeShopId
     val activeShop = availableShops.firstOrNull { it.id == activeShopId }
-        ?: availableShops.firstOrNull()
     val accountQuota = activeShop?.quota
     val routesEnabled = settings?.routesEnabled == true
     val navController = rememberNavController()
+    DisposableEffect(navController) {
+        onDispose {
+            if (navController.currentBackStackEntry!=null) navController.popBackStack(navController.graph.id,true)
+        }
+    }
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route ?: Screen.Dashboard.route
     val globalMessage by UiErrorBus.message.collectAsState()

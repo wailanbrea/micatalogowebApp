@@ -130,9 +130,8 @@ class StartupViewModel @Inject constructor(
         runCatching { catalog.archiveRemoteProductsExcept(shops.map { it.id }.toSet()) }
             .onFailure { warnings += "No se pudo limpiar el catálogo local anterior." }
 
-        // Keep the existing all-shops synchronization behavior so switching shops
-        // after startup does not reveal an empty local catalog.
-        for (shop in shops) {
+        // Each selection bootstraps its own shop; another shop's cache is never a fallback.
+        for (shop in shops.filter { it.id==activeShopId }) {
             when (val result = catalog.syncCatalog(shop.id)) {
                 is MiCatalogoResult.Success -> Unit
                 is MiCatalogoResult.Failure -> {

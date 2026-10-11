@@ -17,32 +17,9 @@ object DatabaseModule {
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): AppDatabase =
         Room.databaseBuilder(context, AppDatabase::class.java, AppDatabase.NAME)
-            .addMigrations(DatabaseMigrations.MIGRATION_1_2)
-            .addMigrations(DatabaseMigrations.MIGRATION_2_3)
-            .addMigrations(DatabaseMigrations.MIGRATION_3_4)
-            .addMigrations(DatabaseMigrations.MIGRATION_4_5)
-            .addMigrations(DatabaseMigrations.MIGRATION_5_6)
-            .addMigrations(DatabaseMigrations.MIGRATION_6_7)
-            .addMigrations(DatabaseMigrations.MIGRATION_7_8)
-            .addMigrations(DatabaseMigrations.MIGRATION_8_9)
-            .addMigrations(DatabaseMigrations.MIGRATION_9_10)
-            .addMigrations(DatabaseMigrations.MIGRATION_10_11)
-            .addMigrations(DatabaseMigrations.MIGRATION_11_12)
-            .addMigrations(DatabaseMigrations.MIGRATION_12_13)
-            .addMigrations(DatabaseMigrations.MIGRATION_13_14)
-            .addMigrations(DatabaseMigrations.MIGRATION_14_15)
-            .addMigrations(DatabaseMigrations.MIGRATION_15_16)
-            .addMigrations(DatabaseMigrations.MIGRATION_16_17)
-            .addMigrations(DatabaseMigrations.MIGRATION_17_18)
-            .addMigrations(DatabaseMigrations.MIGRATION_18_19)
-            .addMigrations(DatabaseMigrations.MIGRATION_19_20)
-            .addMigrations(DatabaseMigrations.MIGRATION_20_21)
-            .addMigrations(DatabaseMigrations.MIGRATION_21_22)
-            .addMigrations(DatabaseMigrations.MIGRATION_22_23)
-            .addMigrations(DatabaseMigrations.MIGRATION_23_24)
-            .addMigrations(DatabaseMigrations.MIGRATION_24_25)
-            .addMigrations(DatabaseMigrations.MIGRATION_25_26)
+            .addMigrations(*DatabaseMigrations.all())
             .addCallback(InventoryIntegrity)
+            .addCallback(TenantIntegrity)
             .build()
 
     @Provides
@@ -83,5 +60,5 @@ object DatabaseModule {
 
     @Provides
     @Singleton
-    fun provideTransactor(database: AppDatabase): AppDatabaseTransactor = RoomDatabaseTransactor(database)
+    fun provideTransactor(database: AppDatabase, shops: ShopScope): AppDatabaseTransactor = RoomDatabaseTransactor(database, shops)
 }

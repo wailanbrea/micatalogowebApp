@@ -9,7 +9,7 @@ import java.util.UUID
 
 @Entity(
     tableName = "suppliers",
-    indices = [Index(value = ["tax_id"], name = "idx_suppliers_tax_id")]
+    indices = [Index(value = ["tax_id"], name = "idx_suppliers_tax_id"), Index(value = ["remote_shop_id"], name = "idx_suppliers_shop")]
 )
 data class SupplierEntity(
     @PrimaryKey val id: UUID,
@@ -23,5 +23,6 @@ data class SupplierEntity(
     @ColumnInfo(name = "is_active", defaultValue = "1") val isActive: Boolean = true,
     @ColumnInfo(name = "created_at") val createdAt: Instant,
     @ColumnInfo(name = "updated_at") val updatedAt: Instant,
-    @ColumnInfo(name = "deleted_at") val deletedAt: Instant? = null
+    @ColumnInfo(name = "deleted_at") val deletedAt: Instant? = null,
+    @androidx.room.Embedded val tenant: TenantMetadata = TenantMetadata()
 )

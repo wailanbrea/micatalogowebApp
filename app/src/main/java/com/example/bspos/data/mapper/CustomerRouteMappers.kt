@@ -30,7 +30,8 @@ fun CustomerEntity.toDomain() = Customer(
     isActive = isActive,
     createdAt = createdAt,
     updatedAt = updatedAt,
-    deletedAt = deletedAt
+    deletedAt = deletedAt,
+    remoteCustomerId = miCatalogoCustomerId, remoteShopId = tenant.shopId
 )
 fun Customer.toEntity() = CustomerEntity(
     id = id,

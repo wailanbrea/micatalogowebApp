@@ -23,7 +23,8 @@ class RemoteMutationRecorder @Inject constructor(private val transactor: AppData
     suspend fun product(product: ProductEntity, previous: ProductEntity? = null) {
         val shop = product.miCatalogoShopId ?: return
         val remote = checkNotNull(product.miCatalogoProductId)
-        val category = categories.findById(product.categoryId)?.name
+        require(product.tenant.shopId==shop && product.tenant.status==com.example.bspos.data.local.entity.TenantMetadata.ASSIGNED)
+        val category = checkNotNull(categories.findById(product.categoryId, shop)) { "La categoría no pertenece a la tienda" }.name
         val photo = product.imagePath?.takeIf { previous?.imagePath != it }?.let {
             checkNotNull(images) { "No está disponible el procesamiento de fotos." }.capture(it)
         }
@@ -70,6 +71,7 @@ class RemoteMutationRecorder @Inject constructor(private val transactor: AppData
 
     suspend fun archive(product: ProductEntity, at: Instant) {
         val shop = product.miCatalogoShopId ?: return
+        require(product.tenant.shopId==shop && product.tenant.status==com.example.bspos.data.local.entity.TenantMetadata.ASSIGNED)
         val remote = checkNotNull(product.miCatalogoProductId)
         enqueue(shop, listOf(remote), buildJsonObject { put("type", "product_archive"); put("product_id", remote) }, at)
     }
@@ -81,10 +83,12 @@ class RemoteMutationRecorder @Inject constructor(private val transactor: AppData
      */
     suspend fun customer(customer: CustomerEntity, at: Instant = customer.updatedAt) {
         val shop = customer.miCatalogoCustomerShopId ?: return
+        require(customer.tenant.shopId==shop && customer.tenant.status==com.example.bspos.data.local.entity.TenantMetadata.ASSIGNED)
         val clientUuid = customer.id.toString()
         enqueue(shop, emptyList(), buildJsonObject {
             put("type", "customer_upsert")
             put("client_customer_uuid", clientUuid)
+            customer.miCatalogoCustomerId?.let { put("customer_id",it) }
             put("name", customer.businessName)
             customer.firstName?.let { put("first_name", it) }
             customer.lastName?.let { put("last_name", it) }
@@ -98,6 +102,7 @@ class RemoteMutationRecorder @Inject constructor(private val transactor: AppData
             customer.notes?.let { put("notes", it) }
             put("credit_limit", MiCatalogoPosSaleOutboxMapper.decimalPrice(customer.creditLimit))
             put("is_active", customer.isActive && customer.deletedAt == null)
+            put("is_deleted",customer.deletedAt!=null)
         }, at, UUID.randomUUID().toString())
     }
 

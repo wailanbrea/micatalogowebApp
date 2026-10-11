@@ -14,7 +14,8 @@ import java.util.UUID
     indices = [
         Index(value = ["balance"], name = "idx_customers_balance"),
         Index(value = ["is_active"], name = "idx_customers_is_active"),
-        Index(value = ["micatalogo_customer_id"], name = "idx_customers_micatalogo_customer_id", unique = true)
+        Index(value = ["remote_shop_id", "micatalogo_customer_id"], name = "idx_customers_micatalogo_customer_id", unique = true),
+        Index(value = ["remote_shop_id"], name = "idx_customers_shop")
     ]
 )
 data class CustomerEntity(
@@ -42,10 +43,11 @@ data class CustomerEntity(
     @ColumnInfo(name = "document_type") val documentType: String? = null,
     @ColumnInfo(name = "document_number") val documentNumber: String? = null,
     val email: String? = null,
-    @ColumnInfo(name = "micatalogo_customer_shop_id") val miCatalogoCustomerShopId: String? = null
+    @ColumnInfo(name = "micatalogo_customer_shop_id") val miCatalogoCustomerShopId: String? = null,
+    @androidx.room.Embedded val tenant: TenantMetadata = TenantMetadata(miCatalogoCustomerShopId)
 )
 
-@Entity(tableName = "routes", indices = [Index(value = ["code"], name = "idx_routes_code", unique = true)])
+@Entity(tableName = "routes", indices = [Index(value = ["remote_shop_id", "code"], name = "idx_routes_code", unique = true), Index(value = ["remote_shop_id"], name = "idx_routes_shop")])
 data class RouteEntity(
     @PrimaryKey val id: UUID,
     val name: String,
@@ -53,7 +55,8 @@ data class RouteEntity(
     val description: String? = null,
     @ColumnInfo(name = "is_active", defaultValue = "1") val isActive: Boolean = true,
     @ColumnInfo(name = "created_at") val createdAt: Instant,
-    @ColumnInfo(name = "updated_at") val updatedAt: Instant
+    @ColumnInfo(name = "updated_at") val updatedAt: Instant,
+    @androidx.room.Embedded val tenant: TenantMetadata = TenantMetadata()
 )
 
 @Entity(
@@ -63,10 +66,12 @@ data class RouteEntity(
         ForeignKey(entity = RouteEntity::class, parentColumns = ["id"], childColumns = ["route_id"], onUpdate = ForeignKey.CASCADE, onDelete = ForeignKey.CASCADE),
         ForeignKey(entity = CustomerEntity::class, parentColumns = ["id"], childColumns = ["customer_id"], onUpdate = ForeignKey.CASCADE, onDelete = ForeignKey.CASCADE)
     ],
-    indices = [Index(value = ["customer_id"], name = "idx_route_customers_customer_id", unique = true), Index(value = ["route_id", "visit_order"], name = "idx_route_customers_visit_order", unique = true)]
+    indices = [Index(value = ["customer_id", "active_slot"], name = "idx_route_customers_customer_id", unique = true), Index(value = ["route_id", "visit_order", "active_slot"], name = "idx_route_customers_visit_order", unique = true), Index(value = ["remote_shop_id"], name = "idx_route_customers_shop")]
 )
 data class RouteCustomerEntity(
     @ColumnInfo(name = "route_id") val routeId: UUID,
     @ColumnInfo(name = "customer_id") val customerId: UUID,
-    @ColumnInfo(name = "visit_order", defaultValue = "0") val visitOrder: Int = 0
+    @ColumnInfo(name = "visit_order", defaultValue = "0") val visitOrder: Int = 0,
+    @ColumnInfo(name = "active_slot", defaultValue = "1") val activeSlot: Int? = 1,
+    @androidx.room.Embedded val tenant: TenantMetadata = TenantMetadata()
 )

@@ -1,6 +1,12 @@
 package com.example.bspos.data.repository
 
 import com.example.bspos.data.local.dao.CustomerRouteDao
+import com.example.bspos.core.database.ShopScope
+import com.example.bspos.data.local.entity.TenantMetadata
+import com.example.bspos.data.micatalogo.api.MiCatalogoCustomerApi
+import com.example.bspos.data.micatalogo.apiErrorMessage
+import com.example.bspos.data.micatalogo.toRemoteRequest
+import java.io.IOException
 import com.example.bspos.data.mapper.toDomain
 import com.example.bspos.data.mapper.toEntity
 import com.example.bspos.data.micatalogo.RemoteMutationRecorder
@@ -18,57 +24,69 @@ import javax.inject.Inject
 class CustomerRepositoryImpl @Inject constructor(
     private val local: CustomerRouteDao,
     private val remote: RemoteMutationRecorder? = null,
-    private val connection: MiCatalogoConnectionRepository? = null
+    private val connection: MiCatalogoConnectionRepository? = null,
+    private val shops: ShopScope,
+    private val api: MiCatalogoCustomerApi
 ) : CustomerRepository {
-    override fun observeAll() = local.observeCustomers().map { it.map { row -> row.toDomain() } }
-    override suspend fun findById(id: UUID) = local.findCustomer(id)?.toDomain()
+    override fun observeAll() = shops.observe(local::observeCustomers).map { it.map { row -> row.toDomain() } }
+    override suspend fun findById(id: UUID) = local.findCustomer(id, shops.current())?.toDomain()
     override suspend fun insert(record: Customer) {
-        val entity = record.toEntity().copy(miCatalogoCustomerShopId = connection?.activeShopId())
-        val queue = remote ?: run {
-            local.insertCustomer(entity)
-            return
+        shops.mutate { shop ->
+            require(record.remoteShopId==null || record.remoteShopId==shop) { "El cliente pertenece a otra tienda" }
+            val entity = record.toEntity().copy(miCatalogoCustomerShopId=shop, tenant=TenantMetadata.assigned(shop))
+            // Connected validation/auth failures do not create a local-only customer.
+            // A transport failure retains one idempotent UUID in the offline outbox.
+            val response = try { api.createCustomer(shop, entity.toRemoteRequest()) } catch (_: IOException) { null }
+            if (response != null) {
+                check(response.isSuccessful) { response.apiErrorMessage("No se pudo guardar el cliente en MiCatalogo.") }
+                val saved = checkNotNull(response.body()) { "MiCatalogo no devolvió el cliente guardado." }
+                require(saved.id.isNotBlank() && (saved.clientCustomerUuid==null || saved.clientCustomerUuid==entity.id.toString()))
+                local.insertCustomer(entity.copy(miCatalogoCustomerId=saved.id,
+                    businessName=saved.name ?: entity.businessName, isActive=saved.isActive ?: entity.isActive,
+                    balance=com.example.bspos.data.micatalogo.MiCatalogoImportMapper.cents(saved.balance),
+                    creditLimit=saved.creditLimit?.let(com.example.bspos.data.micatalogo.MiCatalogoImportMapper::cents) ?: entity.creditLimit))
+            } else {
+                val queue=checkNotNull(remote) { "No está disponible la cola sin conexión." }
+                queue.transaction { local.insertCustomer(entity); queue.customer(entity) }
+                queue.wake()
+            }
         }
-        queue.transaction {
-            local.insertCustomer(entity)
-            queue.customer(entity)
-        }
-        queue.wake()
     }
-    override suspend fun update(record: Customer): Boolean {
-        val existing = local.findCustomer(record.id)
+    override suspend fun update(record: Customer): Boolean = shops.mutate { shop ->
+        val existing = local.findCustomer(record.id, shop) ?: return@mutate false
         val entity = record.toEntity().copy(
             miCatalogoCustomerId = existing?.miCatalogoCustomerId,
-            miCatalogoCustomerShopId = existing?.miCatalogoCustomerShopId ?: connection?.activeShopId()
+            miCatalogoCustomerShopId = shop, tenant=existing.tenant
         )
-        val queue = remote ?: return local.updateCustomer(entity) == 1
+        val queue = remote ?: return@mutate local.updateCustomer(entity) == 1
         val updated = queue.transaction {
             val changed = local.updateCustomer(entity)
             if (changed == 1) queue.customer(entity)
             changed
         } == 1
         if (updated) queue.wake()
-        return updated
+        updated
     }
-    override suspend fun softDelete(id: UUID, at: Instant): Boolean {
-        val existing = local.findCustomer(id) ?: return false
-        val queue = remote ?: return local.softDeleteCustomer(id, at) == 1
+    override suspend fun softDelete(id: UUID, at: Instant): Boolean = shops.mutate { shop ->
+        val existing = local.findCustomer(id, shop) ?: return@mutate false
+        val queue = remote ?: return@mutate local.softDeleteCustomer(id, at, shop) == 1
         val deleted = queue.transaction {
-            val changed = local.softDeleteCustomer(id, at)
+            val changed = local.softDeleteCustomer(id, at, shop)
             if (changed == 1) queue.customer(existing.copy(isActive = false, deletedAt = at, updatedAt = at), at)
             changed
         } == 1
         if (deleted) queue.wake()
-        return deleted
+        deleted
     }
 }
 
-class RouteRepositoryImpl @Inject constructor(private val local: CustomerRouteDao) : RouteRepository {
-    override fun observeAll() = local.observeRoutes().map { it.map { row -> row.toDomain() } }
-    override suspend fun findById(id: UUID) = local.findRoute(id)?.toDomain()
-    override suspend fun insert(route: CommercialRoute) = local.insertRoute(route.toEntity())
-    override suspend fun update(route: CommercialRoute) = local.updateRoute(route.toEntity()) == 1
-    override fun observeCustomers(routeId: UUID) = local.observeRouteCustomers(routeId).map { it.map { row -> row.toDomain() } }
-    override suspend fun assign(customer: RouteCustomer) = local.assignCustomer(customer.toEntity())
-    override suspend fun unassign(customerId: UUID) = local.unassignCustomer(customerId)
-    override suspend fun reorder(routeId: UUID, customerIds: List<UUID>) = local.reorderRoute(routeId, customerIds)
+class RouteRepositoryImpl @Inject constructor(private val local: CustomerRouteDao, private val shops: ShopScope) : RouteRepository {
+    override fun observeAll() = shops.observe(local::observeRoutes).map { it.map { row -> row.toDomain() } }
+    override suspend fun findById(id: UUID) = local.findRoute(id, shops.current())?.toDomain()
+    override suspend fun insert(route: CommercialRoute) = shops.mutate { local.insertRoute(route.toEntity().copy(tenant=TenantMetadata.assigned(it))) }
+    override suspend fun update(route: CommercialRoute) = shops.mutate { shop -> local.findRoute(route.id, shop)!=null && local.updateRoute(route.toEntity().copy(tenant=TenantMetadata.assigned(shop)))==1 }
+    override fun observeCustomers(routeId: UUID) = shops.observe { local.observeRouteCustomers(routeId, it) }.map { it.map { row -> row.toDomain() } }
+    override suspend fun assign(customer: RouteCustomer) = shops.mutate { local.assignCustomer(customer.toEntity().copy(tenant=TenantMetadata.assigned(it))) }
+    override suspend fun unassign(customerId: UUID) = shops.mutate { local.unassignCustomer(customerId, it) }
+    override suspend fun reorder(routeId: UUID, customerIds: List<UUID>) = shops.mutate { local.reorderRoute(routeId, customerIds, it) }
 }

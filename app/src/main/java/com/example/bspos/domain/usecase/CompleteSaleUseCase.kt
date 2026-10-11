@@ -1,6 +1,8 @@
 package com.example.bspos.domain.usecase
 
 import com.example.bspos.core.database.AppDatabaseTransactor
+import com.example.bspos.core.database.ShopScope
+import com.example.bspos.data.local.entity.TenantMetadata
 import com.example.bspos.data.local.dao.CustomerRouteDao
 import com.example.bspos.data.local.dao.InventoryDao
 import com.example.bspos.data.local.dao.ProductDao
@@ -48,21 +50,22 @@ data class CompleteSaleRequest(
     val saleMode: String = "retail"
 )
 
-class CompleteSaleUseCase @Inject constructor(private val transactor:AppDatabaseTransactor,private val sales:SaleDao,private val inventory:InventoryDao,private val products:ProductDao,private val customers:CustomerRouteDao,private val outbox:PosSaleOutboxDao,private val settings:SettingsRepository,private val json:Json,private val posSaleSyncScheduler:PosSaleSyncScheduler) {
+class CompleteSaleUseCase @Inject constructor(private val transactor:AppDatabaseTransactor,private val sales:SaleDao,private val inventory:InventoryDao,private val products:ProductDao,private val customers:CustomerRouteDao,private val outbox:PosSaleOutboxDao,private val settings:SettingsRepository,private val json:Json,private val posSaleSyncScheduler:PosSaleSyncScheduler,private val shops:ShopScope) {
  suspend operator fun invoke(request:CompleteSaleRequest):Sale {
   require(request.paymentType != SalePaymentType.MIXED || !request.splitPayments.isNullOrEmpty()) { "Mixed sales require explicit payment methods" }
   require(request.paymentType != SalePaymentType.CREDIT || request.paidAmount == 0L || !request.splitPayments.isNullOrEmpty()) { "Credit down payments require an explicit payment method" }
   var queuedForSync = false
-  val sale = transactor.runInTransaction {
+   val sale = transactor.runInTransaction {
+    val shop=shops.current()
    require(request.invoiceNumber.isNotBlank()&&request.lines.isNotEmpty()&&request.lines.map{it.productId}.distinct().size==request.lines.size)
    require(request.saleMode in setOf("retail", "wholesale"))
   val saleId=UUID.randomUUID();val location=if(request.routeId==null) InventoryLocation.MAIN else InventoryLocation.route(request.routeId)
    val resolvedLines=request.lines.map { line ->
    require(line.quantity>0&&line.unitPrice>=0&&line.discount>=0&&line.tax>=0)
-   val product=checkNotNull(products.findById(line.productId)){"Product not found"};require(product.isActive&&product.deletedAt==null)
+    val product=checkNotNull(products.findById(line.productId,shop)){"Product not found in shop"};require(product.isActive&&product.deletedAt==null)
    val subtotal=Math.addExact(Math.subtractExact(Math.multiplyExact(line.quantity,line.unitPrice),line.discount),line.tax)
     Pair(SaleItemEntity(UUID.randomUUID(),saleId,line.productId,line.quantity,line.unitPrice,product.averageCost,line.discount,line.tax,subtotal,
-        product.miCatalogoSaleUnit,product.miCatalogoVolumeMl,product.miCatalogoSourceProductId),PosSaleOutboxLine(product.miCatalogoShopId,product.miCatalogoProductId,line.quantity,line.unitPrice,line.discount,line.tax,
+         product.miCatalogoSaleUnit,product.miCatalogoVolumeMl,product.miCatalogoSourceProductId,tenant=TenantMetadata.assigned(shop)),PosSaleOutboxLine(product.miCatalogoShopId,product.miCatalogoProductId,line.quantity,line.unitPrice,line.discount,line.tax,
         product.miCatalogoSaleUnit ?: "unit",product.miCatalogoVolumeMl,product.miCatalogoSourceProductId))
    }
    val remoteLines = resolvedLines.map { it.second }
@@ -79,8 +82,9 @@ class CompleteSaleUseCase @Inject constructor(private val transactor:AppDatabase
       require(splitPaid == request.paidAmount && splitCredit == request.pendingAmount)
   }
    require(request.paymentType!=SalePaymentType.CREDIT||request.customerId!=null)
-   if(request.pendingAmount>0){val customer=checkNotNull(request.customerId?.let{customers.findCustomer(it)}){"Customer required for pending balance"};require(customer.deletedAt==null&&customer.isActive);val balance=Math.addExact(customer.balance,request.pendingAmount);require(balance<=customer.creditLimit){"Credit limit exceeded"};check(customers.updateCustomer(customer.copy(balance=balance,updatedAt=request.date))==1)}
-  val sale=SaleEntity(saleId,request.invoiceNumber,request.customerId,request.routeId,request.date,subtotal,request.discount,request.tax,total,request.paymentType,request.paidAmount,request.pendingAmount,notes=request.notes,createdAt=request.date,updatedAt=request.date,saleMode=request.saleMode)
+    request.customerId?.let { id -> val customer=checkNotNull(customers.findCustomer(id,shop)){"El cliente no pertenece a la tienda"}; require(customer.isActive&&customer.deletedAt==null){"El cliente está inactivo"} }
+    if(request.pendingAmount>0){val customer=checkNotNull(request.customerId?.let{customers.findCustomer(it,shop)}){"Customer required for pending balance"};require(customer.deletedAt==null&&customer.isActive);val balance=Math.addExact(customer.balance,request.pendingAmount);require(balance<=customer.creditLimit){"Credit limit exceeded"};check(customers.updateCustomer(customer.copy(balance=balance,updatedAt=request.date))==1)}
+   val sale=SaleEntity(saleId,request.invoiceNumber,request.customerId,request.routeId,request.date,subtotal,request.discount,request.tax,total,request.paymentType,request.paidAmount,request.pendingAmount,notes=request.notes,createdAt=request.date,updatedAt=request.date,saleMode=request.saleMode,tenant=TenantMetadata.assigned(shop))
   sales.insertWithItems(sale,items)
    LinkedInventorySaleRecorder.record(items,saleId,request.date,location,products,inventory,settings.observe().first().allowNegativeStock)
    val splitDtos = request.splitPayments?.map {
@@ -105,7 +109,7 @@ class CompleteSaleUseCase @Inject constructor(private val transactor:AppDatabase
    }
     MiCatalogoPosSaleOutboxMapper.snapshot(saleId,sale.paidAmount,sale.pendingAmount,resolvedLines.map{it.second},splitDtos,request.dueDate,request.saleMode)?.let { snapshot ->
       val remoteCustomerId = request.customerId?.let { customerId ->
-        customers.findCustomer(customerId)?.takeIf { it.miCatalogoCustomerShopId == snapshot.remoteShopId }?.miCatalogoCustomerId
+         customers.findCustomer(customerId,shop)?.takeIf { it.miCatalogoCustomerShopId == snapshot.remoteShopId }?.miCatalogoCustomerId
       }
       val remoteRequest = snapshot.request.copy(customerId = remoteCustomerId, discount = MiCatalogoPosSaleOutboxMapper.decimalPrice(request.discount), tax = MiCatalogoPosSaleOutboxMapper.decimalPrice(request.tax))
       outbox.insert(PosSaleOutboxEntity(saleId,snapshot.remoteShopId,json.encodeToString(remoteRequest),nextAttemptAt=request.date,createdAt=request.date,updatedAt=request.date))

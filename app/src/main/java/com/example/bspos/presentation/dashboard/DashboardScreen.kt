@@ -128,6 +128,8 @@ fun DashboardScreen(
     val localPendingOrders by viewModel.pendingOrders.collectAsState()
     val localOrdersError by viewModel.ordersError.collectAsState()
     val localFirstSaleStatus by viewModel.firstSaleStatus.collectAsState()
+    val ownerSummary by viewModel.ownerSummary.collectAsState()
+    val ownerSummaryError by viewModel.ownerSummaryError.collectAsState()
     val pendingOrders = startupSnapshot?.pendingOrders ?: localPendingOrders
     val ordersError = startupSnapshot?.ordersError ?: localOrdersError
     val localHasSale = sales.any { it.status == SaleStatus.COMPLETED }
@@ -226,8 +228,11 @@ fun DashboardScreen(
         firstSaleCompleted = effectiveFirstSale,
         setupStatusKnown = startupSnapshot?.firstSaleCompleted != null || (startupSnapshot == null && localFirstSaleStatus.shopId == shopId && localFirstSaleStatus.hasSale != null),
         offline = startupSnapshot?.offline == true,
+        remoteSummary = ownerSummary?.takeIf { it.shopId==shopId }?.summary,
+        remoteSummaryError = ownerSummaryError,
+        onRangeChanged = { from,to -> viewModel.loadOwnerSummary(shopId,from,to) },
         onRetryStartup = onRetryStartup,
-        onAllSales = { showAllSales = true }, onSale = viewModel::selectSale
+        onAllSales = { if(ownerSummary?.shopId==shopId) onAllSales() else showAllSales = true }, onSale = viewModel::selectSale
     )
     if (showAllSales) {
         RecentSalesDialog(

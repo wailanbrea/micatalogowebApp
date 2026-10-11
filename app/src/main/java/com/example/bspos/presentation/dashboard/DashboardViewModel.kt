@@ -2,6 +2,7 @@ package com.example.bspos.presentation.dashboard
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.bspos.core.database.ShopScope
 import com.example.bspos.domain.repository.CustomerRepository
 import com.example.bspos.domain.repository.SaleRepository
 import com.example.bspos.domain.repository.InventoryRepository
@@ -28,6 +29,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import com.example.bspos.data.micatalogo.dto.SellerSummaryDto
+import com.example.bspos.data.micatalogo.dto.FinanceSummaryDto
+
+data class OwnerSummarySnapshot(val shopId:String,val summary:FinanceSummaryDto)
 
 @HiltViewModel
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -41,7 +45,8 @@ class DashboardViewModel @Inject constructor(
     private val api: Lazy<MiCatalogoApi>,
     private val connection: MiCatalogoConnectionRepository,
     private val firstSaleReader: FirstSaleStatusReader,
-    private val saleOutbox: com.example.bspos.data.local.dao.PosSaleOutboxDao
+    private val saleOutbox: com.example.bspos.data.local.dao.PosSaleOutboxDao,
+    private val shops:ShopScope
 ) : ViewModel() {
     private val _sellerSummary = MutableStateFlow<SellerSummaryDto?>(null)
     val sellerSummary = _sellerSummary.asStateFlow()
@@ -54,6 +59,27 @@ class DashboardViewModel @Inject constructor(
     private val _firstSaleStatus = MutableStateFlow(FirstSaleStatus())
     val firstSaleStatus = _firstSaleStatus.asStateFlow()
     private val completedSetupShops = mutableSetOf<String>()
+    private val _ownerSummary=MutableStateFlow<OwnerSummarySnapshot?>(null)
+    val ownerSummary=_ownerSummary.asStateFlow()
+    private val _ownerSummaryError=MutableStateFlow<String?>(null)
+    val ownerSummaryError=_ownerSummaryError.asStateFlow()
+    private var ownerSummaryJob:Job?=null
+
+    fun loadOwnerSummary(shopId:String?,from:String,to:String) {
+        ownerSummaryJob?.cancel()
+        _ownerSummary.value=null
+        _ownerSummaryError.value=null
+        if(shopId==null) return
+        ownerSummaryJob=viewModelScope.launch {
+            try {
+                val response=api.get().financeSummary(shopId,from,to,null,null)
+                check(response.isSuccessful) { "No se pudo consultar el resumen financiero" }
+                val summary=checkNotNull(response.body())
+                if(connection.activeShopId()==shopId) _ownerSummary.value=OwnerSummarySnapshot(shopId,summary)
+            } catch(cancelled:CancellationException) { throw cancelled }
+            catch(_:Exception) { if(connection.activeShopId()==shopId) _ownerSummaryError.value="No se pudo actualizar el resumen. Mostramos sólo los datos locales disponibles." }
+        }
+    }
 
     fun loadFirstSaleStatus(shopId: String?) {
         if (_firstSaleStatus.value.shopId == shopId && _firstSaleStatus.value.hasSale != null) return
@@ -111,7 +137,7 @@ class DashboardViewModel @Inject constructor(
     val stock = inventory.observeStock(InventoryLocation.MAIN).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val products = productsRepository.observeAll().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val routes = routesRepository.observeAll().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
-    val payments = paymentDao.observeAll().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    val payments = shops.observe(paymentDao::observeAll).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     private val _pendingOrders = MutableStateFlow<List<FeatureRowDto>?>(null)
     val pendingOrders = _pendingOrders.asStateFlow()
     private val _ordersError = MutableStateFlow<String?>(null)

@@ -1,6 +1,8 @@
 package com.example.bspos.domain.usecase
 
 import com.example.bspos.core.database.AppDatabaseTransactor
+import com.example.bspos.core.database.ShopScope
+import com.example.bspos.data.local.entity.TenantMetadata
 import com.example.bspos.data.local.dao.CashSessionDao
 import com.example.bspos.data.local.dao.InventoryDao
 import com.example.bspos.data.local.dao.ReturnDao
@@ -28,30 +30,31 @@ data class CompleteCashReturnRequest(val returnNumber:String,val saleId:UUID,val
 class CompleteCashReturnUseCase @Inject constructor(private val transactor:AppDatabaseTransactor,
     private val returns:ReturnDao, private val sales:SaleDao, private val inventory:InventoryDao,
     private val cash:CashSessionDao, private val settings:SettingsRepository, private val products:ProductDao,
-    private val saleQueue:PosSaleOutboxDao, private val remote:RemoteMutationRecorder) {
+    private val saleQueue:PosSaleOutboxDao, private val remote:RemoteMutationRecorder, private val shops:ShopScope) {
     suspend operator fun invoke(request:CompleteCashReturnRequest):Return {
         var queued = false
         val result = transactor.runInTransaction {
+            val activeShop=shops.current()
             require(request.returnNumber.isNotBlank() && request.lines.isNotEmpty())
             require(request.lines.map { it.saleItemId }.distinct().size == request.lines.size)
-            val sale = checkNotNull(sales.findById(request.saleId)) { "Venta no encontrada." }
+            val sale = checkNotNull(sales.findById(request.saleId,activeShop)) { "Venta no encontrada en la tienda." }
             require(sale.status == SaleStatus.COMPLETED && sale.paymentType == SalePaymentType.CASH &&
                 sale.pendingAmount == 0L && sale.paidAmount == sale.total) { "Solo se devuelven ventas de contado totalmente pagadas." }
-            val sold = sales.itemsInInvoiceOrder(sale.id)
+            val sold = sales.itemsInInvoiceOrder(sale.id,activeShop)
             val charged = CashRefundAmounts.allocate(sold.map { RefundableLine(it.id.toString(),it.quantity,it.subtotal) },sale.discount,sale.tax)
             val id = UUID.randomUUID()
             val items = request.lines.map { line ->
                 val original = checkNotNull(sold.find { it.id == line.saleItemId }) { "La línea no pertenece a la venta." }
                 require(line.productId == original.productId && line.unitCostSnapshot == original.unitCostSnapshot)
                 val limit = CashRefundAmounts.portion(charged.getValue(original.id.toString()), original.quantity,
-                    returns.returnedQuantity(original.id), line.quantity)
+                    returns.returnedQuantity(original.id,activeShop), line.quantity)
                 val amount = if (request.refundChargedAmount) limit else Math.multiplyExact(line.quantity,line.refundPrice)
                 require(amount in 0..limit) { "El reembolso supera lo cobrado por esas unidades." }
                 ReturnItemEntity(UUID.randomUUID(),id,line.saleItemId,line.productId,line.quantity,
-                    amount / line.quantity,original.unitCostSnapshot,line.restockInventory,amount)
+                    amount / line.quantity,original.unitCostSnapshot,line.restockInventory,amount,tenant=TenantMetadata.assigned(activeShop))
             }
             val total = items.fold(0L) { sum,item -> Math.addExact(sum,item.refundedCents) }
-            val resolved = items.associateWith { checkNotNull(products.findById(it.productId)) }
+            val resolved = items.associateWith { checkNotNull(products.findById(it.productId,activeShop)) }
             for ((item,product) in resolved.filterKeys { it.restockInventory }) {
                 val original = checkNotNull(sold.find { it.id == item.saleItemId })
                 if (product.miCatalogoSaleUnit in setOf("bottle","ml","decant") || original.saleUnitSnapshot in setOf("bottle","ml","decant")) {
@@ -80,16 +83,16 @@ class CompleteCashReturnUseCase @Inject constructor(private val transactor:AppDa
                 },request.date,id.toString())
                 queued = true
             }
-            returns.insertWithItems(ReturnEntity(id,request.returnNumber,sale.id,sale.customerId,request.date,total,request.reason,request.date),items)
+            returns.insertWithItems(ReturnEntity(id,request.returnNumber,sale.id,sale.customerId,request.date,total,request.reason,request.date,tenant=TenantMetadata.assigned(activeShop)),items)
             val restocked = items.filter { it.restockInventory }.map { item ->
                 checkNotNull(sold.find { it.id == item.saleItemId }).copy(quantity=item.quantity)
             }
             if (restocked.isNotEmpty()) LinkedInventorySaleRecorder.record(restocked,id,request.date,InventoryLocation.MAIN,
                 products,inventory,settings.observe().first().allowNegativeStock,restoring=true)
             if (total > 0) {
-                val sessionId = checkNotNull(cash.findOpenId()) { "Abre una caja para registrar el reembolso." }
+                val sessionId = checkNotNull(cash.findOpenId(activeShop)) { "Abre una caja para registrar el reembolso." }
                 cash.recordMovement(CashMovementEntity(UUID.randomUUID(),sessionId,CashMovementType.REFUND,total,
-                    "Devolución ${request.returnNumber}",request.date))
+                    "Devolución ${request.returnNumber}",request.date,tenant=TenantMetadata.assigned(activeShop)))
             }
             Return(id,request.returnNumber,sale.id,sale.customerId,request.date,total,request.reason,request.date)
         }

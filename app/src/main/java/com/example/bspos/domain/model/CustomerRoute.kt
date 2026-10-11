@@ -11,7 +11,7 @@ data class Customer(
     val notes: String? = null, val isActive: Boolean = true, val createdAt: Instant,
     val updatedAt: Instant, val deletedAt: Instant? = null, val firstName: String? = null,
     val lastName: String? = null, val documentType: String? = null, val documentNumber: String? = null,
-    val email: String? = null
+    val email: String? = null, val remoteCustomerId: String? = null, val remoteShopId: String? = null
 ) {
     val fullName: String
         get() = listOfNotNull(firstName?.trim()?.takeIf { it.isNotBlank() }, lastName?.trim()?.takeIf { it.isNotBlank() })

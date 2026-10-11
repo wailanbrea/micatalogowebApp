@@ -837,7 +837,7 @@ internal fun OrderConfirmDialog(
     val mixedCreditCents = if (kind == "mixed") calculateMixedCredit(totalCents, downPayment) else null
     val creditValid = kind != "mixed" || mixedCreditCents != null
     LaunchedEffect(createdCustomer?.id) {
-        createdCustomer?.let {
+        createdCustomer?.takeIf { it.isActive!=false && !it.localOnly }?.let {
             customer = it
             onConsumeCreatedCustomer()
             onCreatedCustomerSelected()
@@ -856,7 +856,7 @@ internal fun OrderConfirmDialog(
                     val creditAmount = mixedCreditCents?.let { BigDecimal.valueOf(it, 2).toPlainString() }
                     onConfirm(kind, method, customer?.id, creditAmount, reference)
                 },
-                enabled = !busy && (!needsCustomer || customer != null) && creditValid,
+                enabled = !busy && (!needsCustomer || customers.any { it.id==customer?.id && it.isActive!=false && !it.localOnly }) && creditValid,
                 busy = busy
             )
         }
@@ -904,12 +904,12 @@ internal fun OrderConfirmDialog(
                     }
                     if (customersLoading) Text("Cargando clientes…", color = BSPOSTheme.colors.textSecondary)
                     else if (customers.isEmpty()) Text("Aún no hay clientes. Crea uno aquí para continuar a crédito.", color = BSPOSTheme.colors.textSecondary)
-                    else customers.filter { it.isActive != false }.forEach { item ->
+                    else customers.forEach { item ->
                         val name = item.name ?: listOfNotNull(item.firstName, item.lastName).joinToString(" ").ifBlank { "Cliente" }
                         Surface(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable { customer = item },
+                                .clickable(enabled=item.isActive!=false && !item.localOnly) { customer = item },
                             shape = RoundedCornerShape(10.dp),
                             color = if (customer?.id == item.id) BSPOSTheme.colors.primaryLight else BSPOSTheme.colors.surface,
                             border = BorderStroke(
@@ -919,6 +919,8 @@ internal fun OrderConfirmDialog(
                         ) {
                             Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
                                 Text(name, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                if(item.isActive==false) Text("Inactivo",color=BSPOSTheme.colors.textSecondary,fontSize=11.sp)
+                                if(item.localOnly) Text("Pendiente de sincronizar",color=BSPOSTheme.colors.textSecondary,fontSize=11.sp)
                                 Text(
                                     listOfNotNull(item.phone?.takeIf { it.isNotBlank() }, item.creditLimit?.let { "Límite ${LocalCurrency.current.symbol}$it" }).joinToString(" · ").ifBlank { "Sin teléfono ni límite registrado" },
                                     color = BSPOSTheme.colors.textSecondary,

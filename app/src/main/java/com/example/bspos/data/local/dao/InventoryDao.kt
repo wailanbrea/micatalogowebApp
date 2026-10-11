@@ -18,36 +18,44 @@ import java.util.UUID
 
 @Dao
 abstract class InventoryDao {
-    @Query("SELECT * FROM inventory_stock WHERE location_type = :type AND location_id = :locationId ORDER BY product_id")
-    abstract fun observeStock(type: InventoryLocationType, locationId: String): Flow<List<InventoryStockEntity>>
+    @Query("SELECT * FROM inventory_stock WHERE remote_shop_id=:shopId AND tenancy_status='assigned' AND location_type = :type AND location_id = :locationId ORDER BY product_id")
+    abstract fun observeStock(type: InventoryLocationType, locationId: String, shopId: String? = null): Flow<List<InventoryStockEntity>>
 
-    @Query("SELECT * FROM inventory_stock WHERE product_id = :productId AND location_type = :type AND location_id = :locationId")
-    abstract suspend fun findStock(productId: UUID, type: InventoryLocationType, locationId: String): InventoryStockEntity?
+    @Query("SELECT * FROM inventory_stock WHERE remote_shop_id=:shopId AND tenancy_status='assigned' AND product_id = :productId AND location_type = :type AND location_id = :locationId")
+    abstract suspend fun findStock(productId: UUID, type: InventoryLocationType, locationId: String, shopId: String? = null): InventoryStockEntity?
+
+    @Query("""UPDATE inventory_stock SET remote_shop_id=:shopId,tenancy_status='assigned'
+        WHERE product_id=:productId AND location_type=:type AND location_id=:locationId
+          AND (remote_shop_id=:shopId OR remote_shop_id IS NULL)
+          AND EXISTS(SELECT 1 FROM products p WHERE p.id=:productId AND p.remote_shop_id=:shopId AND p.tenancy_status='assigned')""")
+    abstract suspend fun reconcileStockOwnership(productId: UUID, type: InventoryLocationType, locationId: String, shopId: String): Int
 
     @Query("""
         SELECT * FROM inventory_movements
         WHERE product_id = :productId AND location_type = :type AND location_id = :locationId
+          AND remote_shop_id=:shopId AND tenancy_status='assigned'
           AND (:fromInclusive IS NULL OR created_at >= :fromInclusive)
           AND (:toExclusive IS NULL OR created_at < :toExclusive)
         ORDER BY created_at DESC, rowid DESC
     """)
     abstract fun observeMovements(
         productId: UUID, type: InventoryLocationType, locationId: String,
-        fromInclusive: Instant?, toExclusive: Instant?
+        fromInclusive: Instant?, toExclusive: Instant?, shopId: String? = null
     ): Flow<List<InventoryMovementEntity>>
 
     @Query("""
         SELECT * FROM inventory_movements
         WHERE location_type = :type AND location_id = :locationId
+          AND remote_shop_id=:shopId AND tenancy_status='assigned'
         ORDER BY created_at DESC, rowid DESC
     """)
-    abstract fun observeAllMovements(type: InventoryLocationType, locationId: String): Flow<List<InventoryMovementEntity>>
+    abstract fun observeAllMovements(type: InventoryLocationType, locationId: String, shopId: String? = null): Flow<List<InventoryMovementEntity>>
 
-    @Query("SELECT * FROM inventory_movements WHERE id = :id")
-    abstract suspend fun findMovement(id: UUID): InventoryMovementEntity?
+    @Query("SELECT * FROM inventory_movements WHERE id = :id AND remote_shop_id=:shopId AND tenancy_status='assigned'")
+    abstract suspend fun findMovement(id: UUID, shopId: String? = null): InventoryMovementEntity?
 
-    @Query("SELECT * FROM inventory_adjustment_reasons WHERE id = :id")
-    protected abstract suspend fun findReason(id: UUID): InventoryAdjustmentReasonEntity?
+    @Query("SELECT * FROM inventory_adjustment_reasons WHERE id = :id AND remote_shop_id=:shopId AND tenancy_status='assigned'")
+    protected abstract suspend fun findReason(id: UUID, shopId: String?): InventoryAdjustmentReasonEntity?
 
     // Stock mutations are only reachable from the audited transaction below.
     @Insert
@@ -70,7 +78,9 @@ abstract class InventoryDao {
         require(movements.map { it.id }.distinct().size == movements.size) { "Duplicate movement IDs" }
         for (movement in movements) {
             validateMovement(movement)
-            val stock = findStock(movement.productId, movement.locationType, movement.locationId)
+            val shop=checkNotNull(movement.tenant.shopId){"El movimiento necesita tienda"}
+            require(movement.tenant.status==com.example.bspos.data.local.entity.TenantMetadata.ASSIGNED)
+            val stock = findStock(movement.productId, movement.locationType, movement.locationId, shop)
             check((stock?.quantity ?: 0L) == movement.previousQuantity) { "Stock changed; reload before retrying" }
             check(stock == null || !movement.createdAt.isBefore(stock.updatedAt)) { "Movement predates current stock" }
             if (movement.movementType == InventoryMovementType.INITIAL) {
@@ -78,7 +88,7 @@ abstract class InventoryDao {
             }
             check(allowNegativeStock || movement.newQuantity >= 0) { "Insufficient stock" }
             movement.reasonId?.let { id ->
-                val reason = checkNotNull(findReason(id)) { "Adjustment reason does not exist" }
+                val reason = checkNotNull(findReason(id, shop)) { "Adjustment reason does not exist in shop" }
                 check(reason.isActive && reason.deletedAt == null) { "Adjustment reason is not active" }
                 require(matchesDirection(reason.direction, movement.quantity)) { "Adjustment reason has incompatible direction" }
             }
@@ -87,7 +97,7 @@ abstract class InventoryDao {
                 insertStock(InventoryStockEntity(
                     id = UUID.randomUUID(), productId = movement.productId,
                     locationType = movement.locationType, locationId = movement.locationId,
-                    quantity = movement.newQuantity, updatedAt = movement.createdAt
+                    quantity = movement.newQuantity, updatedAt = movement.createdAt, tenant = movement.tenant
                 ))
             } else {
                 check(updateStock(stock.copy(quantity = movement.newQuantity, updatedAt = movement.createdAt)) == 1)

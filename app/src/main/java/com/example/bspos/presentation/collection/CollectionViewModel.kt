@@ -2,6 +2,8 @@ package com.example.bspos.presentation.collection
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.bspos.core.database.ShopScope
+import kotlinx.coroutines.CancellationException
 import com.example.bspos.core.money.MoneyUtils
 import com.example.bspos.data.local.dao.CustomerRouteDao
 import com.example.bspos.data.micatalogo.MiCatalogoPosSaleOutboxMapper
@@ -38,7 +40,8 @@ class CollectionViewModel @Inject constructor(
     private val customerApi: Lazy<MiCatalogoCustomerApi>,
     private val connection: MiCatalogoConnectionRepository,
     private val customerDao: CustomerRouteDao,
-    private val catalog: MiCatalogoCatalogRepository
+    private val catalog: MiCatalogoCatalogRepository,
+    private val shops:ShopScope
 ) : ViewModel() {
     val customers = customers.observeAll().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val sales = sales.observeAll().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
@@ -78,10 +81,10 @@ class CollectionViewModel @Inject constructor(
      */
     fun collectRemote(customer: Customer, amount: Long, method: PaymentMethod) {
         viewModelScope.launch {
-            runCatching {
+            runCatching { shops.mutate { shopId ->
                 require(amount > 0L && amount <= customer.balance) { "El monto supera el saldo pendiente." }
-                val shopId = checkNotNull(connection.activeShopId()) { "Selecciona una tienda activa." }
-                val local = checkNotNull(customerDao.findCustomer(customer.id)) { "Cliente no encontrado en este dispositivo." }
+                val local = checkNotNull(customerDao.findCustomer(customer.id,shopId)) { "Cliente no encontrado en la tienda activa." }
+                require(local.isActive && local.deletedAt==null) { "El cliente está inactivo" }
                 val remoteId = checkNotNull(local.miCatalogoCustomerId) {
                     "Este cliente todavía no está vinculado a MiCatalogo. Sincroniza la tienda antes de cobrarlo."
                 }
@@ -100,7 +103,9 @@ class CollectionViewModel @Inject constructor(
                 check(customerDao.updateCustomer(local.copy(balance = serverBalance, updatedAt = Instant.now())) == 1) {
                     "No se pudo actualizar el saldo local del cliente."
                 }
+            }
             }.onFailure {
+                if(it is CancellationException) throw it
                 val message = it.toUiMessage("No se pudo registrar el cobro")
                 _message.value = message
                 UiErrorBus.show(message)

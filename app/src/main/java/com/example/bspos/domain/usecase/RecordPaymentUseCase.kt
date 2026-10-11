@@ -1,6 +1,8 @@
 package com.example.bspos.domain.usecase
 
 import com.example.bspos.core.database.AppDatabaseTransactor
+import com.example.bspos.core.database.ShopScope
+import com.example.bspos.data.local.entity.TenantMetadata
 import com.example.bspos.data.local.dao.CashSessionDao
 import com.example.bspos.data.local.dao.CustomerRouteDao
 import com.example.bspos.data.local.dao.PaymentDao
@@ -27,33 +29,35 @@ class RecordPaymentUseCase @Inject constructor(
     private val transactor: AppDatabaseTransactor, private val payments: PaymentDao,
     private val sales: SaleDao, private val customers: CustomerRouteDao, private val cash: CashSessionDao,
     private val paymentSync: PaymentSyncDao, private val saleOutbox: PosSaleOutboxDao,
-    private val scheduler: PosSaleSyncScheduler, private val json: Json
+    private val scheduler: PosSaleSyncScheduler, private val json: Json, private val shops: ShopScope
 ) {
     suspend operator fun invoke(request: RecordPaymentRequest): Payment {
         var queued = false
         val result = transactor.runInTransaction {
+            val shop=shops.current()
             require(request.receiptNumber.isNotBlank() && request.allocations.isNotEmpty()
                 && (request.cashSessionId == null || request.method == PaymentMethod.CASH))
             val session = if (request.method == PaymentMethod.CASH)
-                checkNotNull(request.cashSessionId ?: cash.findOpenId()) { "Open cash session required" } else null
+                checkNotNull(request.cashSessionId ?: cash.findOpenId(shop)) { "Open cash session required" } else null
             val id = UUID.randomUUID()
             val amount = request.allocations.sumOf { it.amount }
-            val customer = checkNotNull(customers.findCustomer(request.customerId)) { "Customer not found" }
+            val customer = checkNotNull(customers.findCustomer(request.customerId,shop)) { "Customer not found in shop" }
             require(customer.deletedAt == null && customer.isActive && amount > 0 && amount <= customer.balance)
             val remoteShops = request.allocations.map { saleOutbox.shopForSale(it.saleId) }
             val remoteCount = remoteShops.count { it != null }
+            require(remoteShops.all { it==null || it==shop }) { "La venta pertenece a otra tienda" }
             require(remoteCount == 0 || (remoteCount == request.allocations.size && remoteShops.distinct().size == 1)) {
                 "Registra por separado abonos de ventas locales y de distintas tiendas."
             }
             val payment = PaymentEntity(id, request.receiptNumber, request.customerId, request.routeId,
-                request.date, amount, request.method, request.reference, request.notes, request.date)
+                request.date, amount, request.method, request.reference, request.notes, request.date,tenant=TenantMetadata.assigned(shop))
             payments.insertWithAllocations(payment, request.allocations.map {
                 PaymentAllocationEntity(UUID.randomUUID(), id, it.saleId, it.amount)
             })
-            request.allocations.forEach { sales.applyPayment(it.saleId, it.amount, request.date) }
+            request.allocations.forEach { sales.applyPayment(it.saleId, it.amount, request.date,shop) }
             check(customers.updateCustomer(customer.copy(balance = Math.subtractExact(customer.balance, amount), updatedAt = request.date)) == 1)
             session?.let { cash.recordMovement(CashMovementEntity(UUID.randomUUID(), it,
-                CashMovementType.PAYMENT_COLLECTION, amount, "Payment ${request.receiptNumber}", request.date)) }
+                CashMovementType.PAYMENT_COLLECTION, amount, "Payment ${request.receiptNumber}", request.date,tenant=TenantMetadata.assigned(shop))) }
             if (remoteCount > 0) {
                 paymentSync.insert(PaymentSyncEntity(id.toString(), remoteShops.first()!!, customer.id.toString(),
                     json.encodeToString(CustomerPaymentDto(

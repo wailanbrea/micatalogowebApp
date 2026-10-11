@@ -27,7 +27,8 @@ import java.util.UUID
         Index(value = ["product_id", "created_at"], orders = [Index.Order.ASC, Index.Order.DESC], name = "idx_movements_product_created"),
         Index(value = ["reference_type", "reference_id"], name = "idx_movements_reference"),
         Index(value = ["location_type", "location_id"], name = "idx_movements_location"),
-        Index(value = ["reason_id"], name = "idx_movements_reason_id")
+        Index(value = ["reason_id"], name = "idx_movements_reason_id"),
+        Index(value = ["remote_shop_id"], name = "idx_inventory_movements_shop")
     ]
 )
 data class InventoryMovementEntity(
@@ -46,5 +47,6 @@ data class InventoryMovementEntity(
     @ColumnInfo(name = "reason_id") val reasonId: UUID? = null,
     val notes: String? = null,
     @ColumnInfo(name = "created_at") val createdAt: Instant,
-    @ColumnInfo(name = "created_by") val createdBy: String? = null
+    @ColumnInfo(name = "created_by") val createdBy: String? = null,
+    @androidx.room.Embedded val tenant: TenantMetadata = TenantMetadata()
 )

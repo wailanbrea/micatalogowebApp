@@ -13,22 +13,22 @@ class InventoryLocalDataSource @Inject constructor(
     private val inventory: InventoryDao,
     private val reasons: InventoryAdjustmentReasonDao
 ) {
-    fun observeStock(location: InventoryLocation) = inventory.observeStock(location.type, location.id)
-    suspend fun findStock(productId: UUID, location: InventoryLocation) =
-        inventory.findStock(productId, location.type, location.id)
+    fun observeStock(location: InventoryLocation, shopId: String? = null) = inventory.observeStock(location.type, location.id, shopId)
+    suspend fun findStock(productId: UUID, location: InventoryLocation, shopId: String? = null) =
+        inventory.findStock(productId, location.type, location.id, shopId)
 
-    fun observeMovements(productId: UUID, location: InventoryLocation, fromInclusive: Instant?, toExclusive: Instant?) =
-        inventory.observeMovements(productId, location.type, location.id, fromInclusive, toExclusive)
+    fun observeMovements(productId: UUID, location: InventoryLocation, fromInclusive: Instant?, toExclusive: Instant?, shopId: String? = null) =
+        inventory.observeMovements(productId, location.type, location.id, fromInclusive, toExclusive, shopId)
 
-    fun observeAllMovements(location: InventoryLocation) = inventory.observeAllMovements(location.type, location.id)
+    fun observeAllMovements(location: InventoryLocation, shopId: String? = null) = inventory.observeAllMovements(location.type, location.id, shopId)
 
-    suspend fun findMovement(id: UUID) = inventory.findMovement(id)
+    suspend fun findMovement(id: UUID, shopId: String? = null) = inventory.findMovement(id, shopId)
     suspend fun recordMovements(movements: List<InventoryMovementEntity>, allowNegativeStock: Boolean) =
         inventory.recordMovements(movements, allowNegativeStock)
 
-    fun observeReasons() = reasons.observeAll()
-    suspend fun findReason(id: UUID) = reasons.findById(id)
+    fun observeReasons(shopId: String? = null) = reasons.observeAll(shopId)
+    suspend fun findReason(id: UUID, shopId: String? = null) = reasons.findById(id, shopId)
     suspend fun insert(reason: InventoryAdjustmentReasonEntity) = reasons.insert(reason)
-    suspend fun update(reason: InventoryAdjustmentReasonEntity) = reasons.update(reason) == 1
-    suspend fun deleteReason(id: UUID, at: Instant) = reasons.softDelete(id, at) == 1
+    suspend fun update(reason: InventoryAdjustmentReasonEntity) = findReason(reason.id, reason.tenant.shopId)!=null && reasons.update(reason) == 1
+    suspend fun deleteReason(id: UUID, at: Instant, shopId: String? = null) = reasons.softDelete(id, at, shopId) == 1
 }

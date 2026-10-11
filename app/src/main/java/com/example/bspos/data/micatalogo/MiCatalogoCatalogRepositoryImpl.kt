@@ -17,6 +17,7 @@ import com.example.bspos.data.local.entity.CategoryEntity
 import com.example.bspos.data.local.entity.InventoryMovementEntity
 import com.example.bspos.data.local.entity.ProductEntity
 import com.example.bspos.data.local.entity.UnitOfMeasureEntity
+import com.example.bspos.data.local.entity.TenantMetadata
 import com.example.bspos.data.micatalogo.api.MiCatalogoApi
 import com.example.bspos.data.micatalogo.dto.CatalogSnapshotDto
 import com.example.bspos.data.micatalogo.dto.RemoteProductDto
@@ -32,7 +33,7 @@ import kotlinx.serialization.encodeToString
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.*
 import java.time.Instant
 import java.util.Locale
 import javax.inject.Inject
@@ -72,6 +73,7 @@ class MiCatalogoCatalogRepositoryImpl @Inject constructor(
         // Protect events active when the download began as well as those active at apply.
         val mutationsAtDownload = operationQueue.activeForShop(shopId).flatMap { it.productIds.split(',') }.filter { it.isNotBlank() }.toSet()
         val salesAtDownload = pendingRemoteProductIds(shopId)
+        val customerMutationsAtDownload = pendingCustomerIds(shopId)
         val response = api.catalog(shopId)
         if (!response.isSuccessful) error(response.apiErrorMessage("No se pudo descargar el catalogo."))
         val snapshot = checkNotNull(response.body()) { "MiCatalogo devolvio un catalogo vacio." }
@@ -87,7 +89,7 @@ class MiCatalogoCatalogRepositoryImpl @Inject constructor(
         }
         transactor.runInTransaction {
             val result = applySnapshot(snapshot, imagePaths, salesAtDownload, mutationsAtDownload, sequenceAtDownload)
-            if (remoteCustomers != null) applyCustomers(shopId, remoteCustomers)
+            if (remoteCustomers != null) applyCustomers(shopId, remoteCustomers, customerMutationsAtDownload, sequenceAtDownload)
             result
         }
     }.fold(
@@ -100,11 +102,12 @@ class MiCatalogoCatalogRepositoryImpl @Inject constructor(
 
     override suspend fun syncCustomers(shopId: String): MiCatalogoResult<Int> = syncMutex.withLock { runCatching {
         require(shopId.isNotBlank()) { "La tienda remota no es valida." }
-        syncLocalCustomers(shopId)
+        val sequenceAtDownload = operationQueue.nextSequence() - 1
+        val customerMutationsAtDownload = pendingCustomerIds(shopId)
         val response = customerApi.customers(shopId)
         if (!response.isSuccessful) error(response.apiErrorMessage("No se pudieron actualizar los clientes."))
         val remoteCustomers = checkNotNull(response.body()) { "MiCatalogo devolvio una lista de clientes vacia." }.customers
-        transactor.runInTransaction { applyCustomers(shopId, remoteCustomers) }
+        transactor.runInTransaction { applyCustomers(shopId, remoteCustomers, customerMutationsAtDownload, sequenceAtDownload) }
         remoteCustomers.size
     }.fold(
         onSuccess = { MiCatalogoResult.Success(it) },
@@ -113,59 +116,6 @@ class MiCatalogoCatalogRepositoryImpl @Inject constructor(
             MiCatalogoResult.Failure(it.message ?: "No se pudieron actualizar los clientes.")
         }
     ) }
-
-    /**
-     * Customers created from the local customer screen do not have a remote
-     * identifier yet. Publish them before downloading the authoritative list
-     * so Quotes, Collections and Orders can use them immediately.
-     * Invalid local records remain pending for a later retry and do not block
-     * the rest of the customer synchronization.
-     */
-    private suspend fun syncLocalCustomers(shopId: String) {
-        customers.findActiveCustomers()
-            .filterNot { it.miCatalogoCustomerId?.isNotBlank() == true && it.miCatalogoCustomerShopId == shopId }
-            .forEach { local ->
-                runCatching {
-                    val response = customerApi.createCustomer(shopId, local.toRemoteRequest())
-                    if (!response.isSuccessful) return@runCatching
-                    val remoteId = response.body()?.id?.takeIf { it.isNotBlank() } ?: return@runCatching
-                    customers.updateCustomer(
-                        local.copy(
-                            miCatalogoCustomerId = remoteId,
-                            miCatalogoCustomerShopId = shopId,
-                            updatedAt = Instant.now()
-                        )
-                    )
-                }
-            }
-    }
-
-    private fun CustomerEntity.toRemoteRequest(): CustomerUploadRequestDto {
-        val displayName = businessName.trim().ifBlank { "Cliente" }
-        val first = firstName?.trim().orEmpty().ifBlank { displayName }
-        val last = lastName?.trim().orEmpty()
-        val structured = firstName?.isNotBlank() == true &&
-            lastName?.isNotBlank() == true &&
-            documentNumber?.isNotBlank() == true &&
-            phone?.isNotBlank() == true &&
-            address?.isNotBlank() == true &&
-            documentType?.lowercase(Locale.ROOT) in setOf("cedula", "pasaporte")
-        return CustomerUploadRequestDto(
-            clientCustomerUuid = id.toString(),
-            firstName = first,
-            lastName = last,
-            documentType = documentType?.lowercase(Locale.ROOT)?.takeIf { it in setOf("cedula", "pasaporte") } ?: "cedula",
-            documentNumber = documentNumber.orEmpty(),
-            name = if (structured) null else displayName,
-            phone = phone.orEmpty(),
-            email = email,
-            address = address.orEmpty(),
-            whatsapp = whatsapp,
-            reference = reference,
-            creditLimit = MiCatalogoPosSaleOutboxMapper.decimalPrice(creditLimit),
-            notes = notes
-        )
-    }
 
     private suspend fun applySnapshot(
         snapshot: CatalogSnapshotDto,
@@ -192,7 +142,7 @@ class MiCatalogoCatalogRepositoryImpl @Inject constructor(
 
         snapshot.categories.distinctBy { it.id }.filter { it.id.isNotBlank() }.forEach { remote ->
             val id = checkNotNull(categoryIds[remote.id])
-            val existing = categories.findById(id)
+            val existing = categories.findForReconciliation(id, shopId)
             val timestamp = parseInstant(remote.updatedAt, synchronizedAt)
             val entity = CategoryEntity(
                 id = id,
@@ -202,14 +152,15 @@ class MiCatalogoCatalogRepositoryImpl @Inject constructor(
                 isActive = remote.status.trim().lowercase(Locale.ROOT) !in setOf("draft", "suspended", "inactive"),
                 createdAt = existing?.createdAt ?: timestamp,
                 updatedAt = timestamp,
-                deletedAt = null
+                deletedAt = null,
+                tenant = TenantMetadata.assigned(shopId)
             )
             if (existing == null) categories.insert(entity) else categories.update(entity)
         }
 
         val fallbackCategoryId = MiCatalogoImportMapper.fallbackCategoryId(shopId)
         if (snapshot.products.any { it.categoryId !in categoryIds }) {
-            val existing = categories.findById(fallbackCategoryId)
+            val existing = categories.findForReconciliation(fallbackCategoryId, shopId)
             val fallback = CategoryEntity(
                 id = fallbackCategoryId,
                 name = "Sin categoria (MiCatalogo)",
@@ -217,7 +168,8 @@ class MiCatalogoCatalogRepositoryImpl @Inject constructor(
                 sortOrder = Int.MAX_VALUE,
                 createdAt = existing?.createdAt ?: synchronizedAt,
                 updatedAt = synchronizedAt,
-                deletedAt = null
+                deletedAt = null,
+                tenant = TenantMetadata.assigned(shopId)
             )
             if (existing == null) categories.insert(fallback) else categories.update(fallback)
         }
@@ -230,23 +182,26 @@ class MiCatalogoCatalogRepositoryImpl @Inject constructor(
         }
         remoteProducts.map { MiCatalogoImportMapper.normalizedSaleUnit(it.saleUnit) }.distinct().forEach { saleUnit ->
             val id = MiCatalogoImportMapper.unitId(shopId, saleUnit)
-            val existing = units.findById(id)
+            val existing = units.findForReconciliation(id, shopId)
             val entity = UnitOfMeasureEntity(
                 id = id,
                 name = saleUnit,
                 abbreviation = saleUnit.take(12),
                 createdAt = existing?.createdAt ?: synchronizedAt,
                 updatedAt = synchronizedAt,
-                deletedAt = null
+                deletedAt = null,
+                tenant = TenantMetadata.assigned(shopId)
             )
             if (existing == null) units.insert(entity) else units.update(entity)
         }
 
         var inventoryMovementsRecorded = 0
         remoteProducts.filter { it.id.isNotBlank() }.forEach { remote ->
-            val productId = products.findRemote(shopId, remote.id)?.id ?: MiCatalogoImportMapper.productId(shopId, remote.id)
+            val candidates = products.remoteReconciliationCandidates(shopId, remote.id)
+            if (candidates.size > 1) return@forEach // Conflicting legacy copies require explicit reconciliation.
+            val existing = candidates.singleOrNull()
+            val productId = existing?.id ?: MiCatalogoImportMapper.productId(shopId, remote.id)
             val timestamp = parseInstant(remote.updatedAt, synchronizedAt)
-            val existing = products.findRemote(shopId, remote.id)
             // Neither metadata nor a local archive may be reverted by a snapshot
             // taken before an outstanding mutation is acknowledged.
             if (remote.id in mutations && existing != null) return@forEach
@@ -321,13 +276,24 @@ class MiCatalogoCatalogRepositoryImpl @Inject constructor(
         )
     }
 
-    private suspend fun applyCustomers(shopId: String, remoteCustomers: List<RemoteCustomerDto>) {
+    private suspend fun applyCustomers(shopId: String, remoteCustomers: List<RemoteCustomerDto>,
+        pendingAtDownload: Set<String>, sequenceAtDownload: Long) {
         // A stale remote balance must never overwrite local pending sales or collections.
         val hasUnsent = outbox.findActiveForShop(shopId).isNotEmpty() || paymentQueue.unsentCount(shopId) > 0
+        val pending = pendingAtDownload + pendingCustomerIds(shopId) + customerIds(operationQueue.eventsAfter(shopId, sequenceAtDownload))
+        val remoteIds = remoteCustomers.map { it.id }.toSet()
+        customers.findCustomersForShop(shopId).filter { it.miCatalogoCustomerId != null && it.miCatalogoCustomerId !in remoteIds && it.id.toString() !in pending }.forEach {
+            customers.updateCustomer(it.copy(isActive=false, deletedAt=Instant.now(), updatedAt=Instant.now()))
+        }
         remoteCustomers.forEach { remote ->
+            require(remote.id.isNotBlank()) { "El cliente remoto no tiene identificador" }
             val clientId = remote.clientCustomerUuid?.let { runCatching { java.util.UUID.fromString(it) }.getOrNull() }
-            val existing = customers.findRemoteCustomer(remote.id) ?: clientId?.let { customers.findCustomer(it) }
-            val id = existing?.id ?: java.util.UUID.nameUUIDFromBytes("micatalogo:customer:$shopId:${remote.id}".toByteArray(Charsets.UTF_8))
+            val canonicalId = java.util.UUID.nameUUIDFromBytes("micatalogo:customer:$shopId:${remote.id}".toByteArray(Charsets.UTF_8))
+            val existing = customers.findRemoteCustomerForReconciliation(remote.id, shopId)
+                ?: clientId?.let { customers.findCustomerForReconciliation(it, shopId) }
+                ?: customers.findCustomerForReconciliation(canonicalId, shopId)
+            val id = existing?.id ?: canonicalId
+            if (existing != null && id.toString() in pending) return@forEach
             val at = remote.updatedAt?.let { parseInstant(it, Instant.now()) } ?: Instant.now()
             val base = existing ?: CustomerEntity(id, remote.name ?: "Cliente", createdAt = at, updatedAt = at)
             val entity = base.copy(businessName = remote.name ?: base.businessName, phone = remote.phone,
@@ -337,7 +303,7 @@ class MiCatalogoCatalogRepositoryImpl @Inject constructor(
                 miCatalogoCustomerId = remote.id, miCatalogoCustomerShopId = shopId,
                 creditLimit = MiCatalogoImportMapper.cents(remote.creditLimit),
                 balance = if (hasUnsent && existing != null) existing.balance else MiCatalogoImportMapper.cents(remote.balance),
-                isActive = remote.isActive ?: true, updatedAt = at)
+                isActive = remote.isActive ?: true, updatedAt = at, deletedAt = null, tenant = TenantMetadata.assigned(shopId))
             if (existing == null) customers.insertCustomer(entity) else customers.updateCustomer(entity)
         }
     }
@@ -355,7 +321,8 @@ class MiCatalogoCatalogRepositoryImpl @Inject constructor(
         require(target >= 0) { "El inventario remoto de ${remote.name} no puede ser negativo." }
 
         val location = InventoryLocation.MAIN
-        val current = inventory.findStock(productId, location.type, location.id)
+        inventory.reconcileStockOwnership(productId, location.type, location.id, shopId)
+        val current = inventory.findStock(productId, location.type, location.id, shopId)
         val previous = current?.quantity ?: 0L
         val delta = target - previous
         if (delta == 0L) return 0
@@ -381,7 +348,8 @@ class MiCatalogoCatalogRepositoryImpl @Inject constructor(
                     totalCost = Math.multiplyExact(delta, unitCost),
                     notes = "Imported from MiCatalogo catalog snapshot",
                     createdAt = movementTimestamp,
-                    createdBy = "micatalogo-import"
+                    createdBy = "micatalogo-import",
+                    tenant = TenantMetadata.assigned(shopId)
                 )
             ),
             allowNegativeStock = false
@@ -390,6 +358,14 @@ class MiCatalogoCatalogRepositoryImpl @Inject constructor(
     }
 
     private fun parseInstant(value: String, fallback: Instant): Instant = runCatching { Instant.parse(value) }.getOrDefault(fallback)
+
+    private suspend fun pendingCustomerIds(shopId: String) = customerIds(operationQueue.activeForShop(shopId))
+    private fun customerIds(rows: List<com.example.bspos.data.local.entity.OperationOutboxEntity>): Set<String> = rows.mapNotNull { row ->
+        runCatching {
+            val payload = Json.parseToJsonElement(row.payload).jsonObject
+            if (payload["type"]?.jsonPrimitive?.contentOrNull == "customer_upsert") payload["client_customer_uuid"]?.jsonPrimitive?.contentOrNull else null
+        }.getOrNull()
+    }.toSet()
 
     private suspend fun pendingRemoteProductIds(shopId: String): Set<String> =
         outbox.findActiveForShop(shopId)

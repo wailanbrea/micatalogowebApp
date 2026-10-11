@@ -18,38 +18,38 @@ class CatalogLocalDataSource @Inject constructor(
     private val products: ProductDao,
     private val suppliers: SupplierDao
 ) {
-    fun observeCategories() = categories.observeAll()
-    suspend fun findCategory(id: UUID) = categories.findById(id)
+    fun observeCategories(shopId: String? = null) = categories.observeAll(shopId)
+    suspend fun findCategory(id: UUID, shopId: String? = null) = categories.findById(id, shopId)
     suspend fun insert(category: CategoryEntity) = categories.insert(category)
-    suspend fun update(category: CategoryEntity) = categories.update(category) == 1
-    suspend fun deleteCategory(id: UUID, at: Instant) = categories.softDelete(id, at) == 1
-    suspend fun reorderCategories(ids: List<UUID>, at: Instant) = categories.reorder(ids, at)
+    suspend fun update(category: CategoryEntity) = findCategory(category.id, category.tenant.shopId) != null && categories.update(category) == 1
+    suspend fun deleteCategory(id: UUID, at: Instant, shopId: String? = null) = categories.softDelete(id, at, shopId) == 1
+    suspend fun reorderCategories(ids: List<UUID>, at: Instant, shopId: String? = null) = categories.reorder(ids, at, shopId)
 
-    fun observeUnits() = units.observeAll()
-    suspend fun findUnit(id: UUID) = units.findById(id)
+    fun observeUnits(shopId: String? = null) = units.observeAll(shopId)
+    suspend fun findUnit(id: UUID, shopId: String? = null) = units.findById(id, shopId)
     suspend fun insert(unit: UnitOfMeasureEntity) = units.insert(unit)
-    suspend fun update(unit: UnitOfMeasureEntity) = units.update(unit) == 1
-    suspend fun deleteUnit(id: UUID, at: Instant) = units.softDelete(id, at) == 1
+    suspend fun update(unit: UnitOfMeasureEntity) = findUnit(unit.id, unit.tenant.shopId) != null && units.update(unit) == 1
+    suspend fun deleteUnit(id: UUID, at: Instant, shopId: String? = null) = units.softDelete(id, at, shopId) == 1
 
-    fun observeProducts() = products.observeAll()
+    fun observeProducts(shopId: String? = null) = products.observeAll(shopId)
     fun observeProductsForShop(shopId: String) = products.observeForShop(shopId)
-    suspend fun findProduct(id: UUID) = products.findById(id)
+    suspend fun findProduct(id: UUID, shopId: String? = null) = products.findById(id, shopId)
     suspend fun insert(product: ProductEntity) = products.insert(product)
     suspend fun update(product: ProductEntity): Boolean {
-        val existing = products.findById(product.id) ?: return false
+        val existing = products.findById(product.id, product.tenant.shopId) ?: return false
         return products.update(product.copy(miCatalogoShopId = existing.miCatalogoShopId,
             miCatalogoProductId = existing.miCatalogoProductId,
             miCatalogoSourceProductId = existing.miCatalogoSourceProductId,
             miCatalogoVolumeMl = existing.miCatalogoVolumeMl,
             miCatalogoAvailableMl = existing.miCatalogoAvailableMl,
             miCatalogoOpenedBottles = existing.miCatalogoOpenedBottles,
-            miCatalogoSaleUnit = existing.miCatalogoSaleUnit)) == 1
+            miCatalogoSaleUnit = existing.miCatalogoSaleUnit, tenant=existing.tenant)) == 1
     }
-    suspend fun deleteProduct(id: UUID, at: Instant) = products.softDelete(id, at) == 1
+    suspend fun deleteProduct(id: UUID, at: Instant, shopId: String? = null) = products.softDelete(id, at, shopId) == 1
 
-    fun observeSuppliers() = suppliers.observeAll()
-    suspend fun findSupplier(id: UUID) = suppliers.findById(id)
+    fun observeSuppliers(shopId: String? = null) = suppliers.observeAll(shopId)
+    suspend fun findSupplier(id: UUID, shopId: String? = null) = suppliers.findById(id, shopId)
     suspend fun insert(supplier: SupplierEntity) = suppliers.insert(supplier)
-    suspend fun update(supplier: SupplierEntity) = suppliers.update(supplier) == 1
-    suspend fun deleteSupplier(id: UUID, at: Instant) = suppliers.softDelete(id, at) == 1
+    suspend fun update(supplier: SupplierEntity) = findSupplier(supplier.id, supplier.tenant.shopId) != null && suppliers.update(supplier) == 1
+    suspend fun deleteSupplier(id: UUID, at: Instant, shopId: String? = null) = suppliers.softDelete(id, at, shopId) == 1
 }

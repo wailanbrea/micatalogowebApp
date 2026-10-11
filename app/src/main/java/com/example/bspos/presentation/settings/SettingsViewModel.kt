@@ -2,6 +2,10 @@ package com.example.bspos.presentation.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.bspos.core.database.ShopScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.map
 import com.example.bspos.domain.model.CurrencyUnit
 import com.example.bspos.domain.model.InvoiceConfig
 import com.example.bspos.domain.model.MiCatalogoConnectionState
@@ -44,16 +48,18 @@ class SettingsViewModel @Inject constructor(
     private val saleQueue: com.example.bspos.data.local.dao.PosSaleOutboxDao,
     private val paymentQueue: com.example.bspos.data.local.dao.PaymentSyncDao,
     private val scheduler: com.example.bspos.data.micatalogo.PosSaleSyncScheduler,
-    private val catalogRefresh: com.example.bspos.data.micatalogo.CatalogRefreshSyncRepository
+    private val catalogRefresh: com.example.bspos.data.micatalogo.CatalogRefreshSyncRepository,
+    private val shops:ShopScope
 ) : ViewModel() {
     val settings = repository.observe().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
     val miCatalogoConnection = connectionRepository.observeConnection()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), MiCatalogoConnectionState("", false))
     val miCatalogoUi = MutableStateFlow(MiCatalogoSettingsUiState())
-    val pendingOperations = operationQueue.observeOutstanding().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
-    val pendingSales = saleQueue.observeOutstanding().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
-    val pendingPayments = paymentQueue.observeOutstanding().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
-    val pendingCatalogs = operationQueue.observeRefreshes().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    val pendingOperations = shops.observe { shop -> operationQueue.observeOutstanding().map { rows -> rows.filter { it.shopId==shop } } }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    val pendingSales = shops.observe { shop -> saleQueue.observeOutstanding().map { rows -> rows.filter { it.remoteShopId==shop } } }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    val pendingPayments = shops.observe { shop -> paymentQueue.observeOutstanding().map { rows -> rows.filter { it.shopId==shop } } }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    val pendingCatalogs = shops.observe { shop -> operationQueue.observeRefreshes().map { rows -> rows.filter { it.shopId==shop } } }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    private var shopJob:Job?=null
 
     fun retryOperation(id:String) = viewModelScope.launch { operationQueue.retryBlocked(id); scheduler.enqueue() }
     fun retrySale(id:java.util.UUID) = viewModelScope.launch { saleQueue.retryBlocked(id,java.time.Instant.now()); scheduler.enqueue() }
@@ -158,10 +164,23 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    fun selectShop(shop: MiCatalogoShop) = viewModelScope.launch {
-        when (val result = connectionRepository.selectShop(shop.id)) {
-            is MiCatalogoResult.Success -> miCatalogoUi.value = miCatalogoUi.value.copy(successMessage = "Tienda activa: ${shop.name}")
-            is MiCatalogoResult.Failure -> miCatalogoUi.value = miCatalogoUi.value.copy(errorMessage = result.message)
+    fun selectShop(shop: MiCatalogoShop) {
+        shopJob?.cancel()
+        shopJob=viewModelScope.launch {
+            when (val result = connectionRepository.selectShop(shop.id)) {
+                is MiCatalogoResult.Success -> {
+                    miCatalogoUi.value=miCatalogoUi.value.copy(syncingShopId=shop.id,successMessage=null,errorMessage=null)
+                    try {
+                        when(val synced=catalogRepository.syncCatalog(shop.id)) {
+                            is MiCatalogoResult.Success -> if(connectionRepository.activeShopId()==shop.id) miCatalogoUi.value=miCatalogoUi.value.copy(successMessage="Tienda activa: ${shop.name}")
+                            is MiCatalogoResult.Failure -> if(connectionRepository.activeShopId()==shop.id) miCatalogoUi.value=miCatalogoUi.value.copy(errorMessage=synced.message)
+                        }
+                    } finally {
+                        if(miCatalogoUi.value.syncingShopId==shop.id) miCatalogoUi.value=miCatalogoUi.value.copy(syncingShopId=null)
+                    }
+                }
+                is MiCatalogoResult.Failure -> miCatalogoUi.value = miCatalogoUi.value.copy(errorMessage = result.message)
+            }
         }
     }
 

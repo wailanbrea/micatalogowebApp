@@ -27,6 +27,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import com.example.bspos.core.ui.theme.BSPOSFonts as FontFamily
@@ -40,6 +41,7 @@ import com.example.bspos.core.money.MoneyUtils
 import com.example.bspos.core.ui.theme.BSPOSTheme
 import com.example.bspos.data.local.entity.PaymentEntity
 import com.example.bspos.data.micatalogo.dto.FeatureRowDto
+import com.example.bspos.data.micatalogo.dto.FinanceSummaryDto
 import com.example.bspos.domain.model.*
 import java.time.LocalDate
 import java.time.ZoneId
@@ -115,6 +117,9 @@ internal fun ResumenOverview(
     onRetryStartup: () -> Unit = {},
     onAllSales: () -> Unit,
     onSale: (Sale) -> Unit,
+    remoteSummary:FinanceSummaryDto?=null,
+    remoteSummaryError:String?=null,
+    onRangeChanged:(String,String)->Unit={_,_->},
 ) {
     val zone = ZoneId.systemDefault()
     val today = LocalDate.now(zone)
@@ -122,15 +127,19 @@ internal fun ResumenOverview(
     var customFrom by rememberSaveable { mutableStateOf<String?>(null) }
     var customTo by rememberSaveable { mutableStateOf<String?>(null) }
     val range = if (customFrom != null && customTo != null) ResumenRange(LocalDate.parse(customFrom), LocalDate.parse(customTo)) else resumenRange(period, today)
+    LaunchedEffect(range) { onRangeChanged(range.from.toString(),range.to.toString()) }
+    val remote=remoteSummary?.takeIf { it.from.take(10)==range.from.toString() && it.to.take(10)==range.to.toString() }
+    fun cents(value:Double)=java.math.BigDecimal.valueOf(value).setScale(2,java.math.RoundingMode.HALF_UP).movePointRight(2).longValueExact()
     fun salesIn(r: ResumenRange) = sales.filter { sale -> sale.date.atZone(zone).toLocalDate().let { it >= r.from && it <= r.to } }
     val selectedSales = salesIn(range)
     val previousSales = salesIn(range.previous)
-    val total = selectedSales.sumOf { it.total }
-    val profit = selectedSales.sumOf { it.total - (costTotals[it.id] ?: 0L) }
-    val average = if (selectedSales.isEmpty()) 0L else total / selectedSales.size
-    val priorTotal = previousSales.sumOf { it.total }
-    val priorProfit = previousSales.sumOf { it.total - (costTotals[it.id] ?: 0L) }
-    val priorAverage = if (previousSales.isEmpty()) 0L else priorTotal / previousSales.size
+    val total = remote?.period?.netSales?.let(::cents) ?: selectedSales.sumOf { it.total }
+    val profit = remote?.period?.grossProfit?.let(::cents) ?: selectedSales.sumOf { it.total - (costTotals[it.id] ?: 0L) }
+    val costUnknown=remote!=null && remote.period.grossProfit==null
+    val average = remote?.period?.averageTicket?.let(::cents) ?: if (selectedSales.isEmpty()) 0L else total / selectedSales.size
+    val priorTotal = remote?.previousPeriod?.netSales?.let(::cents) ?: previousSales.sumOf { it.total }
+    val priorProfit = remote?.previousPeriod?.grossProfit?.let(::cents) ?: previousSales.sumOf { it.total - (costTotals[it.id] ?: 0L) }
+    val priorAverage = remote?.previousPeriod?.averageTicket?.let(::cents) ?: if (previousSales.isEmpty()) 0L else priorTotal / previousSales.size
     val active = products.filter { it.isActive && it.deletedAt == null }
     val tracked = active.filter { it.remoteSaleUnit != "service" && !it.remoteIsCombo }
     val inStock = tracked.count { (quantities[it.id] ?: 0) > 0 }
@@ -139,14 +148,16 @@ internal fun ResumenOverview(
     val capital = tracked.filter { it.remoteSourceProductId == null }.sumOf { Math.multiplyExact((quantities[it.id] ?: 0L).coerceAtLeast(0), it.averageCost.coerceAtLeast(0)) }
     val decantCapital = tracked.filter { it.remoteSourceProductId != null }.sumOf { Math.multiplyExact((quantities[it.id] ?: 0L).coerceAtLeast(0), it.averageCost.coerceAtLeast(0)) }
     val balances = customers.filter { it.isActive && it.balance > 0 }.sortedByDescending { it.balance }
-    val receivable = customers.sumOf { it.balance }
+    val receivable = remote?.currentState?.receivableTotal?.let(::cents) ?: customers.sumOf { it.balance }
     val saleIds = selectedSales.map { it.id }.toSet()
-    val top = saleItems.filter { it.saleId in saleIds }.groupBy { it.productId }.mapNotNull { (id, items) ->
+    val top = remote?.profitability?.map { Triple(it.productName,it.units.toLong(),cents(it.revenue)) }?.sortedByDescending { it.second }?.take(5) ?: saleItems.filter { it.saleId in saleIds }.groupBy { it.productId }.mapNotNull { (id, items) ->
         products.find { it.id == id }?.let { Triple(it.name, items.sumOf { line -> line.quantity }, items.sumOf { line -> line.subtotal }) }
     }.sortedByDescending { it.second }.take(5)
     val collected = payments.filter { payment -> payment.date.atZone(zone).toLocalDate().let { it >= range.from && it <= range.to } }
-    val creditCollected = collected.sumOf { it.amount }
-    val mix = selectedSales.groupBy { it.paymentType }.mapValues { (_, rows) -> rows.sumOf { it.paidAmount } }.filterValues { it > 0 }
+    val remoteInflows=remote?.cashFlow?.inflows
+    val creditCollected = remoteInflows?.debtCollections?.let(::cents) ?: collected.sumOf { it.amount }
+    val mix = (remoteInflows?.let { mapOf(SalePaymentType.CASH to cents(it.salesCash),SalePaymentType.CARD to cents(it.salesCard),SalePaymentType.TRANSFER to cents(it.salesTransfer)) }
+        ?: selectedSales.groupBy { it.paymentType }.mapValues { (_, rows) -> rows.sumOf { it.paidAmount } }).filterValues { it > 0 }
     val context = LocalContext.current
     val onlyDay = range.from == range.to
     val bars = if (onlyDay) (0..23).map { hour ->
@@ -173,6 +184,7 @@ internal fun ResumenOverview(
             }
         }
         if (showSupport) item { SupportSummaryCard(onSupport = onSupport, onHide = onHideSupport) }
+        if(remoteSummaryError!=null) item { Text(remoteSummaryError,color=ResumenMuted,fontSize=12.sp) }
         if (offline) item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -216,12 +228,12 @@ internal fun ResumenOverview(
             if (customFrom != null) Text("${range.from} — ${range.to}", color = ResumenMuted, fontSize = 12.sp, modifier = Modifier.padding(top = 5.dp))
         }
         item {
-            Surface(shape = RoundedCornerShape(10.dp), color = Color.White, border = BorderStroke(1.dp, Line)) {
+            Surface(modifier=if(remote!=null) Modifier.testTag("server-summary-metrics") else Modifier,shape = RoundedCornerShape(10.dp), color = Color.White, border = BorderStroke(1.dp, Line)) {
                 Column {
                     Row(Modifier.height(IntrinsicSize.Min)) {
                         MetricCell("VENTAS", amount(total), resumenComparison(total, priorTotal), Modifier.weight(1f), if (total < priorTotal) Red else Green)
                         VerticalDivider(color = Line)
-                        MetricCell("GANANCIA", if (showCost) amount(profit) else "Restringido", if (showCost) resumenComparison(profit, priorProfit) else "Sin permiso de costos", Modifier.weight(1f), if (profit < priorProfit) Red else Green)
+                        MetricCell("GANANCIA", if (!showCost) "Restringido" else if(costUnknown) "Por conciliar" else amount(profit), if (showCost && !costUnknown) resumenComparison(profit, priorProfit) else "Costo pendiente o restringido", Modifier.weight(1f), if (profit < priorProfit) Red else Green)
                     }
                     HorizontalDivider(color = Line)
                     Row(Modifier.height(IntrinsicSize.Min)) {
@@ -271,10 +283,12 @@ internal fun ResumenOverview(
                 }
             }
         }
-        item { IncomeChart(bars, total, average, selectedSales.size, onlyDay) }
+        if(remote==null || remote.period.salesCount==selectedSales.size) item { IncomeChart(bars, total, average, selectedSales.size, onlyDay) }
+        else item { SummaryPanel("Ingresos",Icons.Default.BarChart,"Ver ventas",onAllSales) { Text("${remote.period.salesCount} ventas · ${amount(total)}",color=ResumenInk,fontFamily=FontFamily.Monospace); Text("Consulta el detalle de las ventas del periodo.",color=ResumenMuted,fontSize=12.sp) } }
         if (showSales) item {
             SummaryPanel("Ventas recientes", Icons.Default.ReceiptLong, "Ver todas", onAllSales, padded = false) {
-                if (selectedSales.isEmpty()) EmptySummary("Aún no hay ventas ${if (onlyDay) "hoy" else "en este periodo"}", "Las ventas del periodo aparecerán aquí.", 140)
+                if (selectedSales.isEmpty() && remote!=null && remote.period.salesCount>0) TextButton(onAllSales) { Text("Ver ${remote.period.salesCount} ventas del periodo") }
+                else if (selectedSales.isEmpty()) EmptySummary("Aún no hay ventas ${if (onlyDay) "hoy" else "en este periodo"}", "Las ventas del periodo aparecerán aquí.", 140)
                 else {
                     Row(Modifier.fillMaxWidth().background(Panel).padding(horizontal = 12.dp, vertical = 8.dp)) {
                         Text("VENTA / CLIENTE", color = ResumenMuted, fontSize = 10.sp, modifier = Modifier.weight(1f))
@@ -326,9 +340,10 @@ internal fun ResumenOverview(
         item {
             SummaryPanel("Dinero por método", Icons.Default.Payments, "Cierre", onDayClose) {
                 mix.forEach { (method, received) -> MoneyRow(when(method) { SalePaymentType.CASH -> "Efectivo"; SalePaymentType.CARD -> "Tarjeta"; SalePaymentType.TRANSFER -> "Transferencia"; SalePaymentType.CREDIT -> "Crédito"; SalePaymentType.MIXED -> "Mixto" }, received) }
+                if(remoteInflows!=null && remoteInflows.salesOther>0) MoneyRow("Otros",cents(remoteInflows.salesOther))
                 MoneyRow("Crédito cobrado", creditCollected)
                 HorizontalDivider(color = Line, modifier = Modifier.padding(vertical = 8.dp))
-                MoneyRow("Total recibido", mix.values.sum() + creditCollected, true)
+                MoneyRow("Total recibido", remote?.period?.collectedInPeriod?.let(::cents) ?: (mix.values.sum() + creditCollected), true)
             }
         }
         if (showInventory) item {

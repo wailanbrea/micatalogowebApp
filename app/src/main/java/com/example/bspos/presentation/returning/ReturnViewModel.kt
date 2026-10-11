@@ -2,6 +2,7 @@ package com.example.bspos.presentation.returning
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.bspos.core.database.ShopScope
 import com.example.bspos.domain.model.Sale
 import com.example.bspos.domain.model.SalePaymentType
 import com.example.bspos.domain.model.SaleStatus
@@ -31,7 +32,8 @@ class ReturnViewModel @Inject constructor(
     saleRepository: SaleRepository,
     products: ProductRepository,
     private val completeReturn: CompleteCashReturnUseCase,
-    returns: ReturnDao
+    returns: ReturnDao,
+    shops:ShopScope
 ) : ViewModel() {
     private val selected = MutableStateFlow<Sale?>(null)
     private val _message = MutableStateFlow<String?>(null)
@@ -41,7 +43,7 @@ class ReturnViewModel @Inject constructor(
     val products = products.observeAll().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val items = selected.flatMapLatest { sale -> sale?.let { saleRepository.observeItems(it.id) } ?: flowOf(emptyList()) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
-    val returnedQuantities = selected.flatMapLatest { sale -> sale?.let { returns.observeQuantities(it.id) } ?: flowOf(emptyList()) }
+    val returnedQuantities = selected.flatMapLatest { sale -> sale?.let { selectedSale -> shops.observe { returns.observeQuantities(selectedSale.id,it) } } ?: flowOf(emptyList()) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     fun select(sale: Sale?) { selected.value = sale }

@@ -1,6 +1,8 @@
 package com.example.bspos.data.repository
 
 import com.example.bspos.data.local.InventoryLocalDataSource
+import com.example.bspos.core.database.ShopScope
+import com.example.bspos.data.local.entity.TenantMetadata
 import com.example.bspos.data.local.dao.ProductDao
 import com.example.bspos.data.local.dao.InventoryDao
 import com.example.bspos.data.micatalogo.RemoteMutationRecorder
@@ -26,31 +28,32 @@ class InventoryRepositoryImpl @Inject constructor(
     private val local: InventoryLocalDataSource,
     private val products: ProductDao,
     private val inventory: InventoryDao,
-    private val remote: RemoteMutationRecorder
+    private val remote: RemoteMutationRecorder,
+    private val shops: ShopScope
 ) : InventoryRepository {
     override fun observeStock(location: InventoryLocation) =
-        local.observeStock(location).map { rows -> rows.map { it.toDomain() } }
+        shops.observe { local.observeStock(location, it) }.map { rows -> rows.map { it.toDomain() } }
 
     override suspend fun findStock(productId: UUID, location: InventoryLocation) =
-        local.findStock(productId, location)?.toDomain()
+        local.findStock(productId, location, shops.current())?.toDomain()
 
     override fun observeMovements(
         productId: UUID, location: InventoryLocation, fromInclusive: Instant?, toExclusive: Instant?
     ): Flow<List<InventoryMovement>> {
         require(fromInclusive == null || toExclusive == null || fromInclusive < toExclusive) { "Invalid date range" }
-        return local.observeMovements(productId, location, fromInclusive, toExclusive)
+        return shops.observe { local.observeMovements(productId, location, fromInclusive, toExclusive, it) }
             .map { rows -> rows.map { it.toDomain() } }
     }
 
     override fun observeAllMovements(location: InventoryLocation): Flow<List<InventoryMovement>> =
-        local.observeAllMovements(location).map { rows -> rows.map { it.toDomain() } }
+        shops.observe { local.observeAllMovements(location, it) }.map { rows -> rows.map { it.toDomain() } }
 
-    override suspend fun findMovement(id: UUID) = local.findMovement(id)?.toDomain()
+    override suspend fun findMovement(id: UUID) = local.findMovement(id, shops.current())?.toDomain()
     override suspend fun recordMovements(movements: List<InventoryMovement>, allowNegativeStock: Boolean) {
-        remote.transaction {
+        shops.mutate { shop -> remote.transaction {
             val mutations = movements.filter { it.type in REMOTE_STOCK_TYPES }
             for (movement in mutations) {
-                val product = checkNotNull(products.findById(movement.productId))
+                val product = checkNotNull(products.findById(movement.productId, shop)) { "El producto no pertenece a la tienda" }
                 if (product.miCatalogoShopId == null) continue
                 require(movement.location == InventoryLocation.MAIN) { "Los cambios remotos se registran en el almacén principal." }
                 require(product.miCatalogoSaleUnit != "decant") { "Modifica el inventario de la botella fuente, no el decant." }
@@ -70,11 +73,12 @@ class InventoryRepositoryImpl @Inject constructor(
                     put("notes", movement.notes?.takeIf { it.isNotBlank() } ?: "${movement.type}: registro desde Android")
                 }, movement.createdAt, movement.id.toString())
             }
-            local.recordMovements(movements.map { it.toEntity() }, allowNegativeStock)
+            local.recordMovements(movements.map { it.toEntity().copy(tenant=TenantMetadata.assigned(shop)) }, allowNegativeStock)
             for (movement in mutations) {
-                val product = checkNotNull(products.findById(movement.productId))
+                val product = checkNotNull(products.findById(movement.productId, shop))
                 LinkedInventoryIncomingRecorder.record(product, movement, products, inventory)
             }
+        }
         }
         remote.wake()
     }
@@ -89,11 +93,12 @@ class InventoryRepositoryImpl @Inject constructor(
 }
 
 class InventoryAdjustmentReasonRepositoryImpl @Inject constructor(
-    private val local: InventoryLocalDataSource
+    private val local: InventoryLocalDataSource,
+    private val shops: ShopScope
 ) : InventoryAdjustmentReasonRepository {
-    override fun observeAll() = local.observeReasons().map { rows -> rows.map { it.toDomain() } }
-    override suspend fun findById(id: UUID) = local.findReason(id)?.toDomain()
-    override suspend fun insert(record: InventoryAdjustmentReason) = local.insert(record.toEntity())
-    override suspend fun update(record: InventoryAdjustmentReason) = local.update(record.toEntity())
-    override suspend fun softDelete(id: UUID, at: Instant) = local.deleteReason(id, at)
+    override fun observeAll() = shops.observe(local::observeReasons).map { rows -> rows.map { it.toDomain() } }
+    override suspend fun findById(id: UUID) = local.findReason(id, shops.current())?.toDomain()
+    override suspend fun insert(record: InventoryAdjustmentReason) = shops.mutate { local.insert(record.toEntity().copy(tenant=TenantMetadata.assigned(it))) }
+    override suspend fun update(record: InventoryAdjustmentReason) = shops.mutate { local.update(record.toEntity().copy(tenant=TenantMetadata.assigned(it))) }
+    override suspend fun softDelete(id: UUID, at: Instant) = shops.mutate { local.deleteReason(id, at, it) }
 }

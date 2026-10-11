@@ -18,7 +18,8 @@ import java.util.UUID
     indices = [
         Index(value = ["product_id", "location_type", "location_id"], name = "idx_inventory_stock_unique", unique = true),
         Index(value = ["product_id"], name = "idx_inventory_stock_product_id"),
-        Index(value = ["location_type", "location_id"], name = "idx_inventory_stock_location")
+        Index(value = ["location_type", "location_id"], name = "idx_inventory_stock_location"),
+        Index(value = ["remote_shop_id"], name = "idx_inventory_stock_shop")
     ]
 )
 data class InventoryStockEntity(
@@ -28,5 +29,6 @@ data class InventoryStockEntity(
     @ColumnInfo(name = "location_id") val locationId: String,
     @ColumnInfo(defaultValue = "0") val quantity: Long = 0,
     @ColumnInfo(name = "reserved_quantity", defaultValue = "0") val reservedQuantity: Long = 0,
-    @ColumnInfo(name = "updated_at") val updatedAt: Instant
+    @ColumnInfo(name = "updated_at") val updatedAt: Instant,
+    @androidx.room.Embedded val tenant: TenantMetadata = TenantMetadata()
 )

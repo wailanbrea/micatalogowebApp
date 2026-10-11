@@ -36,6 +36,20 @@ val hasReleaseSigning = listOf(
 android {
     sourceSets.getByName("test").resources.srcDir("$rootDir/docs/api-contracts")
     sourceSets.getByName("androidTest").assets.srcDir("$rootDir/docs/api-contracts")
+    sourceSets.getByName("androidTest").assets.srcDir("$projectDir/schemas")
+    if (providers.gradleProperty("miCatalogoEmulatorUiCheck").orNull == "true") {
+        val folders=listOf("src/androidTest/java/com/example/bspos/presentation", "src/androidTest/java/com/example/bspos/data/local/tenant")
+        sourceSets.getByName("androidTest").java.setSrcDirs(folders)
+        sourceSets.getByName("androidTest").kotlin.setSrcDirs(folders)
+    }
+    if (providers.gradleProperty("miCatalogoTenantCheck").orNull == "true") {
+        sourceSets.getByName("androidTest").java.setSrcDirs(
+            listOf("src/androidTest/java/com/example/bspos/data/local/tenant", "src/androidTest/java/com/example/bspos/presentation/orders")
+        )
+        sourceSets.getByName("androidTest").kotlin.setSrcDirs(
+            listOf("src/androidTest/java/com/example/bspos/data/local/tenant", "src/androidTest/java/com/example/bspos/presentation/orders")
+        )
+    }
     if (providers.gradleProperty("miCatalogoSummaryUiCheck").orNull == "true") {
         sourceSets.getByName("androidTest").java.setSrcDirs(
             listOf("src/androidTest/java/com/example/bspos/presentation/dashboard", "src/androidTest/java/com/example/bspos/presentation/sales", "src/androidTest/java/com/example/bspos/presentation/pos", "src/androidTest/java/com/example/bspos/presentation/quote", "src/androidTest/java/com/example/bspos/presentation/dayclose")
@@ -51,8 +65,8 @@ android {
         applicationId = "com.bsolutions.micatalogo"
         minSdk = 26
         targetSdk = 37
-        versionCode = 94
-        versionName = "1.0.93"
+        versionCode = 95
+        versionName = "1.0.94"
         buildConfigField("String", "MICATALOGO_API_BASE_URL", "\"${miCatalogoApiBaseUrl.get()}\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -72,7 +86,11 @@ android {
     buildTypes {
         debug {
             if (providers.gradleProperty("miCatalogoOfflineCheck").orNull == "true") {
-                applicationIdSuffix = ".offlinecheck"
+                applicationIdSuffix = when {
+                    providers.gradleProperty("miCatalogoEmulatorUiCheck").orNull == "true" -> ".offlinecheck.emulatorqa"
+                    providers.gradleProperty("miCatalogoTenantCheck").orNull == "true" -> ".offlinecheck.tenancy"
+                    else -> ".offlinecheck"
+                }
                 versionNameSuffix = "-offlinecheck"
             }
         }

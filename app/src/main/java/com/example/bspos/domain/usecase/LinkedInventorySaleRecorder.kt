@@ -13,7 +13,9 @@ internal object LinkedInventorySaleRecorder {
     suspend fun record(items: List<SaleItemEntity>, saleId: UUID, at: Instant,
         location: InventoryLocation, products: ProductDao, inventory: InventoryDao,
         allowNegative: Boolean, restoring: Boolean = false) {
-        val resolved = items.associateWith { checkNotNull(products.findById(it.productId)) }
+        val shop=checkNotNull(items.map { it.tenant.shopId }.distinct().singleOrNull()) { "Las líneas necesitan una sola tienda" }
+        require(items.all { it.tenant.status==com.example.bspos.data.local.entity.TenantMetadata.ASSIGNED })
+        val resolved = items.associateWith { checkNotNull(products.findById(it.productId,shop)) }
         val linked = resolved.filterValues { it.miCatalogoShopId != null && it.miCatalogoSaleUnit in setOf("bottle", "ml", "decant") }
         // Services are billable catalog offers, not stock. They must never create
         // a local inventory movement or be blocked by an empty stock row.
@@ -21,7 +23,7 @@ internal object LinkedInventorySaleRecorder {
         val ordinary = resolved.keys - linked.keys - services.keys
         val movements = mutableListOf<InventoryMovementEntity>()
         suspend fun add(productId: UUID, target: Long, cost: Long, sold: Boolean) {
-            val previous = inventory.findStock(productId, location.type, location.id)?.quantity ?: 0L
+            val previous = inventory.findStock(productId, location.type, location.id,shop)?.quantity ?: 0L
             val delta = target - previous
             if (delta == 0L) return
             val type = if (restoring && sold && delta > 0) InventoryMovementType.SALE_RETURN else if (sold && delta < 0) {
@@ -30,10 +32,11 @@ internal object LinkedInventorySaleRecorder {
             movements += InventoryMovementEntity(UUID.randomUUID(), productId, location.type, location.id,
                 type, delta, previous, target, cost, Math.multiplyExact(delta, cost),
                 if (restoring) InventoryReferenceType.RETURN else InventoryReferenceType.SALE, saleId,
-                notes = if (restoring) "Devolución y stock compartido" else "Venta y stock compartido", createdAt = at)
+                 notes = if (restoring) "Devolución y stock compartido" else "Venta y stock compartido", createdAt = at,
+                 tenant=com.example.bspos.data.local.entity.TenantMetadata.assigned(shop))
         }
         for (item in ordinary) {
-            val previous = inventory.findStock(item.productId, location.type, location.id)?.quantity ?: 0L
+            val previous = inventory.findStock(item.productId, location.type, location.id,shop)?.quantity ?: 0L
             add(item.productId, if (restoring) Math.addExact(previous,item.quantity) else Math.subtractExact(previous,item.quantity), item.unitCostSnapshot, true)
         }
         if (linked.isNotEmpty()) require(location == InventoryLocation.MAIN) { "Las presentaciones vinculadas se venden desde el almacén principal." }

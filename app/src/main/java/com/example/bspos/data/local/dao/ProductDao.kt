@@ -11,20 +11,24 @@ import java.util.UUID
 
 @Dao
 interface ProductDao {
-    @Query("SELECT * FROM products WHERE deleted_at IS NULL ORDER BY name, id")
-    fun observeAll(): Flow<List<ProductEntity>>
+    @Query("SELECT * FROM products WHERE remote_shop_id=:shopId AND tenancy_status='assigned' AND deleted_at IS NULL ORDER BY name, id")
+    fun observeAll(shopId: String? = null): Flow<List<ProductEntity>>
 
-    @Query("SELECT * FROM products WHERE deleted_at IS NULL AND (micatalogo_shop_id = :shopId OR micatalogo_shop_id IS NULL) ORDER BY name, id")
+    @Query("SELECT * FROM products WHERE deleted_at IS NULL AND remote_shop_id=:shopId AND tenancy_status='assigned' ORDER BY name, id")
     fun observeForShop(shopId: String): Flow<List<ProductEntity>>
 
-    @Query("SELECT * FROM products WHERE id = :id")
-    suspend fun findById(id: UUID): ProductEntity?
+    @Query("SELECT * FROM products WHERE id = :id AND remote_shop_id=:shopId AND tenancy_status='assigned'")
+    suspend fun findById(id: UUID, shopId: String? = null): ProductEntity?
 
-    @Query("SELECT * FROM products WHERE micatalogo_shop_id = :shopId AND deleted_at IS NULL")
+    @Query("SELECT * FROM products WHERE remote_shop_id=:shopId AND tenancy_status='assigned' AND deleted_at IS NULL")
     suspend fun findForShop(shopId: String): List<ProductEntity>
 
-    @Query("SELECT * FROM products WHERE micatalogo_shop_id = :shopId AND micatalogo_product_id = :remoteId LIMIT 1")
+    @Query("SELECT * FROM products WHERE remote_shop_id=:shopId AND tenancy_status='assigned' AND micatalogo_product_id = :remoteId LIMIT 1")
     suspend fun findRemote(shopId: String, remoteId: String): ProductEntity?
+
+    // Only the synchronizer may reconcile a single record with a verified remote identity.
+    @Query("SELECT * FROM products WHERE micatalogo_shop_id=:shopId AND micatalogo_product_id=:remoteId AND (remote_shop_id=:shopId OR remote_shop_id IS NULL)")
+    suspend fun remoteReconciliationCandidates(shopId: String, remoteId: String): List<ProductEntity>
 
     @Insert
     suspend fun insert(product: ProductEntity)
@@ -32,8 +36,8 @@ interface ProductDao {
     @Update
     suspend fun update(product: ProductEntity): Int
 
-    @Query("UPDATE products SET deleted_at = :at, updated_at = :at WHERE id = :id AND deleted_at IS NULL")
-    suspend fun softDelete(id: UUID, at: Instant): Int
+    @Query("UPDATE products SET deleted_at = :at, updated_at = :at WHERE id = :id AND remote_shop_id=:shopId AND tenancy_status='assigned' AND deleted_at IS NULL")
+    suspend fun softDelete(id: UUID, at: Instant, shopId: String? = null): Int
 
     @Query("UPDATE products SET deleted_at = :at, updated_at = :at WHERE micatalogo_shop_id IS NOT NULL AND deleted_at IS NULL AND micatalogo_shop_id NOT IN (:shopIds)")
     suspend fun archiveRemoteProductsExcept(shopIds: List<String>, at: Instant): Int

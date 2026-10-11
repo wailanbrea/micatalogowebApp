@@ -105,6 +105,7 @@ class OrderConfirmDialogTest {
         var orderOpen by mutableStateOf(true)
         var customerFormOpen by mutableStateOf(false)
         var createdCustomer by mutableStateOf<RemoteCustomerDto?>(null)
+        var customerDirectory by mutableStateOf<List<RemoteCustomerDto>>(emptyList())
         val customer = RemoteCustomerDto(id = "customer-created", name = "Nuevo cliente", isActive = true)
 
         compose.setContent {
@@ -112,7 +113,7 @@ class OrderConfirmDialogTest {
                 if (orderOpen) {
                     OrderConfirmDialog(
                         row = FeatureRowDto(id = "order-mixed", primary = "Pedido mixto", value = "RD$ 600.00", canConfirm = true),
-                        customers = listOfNotNull(createdCustomer),
+                        customers = customerDirectory,
                         customersLoading = false,
                         createdCustomer = createdCustomer,
                         busy = false,
@@ -128,7 +129,7 @@ class OrderConfirmDialogTest {
                         busy = false,
                         error = null,
                         onDismiss = { customerFormOpen = false },
-                        onCreate = { createdCustomer = customer }
+                        onCreate = { customerDirectory=listOf(customer); createdCustomer = customer }
                     )
                 }
             }
@@ -146,5 +147,24 @@ class OrderConfirmDialogTest {
         assertEquals(true, orderOpen)
         compose.onNodeWithText("Confirmar pedido").assertExists()
         compose.onNodeWithText("Confirmar venta").assertIsEnabled()
+    }
+
+    @Test fun inactiveAndPendingCustomersAreVisibleButCannotBeSelectedForCredit() {
+        compose.setContent {
+            BSPOSTheme {
+                OrderConfirmDialog(
+                    row=FeatureRowDto(id="qa-order",primary="Pedido QA",value="RD$ 600.00",canConfirm=true),
+                    customers=listOf(RemoteCustomerDto("inactive",name="Cliente inactivo",isActive=false),
+                        RemoteCustomerDto("pending",name="Cliente pendiente",isActive=true,localOnly=true)),
+                    customersLoading=false,busy=false,onDismiss={},onConfirm={ _,_,_,_,_ -> }
+                )
+            }
+        }
+        compose.onNodeWithText("Crédito").performClick()
+        compose.onNodeWithText("Cliente inactivo").performScrollTo().assertIsNotEnabled()
+        compose.onNodeWithText("Inactivo").assertExists()
+        compose.onNodeWithText("Cliente pendiente").performScrollTo().assertIsNotEnabled()
+        compose.onNodeWithText("Pendiente de sincronizar").assertExists()
+        compose.onNodeWithText("Confirmar venta").assertIsNotEnabled()
     }
 }

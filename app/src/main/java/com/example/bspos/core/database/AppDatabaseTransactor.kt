@@ -9,8 +9,10 @@ interface AppDatabaseTransactor {
 }
 
 class RoomDatabaseTransactor @Inject constructor(
-    private val database: AppDatabase
+    private val database: AppDatabase,
+    private val shops: ShopScope? = null
 ) : AppDatabaseTransactor {
     override suspend fun <R> runInTransaction(block: suspend () -> R): R =
-        database.withTransaction(block)
+        if (shops == null) database.withTransaction(block)
+        else shops.mutate { database.withTransaction(block) }
 }

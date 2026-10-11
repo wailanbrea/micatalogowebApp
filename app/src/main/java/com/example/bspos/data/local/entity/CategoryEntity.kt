@@ -9,7 +9,7 @@ import java.util.UUID
 
 @Entity(
     tableName = "categories",
-    indices = [Index(value = ["is_active"], name = "idx_categories_is_active")]
+    indices = [Index(value = ["is_active"], name = "idx_categories_is_active"), Index(value = ["remote_shop_id"], name = "idx_categories_shop")]
 )
 data class CategoryEntity(
     @PrimaryKey val id: UUID,
@@ -20,5 +20,6 @@ data class CategoryEntity(
     @ColumnInfo(name = "is_active", defaultValue = "1") val isActive: Boolean = true,
     @ColumnInfo(name = "created_at") val createdAt: Instant,
     @ColumnInfo(name = "updated_at") val updatedAt: Instant,
-    @ColumnInfo(name = "deleted_at") val deletedAt: Instant? = null
+    @ColumnInfo(name = "deleted_at") val deletedAt: Instant? = null,
+    @androidx.room.Embedded val tenant: TenantMetadata = TenantMetadata()
 )

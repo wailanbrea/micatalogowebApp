@@ -21,13 +21,15 @@ import java.util.UUID
         )
     ],
     indices = [
-        Index(value = ["internal_code"], name = "idx_products_internal_code", unique = true),
+        Index(value = ["remote_shop_id", "internal_code"], name = "idx_products_internal_code", unique = true),
         Index(value = ["barcode"], name = "idx_products_barcode"),
         Index(value = ["category_id"], name = "idx_products_category_id"),
         Index(value = ["unit_id"], name = "idx_products_unit_id"),
         Index(value = ["is_active"], name = "idx_products_is_active"),
         Index(value = ["micatalogo_shop_id"], name = "idx_products_micatalogo_shop_id"),
-        Index(value = ["micatalogo_product_id"], name = "idx_products_micatalogo_product_id")
+        Index(value = ["micatalogo_product_id"], name = "idx_products_micatalogo_product_id"),
+        Index(value = ["remote_shop_id"], name = "idx_products_shop"),
+        Index(value = ["remote_shop_id", "micatalogo_product_id"], name = "idx_products_shop_remote", unique = true)
     ]
 )
 data class ProductEntity(
@@ -61,5 +63,6 @@ data class ProductEntity(
     @ColumnInfo(name = "created_at") val createdAt: Instant,
     @ColumnInfo(name = "updated_at") val updatedAt: Instant,
     @ColumnInfo(name = "deleted_at") val deletedAt: Instant? = null,
-    @ColumnInfo(name = "micatalogo_product_slug") val miCatalogoProductSlug: String? = null
+    @ColumnInfo(name = "micatalogo_product_slug") val miCatalogoProductSlug: String? = null,
+    @androidx.room.Embedded val tenant: TenantMetadata = TenantMetadata(miCatalogoShopId)
 )

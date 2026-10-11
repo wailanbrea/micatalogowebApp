@@ -3,15 +3,20 @@ package com.example.bspos.presentation.orders
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.bspos.data.micatalogo.api.MiCatalogoApi
-import com.example.bspos.data.micatalogo.api.MiCatalogoCustomerApi
 import com.example.bspos.data.micatalogo.apiErrorMessage
-import com.example.bspos.data.micatalogo.dto.CustomerUploadRequestDto
 import com.example.bspos.data.micatalogo.dto.FeatureKpiDto
 import com.example.bspos.data.micatalogo.dto.FeatureRowDto
 import com.example.bspos.data.micatalogo.dto.OrderConfirmRequestDto
 import com.example.bspos.data.micatalogo.dto.RemoteCustomerDto
 import com.example.bspos.core.money.MoneyUtils
 import com.example.bspos.domain.repository.MiCatalogoConnectionRepository
+import com.example.bspos.domain.repository.CustomerRepository
+import com.example.bspos.domain.repository.MiCatalogoCatalogRepository
+import com.example.bspos.domain.model.Customer
+import com.example.bspos.core.database.ShopScope
+import com.example.bspos.data.micatalogo.MiCatalogoPosSaleOutboxMapper
+import java.time.Instant
+import kotlinx.coroutines.flow.collect
 import dagger.Lazy
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
@@ -20,7 +25,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import java.math.BigDecimal
 import java.util.UUID
 import javax.inject.Inject
 
@@ -52,8 +56,10 @@ data class OrdersUiState(
 @HiltViewModel
 class OrdersViewModel @Inject constructor(
     private val api: Lazy<MiCatalogoApi>,
-    private val customerApi: Lazy<MiCatalogoCustomerApi>,
-    private val connection: MiCatalogoConnectionRepository
+    private val connection: MiCatalogoConnectionRepository,
+    private val customerRepository:CustomerRepository,
+    private val catalog:MiCatalogoCatalogRepository,
+    private val shops:ShopScope
 ) : ViewModel() {
     private val _state = MutableStateFlow(OrdersUiState())
     val state = _state.asStateFlow()
@@ -65,6 +71,15 @@ class OrdersViewModel @Inject constructor(
     private var customersShopId: String? = null
     private var customersLoaded = false
     private var loadedModuleKey: String? = null
+    private var loadedShopId:String?=null
+
+    init {
+        viewModelScope.launch {
+            customerRepository.observeAll().collect { customers ->
+                _state.update { it.copy(customers=customers.map { customer -> customer.asRemoteOption() }) }
+            }
+        }
+    }
 
     fun load(feature: String = activeFeature, refresh: Boolean = false, search: String = activeSearch, status: String = activeStatus) {
         loadJob?.cancel()
@@ -77,7 +92,7 @@ class OrdersViewModel @Inject constructor(
                 _state.value = OrdersUiState(loading = false, error = "Selecciona una tienda activa para consultar los pedidos.")
                 return@launch
             }
-            val requestKey = "$feature|${activeSearch}|$activeStatus"
+            val requestKey = "$shopId|$feature|${activeSearch}|$activeStatus"
             val hasCachedModule = loadedModuleKey == requestKey && _state.value.error == null
             _state.update {
                 it.copy(
@@ -85,7 +100,8 @@ class OrdersViewModel @Inject constructor(
                     // refresh it in the background instead of showing a blank spinner.
                     loading = !refresh && !hasCachedModule,
                     refreshing = refresh || hasCachedModule,
-                    message = null,
+                    // Keep the confirmation until the screen closes the dialog and consumes it.
+                    message = if (refresh) it.message else null,
                     error = null
                 )
             }
@@ -106,6 +122,7 @@ class OrdersViewModel @Inject constructor(
                 )
                 if (!moduleResponse.isSuccessful) error(moduleResponse.apiErrorMessage("No se pudieron cargar los pedidos."))
                 val module = moduleResponse.body()?.module ?: error("MiCatalogo devolvió una respuesta vacía.")
+                if(connection.activeShopId()!=shopId) throw CancellationException("La tienda cambió durante la descarga")
                 _state.update {
                     it.copy(
                         loading = false,
@@ -120,6 +137,7 @@ class OrdersViewModel @Inject constructor(
                     )
                 }
                 loadedModuleKey = requestKey
+                loadedShopId=shopId
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Throwable) {
@@ -142,19 +160,18 @@ class OrdersViewModel @Inject constructor(
         customersLoaded = false
         _state.update { it.copy(customersLoading = true) }
         customersJob = viewModelScope.launch {
-            val customers = try {
-                val response = customerApi.get().customers(shopId)
-                if (!response.isSuccessful) null else response.body()?.customers.orEmpty()
+            val synchronized = try {
+                catalog.syncCustomers(shopId) is com.example.bspos.domain.model.MiCatalogoResult.Success
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Throwable) {
-                null
+                false
             }
 
             if (customersShopId == shopId && connection.activeShopId() == shopId) {
-                if (customers != null) {
+                if (synchronized) {
                     customersLoaded = true
-                    _state.update { it.copy(customers = customers, customersLoading = false) }
+                    _state.update { it.copy(customersLoading = false) }
                 } else {
                     _state.update { it.copy(customersLoading = false) }
                 }
@@ -175,7 +192,9 @@ class OrdersViewModel @Inject constructor(
         viewModelScope.launch {
             val shopId = connection.activeShopId() ?: return@launch
             _state.value = _state.value.copy(confirmingId = orderId, error = null, message = null)
-            runCatching {
+            runCatching { shops.mutate { active ->
+                require(active==shopId && loadedShopId==shopId) { "El pedido no pertenece a la tienda activa" }
+                if(paymentKind in setOf("credit","mixed")) require(_state.value.customers.any { it.id==customerId && it.isActive!=false && !it.localOnly }) { "Selecciona un cliente activo de esta tienda" }
                 api.get().confirmOrder(
                     shopId,
                     orderId,
@@ -187,6 +206,7 @@ class OrdersViewModel @Inject constructor(
                         reference = reference?.trim()?.ifBlank { null }
                     )
                 )
+            }
             }.onSuccess { response ->
                 if (!response.isSuccessful) error(response.apiErrorMessage("No se pudo confirmar el pedido. Revisa el cliente, el crédito y las existencias."))
                 val body = response.body()
@@ -196,6 +216,7 @@ class OrdersViewModel @Inject constructor(
                 )
                 load(activeFeature, refresh = true)
             }.onFailure {
+                if(it is CancellationException) throw it
                 _state.value = _state.value.copy(
                     confirmingId = null,
                     error = it.message ?: "No se pudo confirmar el pedido."
@@ -222,36 +243,19 @@ class OrdersViewModel @Inject constructor(
 
             _state.update { it.copy(creatingCustomer = true, customerCreateError = null, createdCustomer = null) }
             try {
-                val response = customerApi.get().createCustomer(
-                    shopId,
-                    CustomerUploadRequestDto(
-                        clientCustomerUuid = UUID.randomUUID().toString(),
-                        firstName = name,
-                        lastName = "",
-                        documentType = "cedula",
-                        documentNumber = "",
-                        name = name,
-                        phone = phone,
-                        email = null,
-                        address = "",
-                        whatsapp = phone.ifBlank { null },
-                        reference = null,
-                        creditLimit = BigDecimal.valueOf(creditCents, 2).toPlainString(),
-                        notes = "Creado desde Pedidos"
-                    )
-                )
-                if (!response.isSuccessful) {
-                    throw IllegalStateException(response.apiErrorMessage("No se pudo crear el cliente. Revisa los datos y los permisos de Clientes."))
+                val customer=shops.mutate { active ->
+                    require(active==shopId)
+                    val now=Instant.now()
+                    val local=Customer(UUID.randomUUID(),name,phone=phone,whatsapp=phone.ifBlank { null },
+                        creditLimit=creditCents,firstName=name,notes="Creado desde Pedidos",createdAt=now,updatedAt=now)
+                    customerRepository.insert(local)
+                    checkNotNull(customerRepository.findById(local.id)).asRemoteOption()
                 }
-                val customer = response.body()
-                    ?: throw IllegalStateException("MiCatalogo no devolvió el cliente creado.")
                 _state.update {
                     it.copy(
-                        customers = (it.customers.filterNot { existing -> existing.id == customer.id } + customer)
-                            .sortedBy { item -> (item.name ?: "").lowercase() },
                         creatingCustomer = false,
-                        customerCreateError = null,
-                        createdCustomer = customer
+                        customerCreateError = if(customer.localOnly) "Guardado sin conexión. Sincroniza antes de usarlo a crédito." else null,
+                        createdCustomer = customer.takeUnless { it.localOnly }
                     )
                 }
             } catch (cancelled: CancellationException) {
@@ -270,6 +274,14 @@ class OrdersViewModel @Inject constructor(
     fun consumeCreatedCustomer() {
         _state.update { it.copy(createdCustomer = null) }
     }
+
+    private fun Customer.asRemoteOption()=RemoteCustomerDto(
+        id=remoteCustomerId ?: id.toString(),clientCustomerUuid=id.toString(),name=fullName,
+        firstName=firstName,lastName=lastName,documentType=documentType,documentNumber=documentNumber,
+        phone=phone,email=email,address=address,whatsapp=whatsapp,reference=reference,
+        creditLimit=MiCatalogoPosSaleOutboxMapper.decimalPrice(creditLimit),
+        balance=MiCatalogoPosSaleOutboxMapper.decimalPrice(balance),isActive=isActive,
+        updatedAt=updatedAt.toString(),localOnly=remoteCustomerId==null)
 
     fun consumeCustomerCreateError() {
         _state.update { it.copy(customerCreateError = null) }

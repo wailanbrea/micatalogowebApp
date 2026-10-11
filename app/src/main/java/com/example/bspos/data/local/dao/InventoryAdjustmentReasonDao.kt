@@ -11,11 +11,11 @@ import java.util.UUID
 
 @Dao
 interface InventoryAdjustmentReasonDao {
-    @Query("SELECT * FROM inventory_adjustment_reasons WHERE deleted_at IS NULL ORDER BY name, id")
-    fun observeAll(): Flow<List<InventoryAdjustmentReasonEntity>>
+    @Query("SELECT * FROM inventory_adjustment_reasons WHERE remote_shop_id=:shopId AND tenancy_status='assigned' AND deleted_at IS NULL ORDER BY name, id")
+    fun observeAll(shopId: String? = null): Flow<List<InventoryAdjustmentReasonEntity>>
 
-    @Query("SELECT * FROM inventory_adjustment_reasons WHERE id = :id")
-    suspend fun findById(id: UUID): InventoryAdjustmentReasonEntity?
+    @Query("SELECT * FROM inventory_adjustment_reasons WHERE id = :id AND remote_shop_id=:shopId AND tenancy_status='assigned'")
+    suspend fun findById(id: UUID, shopId: String? = null): InventoryAdjustmentReasonEntity?
 
     @Insert
     suspend fun insert(reason: InventoryAdjustmentReasonEntity)
@@ -23,6 +23,6 @@ interface InventoryAdjustmentReasonDao {
     @Update
     suspend fun update(reason: InventoryAdjustmentReasonEntity): Int
 
-    @Query("UPDATE inventory_adjustment_reasons SET deleted_at = :at, updated_at = :at WHERE id = :id AND deleted_at IS NULL")
-    suspend fun softDelete(id: UUID, at: Instant): Int
+    @Query("UPDATE inventory_adjustment_reasons SET deleted_at = :at, updated_at = :at WHERE id = :id AND remote_shop_id=:shopId AND tenancy_status='assigned' AND deleted_at IS NULL")
+    suspend fun softDelete(id: UUID, at: Instant, shopId: String? = null): Int
 }

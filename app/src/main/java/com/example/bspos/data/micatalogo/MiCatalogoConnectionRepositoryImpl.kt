@@ -5,6 +5,9 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.example.bspos.core.network.MiCatalogoBaseUrl
+import com.example.bspos.core.database.ShopSwitchLock
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.CancellationException
 import com.example.bspos.data.micatalogo.api.MiCatalogoApi
 import com.example.bspos.data.micatalogo.dto.LoginRequestDto
 import com.example.bspos.data.micatalogo.dto.InventoryImportAttributeDto
@@ -52,7 +55,8 @@ class MiCatalogoConnectionRepositoryImpl @Inject constructor(
     private val dataStore: DataStore<Preferences>,
     private val api: Lazy<MiCatalogoApi>,
     @param:MiCatalogoBaseUrl private val baseUrl: String,
-    private val json: Json = Json { ignoreUnknownKeys = true }
+    private val json: Json = Json { ignoreUnknownKeys = true },
+    private val shopLock: ShopSwitchLock = ShopSwitchLock()
 ) : MiCatalogoConnectionRepository {
     private class MiCatalogoHttpException(val statusCode: Int, override val message: String) : RuntimeException(message)
 
@@ -213,10 +217,10 @@ class MiCatalogoConnectionRepositoryImpl @Inject constructor(
             }
         }
         check(available) { "La tienda seleccionada no pertenece a esta cuenta." }
-        dataStore.edit { it[ACTIVE_SHOP_ID] = shopId }
+        shopLock.mutex.withLock { dataStore.edit { it[ACTIVE_SHOP_ID] = shopId } }
     }.fold(
         onSuccess = { MiCatalogoResult.Success(Unit) },
-        onFailure = { MiCatalogoResult.Failure(it.message ?: "No se pudo seleccionar la tienda.") }
+        onFailure = { if (it is CancellationException) throw it; MiCatalogoResult.Failure(it.message ?: "No se pudo seleccionar la tienda.") }
     )
 
     override suspend fun managedShops(): MiCatalogoResult<List<MiCatalogoManagedShop>> = runCatching {
@@ -342,12 +346,15 @@ class MiCatalogoConnectionRepositoryImpl @Inject constructor(
         onFailure = { MiCatalogoResult.Failure(it.message ?: "No se pudo importar el inventario.") }
     )
 
-    private suspend fun saveAccessToken(accessToken: String, email: String, remember: Boolean, user: MeDto?) {
+    private suspend fun saveAccessToken(accessToken: String, email: String, remember: Boolean, user: MeDto?) = shopLock.mutex.withLock {
         check(accessToken.isNotBlank()) { "MiCatalogo access token cannot be blank" }
         temporaryAccessToken.value = if (remember) null else accessToken
         val normalizedEmail = user?.email?.takeIf(String::isNotBlank) ?: email.trim()
         dataStore.edit {
-            if (!it[ACCOUNT_EMAIL].orEmpty().equals(normalizedEmail, ignoreCase = true)) it.remove(SHOP_CACHE)
+            if (!it[ACCOUNT_EMAIL].orEmpty().equals(normalizedEmail, ignoreCase = true)) {
+                it.remove(SHOP_CACHE)
+                it.remove(ACTIVE_SHOP_ID)
+            }
             it[ACCOUNT_EMAIL] = normalizedEmail
             user?.name?.takeIf(String::isNotBlank)?.let { name -> it[ACCOUNT_NAME] = name }
             it[ACCOUNT_ROLE] = user?.role?.takeIf(String::isNotBlank) ?: "seller"
@@ -418,7 +425,7 @@ class MiCatalogoConnectionRepositoryImpl @Inject constructor(
         productCount = shop.productCount
     )
 
-    override suspend fun clearConnection() {
+    override suspend fun clearConnection() = shopLock.mutex.withLock {
         temporaryAccessToken.value = null
         dataStore.edit {
             it.remove(ACCESS_TOKEN)
@@ -430,6 +437,7 @@ class MiCatalogoConnectionRepositoryImpl @Inject constructor(
             it.remove(ACTIVE_SHOP_ID)
             it.remove(SHOP_CACHE)
         }
+        Unit
     }
 
     private companion object {

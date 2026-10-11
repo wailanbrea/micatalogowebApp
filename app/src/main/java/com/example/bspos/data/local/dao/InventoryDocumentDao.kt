@@ -19,14 +19,14 @@ import java.util.UUID
 
 @Dao
 abstract class InventoryDocumentDao {
-    @Query("SELECT * FROM purchases WHERE supplier_id = :supplierId ORDER BY date DESC, id DESC")
-    abstract fun observePurchasesForSupplier(supplierId: UUID): Flow<List<PurchaseEntity>>
+    @Query("SELECT * FROM purchases WHERE remote_shop_id=:shopId AND tenancy_status='assigned' AND supplier_id = :supplierId ORDER BY date DESC, id DESC")
+    abstract fun observePurchasesForSupplier(supplierId: UUID, shopId: String? = null): Flow<List<PurchaseEntity>>
 
-    @Query("SELECT * FROM purchases WHERE id = :id")
-    abstract suspend fun findPurchase(id: UUID): PurchaseEntity?
+    @Query("SELECT * FROM purchases WHERE id = :id AND remote_shop_id=:shopId AND tenancy_status='assigned'")
+    abstract suspend fun findPurchase(id: UUID, shopId: String? = null): PurchaseEntity?
 
-    @Query("SELECT * FROM purchase_items WHERE purchase_id = :purchaseId ORDER BY id")
-    abstract fun observePurchaseItems(purchaseId: UUID): Flow<List<PurchaseItemEntity>>
+    @Query("SELECT * FROM purchase_items WHERE remote_shop_id=:shopId AND tenancy_status='assigned' AND purchase_id = :purchaseId ORDER BY id")
+    abstract fun observePurchaseItems(purchaseId: UUID, shopId: String? = null): Flow<List<PurchaseItemEntity>>
 
     @Insert protected abstract suspend fun insertPurchase(purchase: PurchaseEntity)
     @Insert protected abstract suspend fun insertPurchaseItems(items: List<PurchaseItemEntity>)
@@ -35,18 +35,20 @@ abstract class InventoryDocumentDao {
     @Transaction
     open suspend fun insertPurchaseWithItems(purchase: PurchaseEntity, items: List<PurchaseItemEntity>) {
         validatePurchase(purchase, items)
+        val shop=checkNotNull(purchase.tenant.shopId){"La compra necesita tienda"}
+        require(items.all { it.tenant.shopId==null || it.tenant.shopId==shop })
         insertPurchase(purchase)
-        insertPurchaseItems(items)
+        insertPurchaseItems(items.map { it.copy(tenant=purchase.tenant) })
     }
 
-    @Query("SELECT * FROM stock_entries WHERE id = :id")
-    abstract suspend fun findStockEntry(id: UUID): StockEntryEntity?
+    @Query("SELECT * FROM stock_entries WHERE id = :id AND remote_shop_id=:shopId AND tenancy_status='assigned'")
+    abstract suspend fun findStockEntry(id: UUID, shopId: String? = null): StockEntryEntity?
 
-    @Query("SELECT * FROM stock_entries WHERE supplier_id = :supplierId ORDER BY date DESC, id DESC")
-    abstract fun observeStockEntriesForSupplier(supplierId: UUID): Flow<List<StockEntryEntity>>
+    @Query("SELECT * FROM stock_entries WHERE remote_shop_id=:shopId AND tenancy_status='assigned' AND supplier_id = :supplierId ORDER BY date DESC, id DESC")
+    abstract fun observeStockEntriesForSupplier(supplierId: UUID, shopId: String? = null): Flow<List<StockEntryEntity>>
 
-    @Query("SELECT * FROM stock_entry_items WHERE entry_id = :entryId ORDER BY id")
-    abstract fun observeStockEntryItems(entryId: UUID): Flow<List<StockEntryItemEntity>>
+    @Query("SELECT * FROM stock_entry_items WHERE remote_shop_id=:shopId AND tenancy_status='assigned' AND entry_id = :entryId ORDER BY id")
+    abstract fun observeStockEntryItems(entryId: UUID, shopId: String? = null): Flow<List<StockEntryItemEntity>>
 
     @Insert protected abstract suspend fun insertStockEntry(entry: StockEntryEntity)
     @Insert protected abstract suspend fun insertStockEntryItems(items: List<StockEntryItemEntity>)
@@ -54,19 +56,21 @@ abstract class InventoryDocumentDao {
     @Transaction
     open suspend fun insertStockEntryWithItems(entry: StockEntryEntity, items: List<StockEntryItemEntity>) {
         require(entry.documentNumber.isNotBlank()) { "Document number is required" }
+        val shop=checkNotNull(entry.tenant.shopId){"La entrada necesita tienda"}
+        require(items.all { it.tenant.shopId==null || it.tenant.shopId==shop })
         validateEntryItems(entry.id, items)
         insertStockEntry(entry)
-        insertStockEntryItems(items)
+        insertStockEntryItems(items.map { it.copy(tenant=entry.tenant) })
     }
 
-    @Query("SELECT * FROM inventory_counts ORDER BY started_at DESC, id DESC")
-    abstract fun observeCounts(): Flow<List<InventoryCountEntity>>
+    @Query("SELECT * FROM inventory_counts WHERE remote_shop_id=:shopId AND tenancy_status='assigned' ORDER BY started_at DESC, id DESC")
+    abstract fun observeCounts(shopId: String? = null): Flow<List<InventoryCountEntity>>
 
-    @Query("SELECT * FROM inventory_counts WHERE id = :id")
-    abstract suspend fun findCount(id: UUID): InventoryCountEntity?
+    @Query("SELECT * FROM inventory_counts WHERE id = :id AND remote_shop_id=:shopId AND tenancy_status='assigned'")
+    abstract suspend fun findCount(id: UUID, shopId: String? = null): InventoryCountEntity?
 
-    @Query("SELECT * FROM inventory_count_items WHERE count_id = :countId ORDER BY product_id")
-    abstract fun observeCountItems(countId: UUID): Flow<List<InventoryCountItemEntity>>
+    @Query("SELECT * FROM inventory_count_items WHERE remote_shop_id=:shopId AND tenancy_status='assigned' AND count_id = :countId ORDER BY product_id")
+    abstract fun observeCountItems(countId: UUID, shopId: String? = null): Flow<List<InventoryCountItemEntity>>
 
     @Insert protected abstract suspend fun insertCount(count: InventoryCountEntity)
     @Insert protected abstract suspend fun insertCountItems(items: List<InventoryCountItemEntity>)
@@ -74,6 +78,8 @@ abstract class InventoryDocumentDao {
 
     @Transaction
     open suspend fun insertCountWithItems(count: InventoryCountEntity, items: List<InventoryCountItemEntity>) {
+        val shop=checkNotNull(count.tenant.shopId){"El conteo necesita tienda"}
+        require(items.all { it.tenant.shopId==null || it.tenant.shopId==shop })
         require(count.status == InventoryCountStatus.DRAFT) { "A new count must start as DRAFT" }
         require(count.completedAt == null) { "A draft count cannot be completed" }
         require(items.isNotEmpty()) { "A count must include at least one product" }
@@ -83,12 +89,12 @@ abstract class InventoryDocumentDao {
             require(Math.subtractExact(it.physicalQuantity, it.systemQuantity) == it.difference) { "Incorrect count difference" }
         }
         insertCount(count)
-        insertCountItems(items)
+        insertCountItems(items.map { it.copy(tenant=count.tenant) })
     }
 
     @Transaction
-    open suspend fun updateCountStatus(id: UUID, status: InventoryCountStatus, completedAt: Instant?) {
-        val current = checkNotNull(findCount(id)) { "Inventory count not found" }
+    open suspend fun updateCountStatus(id: UUID, status: InventoryCountStatus, completedAt: Instant?, shopId: String? = null) {
+        val current = checkNotNull(findCount(id, shopId)) { "Inventory count not found in shop" }
         require(isValidCountTransition(current.status, status)) { "Invalid count transition" }
         require((status == InventoryCountStatus.COMPLETED) == (completedAt != null)) { "Completion timestamp does not match status" }
         check(updateCount(current.copy(status = status, completedAt = completedAt)) == 1)

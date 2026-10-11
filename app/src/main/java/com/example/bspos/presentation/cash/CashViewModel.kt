@@ -26,7 +26,7 @@ class CashViewModel @Inject constructor(
     val expected = session.flatMapLatest { current ->
         current?.let { opened ->
             useCases.observeMovements(opened.id).map { movements ->
-                opened.openingAmount + movements.sumOf { if (it.type == CashMovementType.EXPENSE || it.type == CashMovementType.REFUND) -it.amount else it.amount }
+                opened.expectedAmount ?: (opened.openingAmount + movements.sumOf { if (it.type == CashMovementType.EXPENSE || it.type == CashMovementType.REFUND) -it.amount else it.amount })
             }
         } ?: flowOf(null)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)

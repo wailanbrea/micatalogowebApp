@@ -13,7 +13,7 @@ import java.util.UUID
 @Entity(
     tableName = "stock_entries",
     foreignKeys = [ForeignKey(entity = SupplierEntity::class, parentColumns = ["id"], childColumns = ["supplier_id"], onUpdate = ForeignKey.CASCADE, onDelete = ForeignKey.SET_NULL)],
-    indices = [Index(value = ["supplier_id"], name = "idx_stock_entries_supplier_id"), Index(value = ["date"], name = "idx_stock_entries_date")]
+    indices = [Index(value = ["supplier_id"], name = "idx_stock_entries_supplier_id"), Index(value = ["date"], name = "idx_stock_entries_date"), Index(value = ["remote_shop_id"], name = "idx_stock_entries_shop")]
 )
 data class StockEntryEntity(
     @PrimaryKey val id: UUID,
@@ -22,7 +22,8 @@ data class StockEntryEntity(
     val date: Instant,
     val notes: String? = null,
     @ColumnInfo(defaultValue = "'COMPLETED'") val status: InventoryDocumentStatus = InventoryDocumentStatus.COMPLETED,
-    @ColumnInfo(name = "created_at") val createdAt: Instant
+    @ColumnInfo(name = "created_at") val createdAt: Instant,
+    @androidx.room.Embedded val tenant: TenantMetadata = TenantMetadata()
 )
 
 @Entity(
@@ -31,7 +32,7 @@ data class StockEntryEntity(
         ForeignKey(entity = StockEntryEntity::class, parentColumns = ["id"], childColumns = ["entry_id"], onUpdate = ForeignKey.CASCADE, onDelete = ForeignKey.CASCADE),
         ForeignKey(entity = ProductEntity::class, parentColumns = ["id"], childColumns = ["product_id"], onUpdate = ForeignKey.CASCADE, onDelete = ForeignKey.RESTRICT)
     ],
-    indices = [Index(value = ["entry_id"], name = "idx_stock_entry_items_entry_id"), Index(value = ["product_id"], name = "idx_stock_entry_items_product_id")]
+    indices = [Index(value = ["entry_id"], name = "idx_stock_entry_items_entry_id"), Index(value = ["product_id"], name = "idx_stock_entry_items_product_id"), Index(value = ["remote_shop_id"], name = "idx_stock_entry_items_shop")]
 )
 data class StockEntryItemEntity(
     @PrimaryKey val id: UUID,
@@ -39,13 +40,14 @@ data class StockEntryItemEntity(
     @ColumnInfo(name = "product_id") val productId: UUID,
     val quantity: Long,
     @ColumnInfo(name = "unit_cost") val unitCost: Long,
-    val subtotal: Long
+    val subtotal: Long,
+    @androidx.room.Embedded val tenant: TenantMetadata = TenantMetadata()
 )
 
 @Entity(
     tableName = "purchases",
     foreignKeys = [ForeignKey(entity = SupplierEntity::class, parentColumns = ["id"], childColumns = ["supplier_id"], onUpdate = ForeignKey.CASCADE, onDelete = ForeignKey.RESTRICT)],
-    indices = [Index(value = ["supplier_id"], name = "idx_purchases_supplier_id"), Index(value = ["date"], name = "idx_purchases_date")]
+    indices = [Index(value = ["supplier_id"], name = "idx_purchases_supplier_id"), Index(value = ["date"], name = "idx_purchases_date"), Index(value = ["remote_shop_id"], name = "idx_purchases_shop")]
 )
 data class PurchaseEntity(
     @PrimaryKey val id: UUID,
@@ -60,7 +62,8 @@ data class PurchaseEntity(
     val notes: String? = null,
     @ColumnInfo(defaultValue = "'COMPLETED'") val status: InventoryDocumentStatus = InventoryDocumentStatus.COMPLETED,
     @ColumnInfo(name = "created_at") val createdAt: Instant,
-    @ColumnInfo(name = "updated_at") val updatedAt: Instant
+    @ColumnInfo(name = "updated_at") val updatedAt: Instant,
+    @androidx.room.Embedded val tenant: TenantMetadata = TenantMetadata()
 )
 
 @Entity(
@@ -69,7 +72,7 @@ data class PurchaseEntity(
         ForeignKey(entity = PurchaseEntity::class, parentColumns = ["id"], childColumns = ["purchase_id"], onUpdate = ForeignKey.CASCADE, onDelete = ForeignKey.CASCADE),
         ForeignKey(entity = ProductEntity::class, parentColumns = ["id"], childColumns = ["product_id"], onUpdate = ForeignKey.CASCADE, onDelete = ForeignKey.RESTRICT)
     ],
-    indices = [Index(value = ["purchase_id"], name = "idx_purchase_items_purchase_id"), Index(value = ["product_id"], name = "idx_purchase_items_product_id")]
+    indices = [Index(value = ["purchase_id"], name = "idx_purchase_items_purchase_id"), Index(value = ["product_id"], name = "idx_purchase_items_product_id"), Index(value = ["remote_shop_id"], name = "idx_purchase_items_shop")]
 )
 data class PurchaseItemEntity(
     @PrimaryKey val id: UUID,
@@ -79,16 +82,18 @@ data class PurchaseItemEntity(
     @ColumnInfo(name = "unit_cost") val unitCost: Long,
     @ColumnInfo(defaultValue = "0") val discount: Long = 0,
     @ColumnInfo(defaultValue = "0") val tax: Long = 0,
-    val subtotal: Long
+    val subtotal: Long,
+    @androidx.room.Embedded val tenant: TenantMetadata = TenantMetadata()
 )
 
-@Entity(tableName = "inventory_counts")
+@Entity(tableName = "inventory_counts", indices = [Index(value = ["remote_shop_id"], name = "idx_inventory_counts_shop")])
 data class InventoryCountEntity(
     @PrimaryKey val id: UUID,
     @ColumnInfo(name = "started_at") val startedAt: Instant,
     @ColumnInfo(name = "completed_at") val completedAt: Instant? = null,
     val notes: String? = null,
-    @ColumnInfo(defaultValue = "'DRAFT'") val status: InventoryCountStatus = InventoryCountStatus.DRAFT
+    @ColumnInfo(defaultValue = "'DRAFT'") val status: InventoryCountStatus = InventoryCountStatus.DRAFT,
+    @androidx.room.Embedded val tenant: TenantMetadata = TenantMetadata()
 )
 
 @Entity(
@@ -97,7 +102,7 @@ data class InventoryCountEntity(
         ForeignKey(entity = InventoryCountEntity::class, parentColumns = ["id"], childColumns = ["count_id"], onUpdate = ForeignKey.CASCADE, onDelete = ForeignKey.CASCADE),
         ForeignKey(entity = ProductEntity::class, parentColumns = ["id"], childColumns = ["product_id"], onUpdate = ForeignKey.CASCADE, onDelete = ForeignKey.RESTRICT)
     ],
-    indices = [Index(value = ["count_id"], name = "idx_count_items_count_id"), Index(value = ["product_id"], name = "idx_count_items_product_id"), Index(value = ["count_id", "product_id"], name = "idx_count_items_unique", unique = true)]
+    indices = [Index(value = ["count_id"], name = "idx_count_items_count_id"), Index(value = ["product_id"], name = "idx_count_items_product_id"), Index(value = ["count_id", "product_id"], name = "idx_count_items_unique", unique = true), Index(value = ["remote_shop_id"], name = "idx_inventory_count_items_shop")]
 )
 data class InventoryCountItemEntity(
     @PrimaryKey val id: UUID,
@@ -105,5 +110,6 @@ data class InventoryCountItemEntity(
     @ColumnInfo(name = "product_id") val productId: UUID,
     @ColumnInfo(name = "system_quantity") val systemQuantity: Long,
     @ColumnInfo(name = "physical_quantity") val physicalQuantity: Long,
-    val difference: Long
+    val difference: Long,
+    @androidx.room.Embedded val tenant: TenantMetadata = TenantMetadata()
 )

@@ -109,6 +109,7 @@ private fun CustomerCard(customer: Customer, showCredit: Boolean, onEdit: () -> 
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(customer.fullName, fontWeight = FontWeight.ExtraBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    if(!customer.isActive) Text("Inactivo",color=BSPOSTheme.colors.textSecondary,style=MaterialTheme.typography.labelMedium)
                     Text(customer.phone ?: customer.whatsapp ?: "Sin teléfono registrado", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelMedium)
                 }
                 IconButton(onEdit) { Icon(Icons.Default.Edit, "Editar", tint = BSPOSTheme.colors.primary) }

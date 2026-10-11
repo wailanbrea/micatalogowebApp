@@ -164,12 +164,13 @@ class MiCatalogoPosSaleRepositoryImpl @Inject constructor(
         saleId: java.util.UUID,
         request: PosSaleUploadRequestDto
     ): PosSaleUploadRequestDto {
-        val sale = checkNotNull(sales.findById(saleId)) { "La venta local no existe." }
+        val sale = checkNotNull(sales.findById(saleId,remoteShopId)) { "La venta local no existe en la tienda." }
         if (request.creditAmount == null || request.creditAmount.toBigDecimal().signum() <= 0) return request
         if (!request.customerId.isNullOrBlank()) return request
 
         val customerId = checkNotNull(sale.customerId) { "La venta a crédito no tiene cliente." }
-        val customer = checkNotNull(customers.findCustomer(customerId)) { "El cliente local no existe." }
+        val customer = checkNotNull(customers.findCustomer(customerId,remoteShopId)) { "El cliente local no existe en la tienda." }
+        require(customer.isActive && customer.deletedAt==null) { "El cliente está inactivo" }
         customer.miCatalogoCustomerId?.takeIf { it.isNotBlank() && customer.miCatalogoCustomerShopId == remoteShopId }?.let {
             return request.copy(customerId = it)
         }

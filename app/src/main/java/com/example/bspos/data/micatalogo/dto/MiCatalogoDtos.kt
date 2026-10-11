@@ -1088,7 +1088,8 @@ data class RemoteCustomerDto(
     val balance: String? = null,
     @SerialName("available_credit") val availableCredit: String? = null,
     @SerialName("is_active") val isActive: Boolean? = null,
-    @SerialName("updated_at") val updatedAt: String? = null
+    @SerialName("updated_at") val updatedAt: String? = null,
+    @kotlinx.serialization.Transient val localOnly: Boolean = false
 )
 
 @Serializable
