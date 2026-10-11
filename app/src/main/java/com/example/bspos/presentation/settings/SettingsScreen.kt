@@ -46,6 +46,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -84,11 +85,14 @@ fun SettingsScreen(
         if (miCatalogoConnection.isConfigured) viewModel.loadShops()
     }
     Column(Modifier.fillMaxSize().background(BSPOSTheme.colors.background).verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
             Box(Modifier.size(46.dp).clip(RoundedCornerShape(15.dp)).background(BSPOSTheme.colors.primaryLight), contentAlignment = Alignment.Center) { Icon(Icons.Default.Settings, null, tint = BSPOSTheme.colors.primary) }
             Spacer(Modifier.width(12.dp))
-            Column {
-                Text(if (teamOnly) "Equipo y permisos" else "Ajustes", fontWeight = FontWeight.ExtraBold)
+            Column(Modifier.weight(1f)) {
+                Text(if (teamOnly) "Vendedores y permisos" else "Ajustes", fontWeight = FontWeight.ExtraBold)
+                if (teamOnly) {
+                    Text("Controla quién puede operar esta tienda y qué menús puede abrir.", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodySmall)
+                }
             }
         }
         selectedShop?.let { shop ->
@@ -129,8 +133,13 @@ fun SettingsScreen(
             key(shop.id) {
                 if (activeSection == "team" && shop.canManageSellers) {
                     var creating by rememberSaveable { mutableStateOf(false) }
-                    Text("Permisos de usuarios / vendedores", fontWeight = FontWeight.Bold)
-                    TextButton(onClick = { creating = !creating }) { Text(if (creating) "Ocultar formulario de creación" else "Crear / invitar vendedor") }
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Equipo de la tienda", fontWeight = FontWeight.ExtraBold)
+                            Text("${shop.sellers.count { it.isActive }} vendedor(es) activo(s)", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodySmall)
+                        }
+                        TextButton(onClick = { creating = !creating }) { Text(if (creating) "Cerrar" else "Nuevo vendedor") }
+                    }
                     if (creating) SellerCreateCard(shop, miCatalogoUi.isCreatingSeller, viewModel::createSeller)
                     SellerMenuPermissionsCard(shop, miCatalogoUi.updatingSellerMenuId, viewModel::updateSellerMenus)
                 }
@@ -269,23 +278,65 @@ private fun SellerMenuPermissionsCard(
 ) {
     Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface)) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("Menús de vendedores · ${shop.name}", fontWeight = FontWeight.ExtraBold)
-            Text("Marca o desmarca módulos y pulsa Guardar menús. Los cambios se aplican en web y app.", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodySmall)
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f).padding(end = 8.dp)) {
+                    Text("Permisos por vendedor", fontWeight = FontWeight.ExtraBold)
+                    Text("Los cambios se aplican en la web y en Android.", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodySmall)
+                }
+                Text(
+                    "${shop.sellers.count { it.isActive }} activos",
+                    color = BSPOSTheme.colors.primary,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            }
             shop.sellers.filter { it.isActive }.forEach { seller ->
                 var enabled by remember(seller.id, seller.menuPermissions) { mutableStateOf(seller.menuPermissions.toSet()) }
-                Card(colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.background)) {
-                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(seller.name, fontWeight = FontWeight.Bold)
-                        Text(seller.email, color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodySmall)
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.background),
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                Modifier.size(38.dp).clip(RoundedCornerShape(12.dp)).background(BSPOSTheme.colors.primaryLight),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    seller.name.trim().take(1).ifBlank { "V" }.uppercase(),
+                                    color = BSPOSTheme.colors.primary,
+                                    fontWeight = FontWeight.ExtraBold
+                                )
+                            }
+                            Spacer(Modifier.width(10.dp))
+                            Column(Modifier.weight(1f).padding(end = 8.dp)) {
+                                Text(
+                                    seller.name.ifBlank { "Vendedor" },
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    seller.email,
+                                    color = BSPOSTheme.colors.textSecondary,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                            Text("Activo", color = BSPOSTheme.colors.success, style = MaterialTheme.typography.labelSmall)
+                        }
                         SellerMenuSelector(enabled, updatingSellerMenuId == null, { enabled = it })
                         Button(
                             onClick = { onUpdate(shop, seller.id, SellerMenuOptions.map { it.key }.filter { it in enabled }) },
-                            enabled = updatingSellerMenuId == null && enabled != seller.menuPermissions.toSet()
+                            enabled = updatingSellerMenuId == null && enabled != seller.menuPermissions.toSet(),
+                            modifier = Modifier.fillMaxWidth()
                         ) {
-                            Text("Guardar menús")
-                        }
-                        if (updatingSellerMenuId == seller.id) {
-                            CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                            if (updatingSellerMenuId == seller.id) {
+                                CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                            } else {
+                                Text("Guardar permisos")
+                            }
                         }
                     }
                 }
@@ -300,21 +351,27 @@ private fun SellerMenuPermissionsCard(
 @Composable
 private fun SellerMenuSelector(selected: Set<String>, enabled: Boolean, onChange: (Set<String>) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
-    Text("Menús permitidos (${selected.size})", fontWeight = FontWeight.Bold)
-    Text("Solo podrá abrir los menús seleccionados, según el plan de la tienda. Puedes quitar cualquier acceso después.",
-        color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodySmall)
-    TextButton(onClick = { expanded = !expanded }, enabled = enabled) {
-        Text(if (expanded) "Ocultar selección de menús" else "Seleccionar menús")
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f).padding(end = 8.dp)) {
+            Text("Menús permitidos", fontWeight = FontWeight.Bold)
+            Text("${selected.size} seleccionado(s)", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodySmall)
+        }
+        TextButton(onClick = { expanded = !expanded }, enabled = enabled) {
+            Text(if (expanded) "Cerrar" else "Editar")
+        }
     }
     if (expanded) {
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
             TextButton(onClick = { onChange(setOf("sales", "products", "printers")) }, enabled = enabled) { Text("Básicos") }
             TextButton(onClick = { onChange(SellerMenuOptions.map { it.key }.toSet()) }, enabled = enabled) { Text("Todos") }
             TextButton(onClick = { onChange(emptySet()) }, enabled = enabled) { Text("Ninguno") }
         }
         SellerMenuOptions.forEach { option ->
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(option.label, Modifier.weight(1f))
+            Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(option.label, Modifier.weight(1f).padding(end = 8.dp), maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Switch(checked = option.key in selected, enabled = enabled, onCheckedChange = { checked ->
                     onChange(if (checked) selected + option.key else selected - option.key)
                 })

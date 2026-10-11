@@ -50,8 +50,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.example.bspos.core.ui.theme.BSPOSTheme
@@ -148,6 +150,7 @@ private fun FeatureContent(
     onSalesStatusChange: (String) -> Unit
 ) {
     val context = LocalContext.current
+    val isAuthorizationFeature = feature == "authorizations"
     var query by remember(definition.title) { mutableStateOf("") }
     var priceHealthFilter by remember(feature) { mutableStateOf("Todos") }
     var decantFilter by remember(feature) { mutableStateOf("Todas") }
@@ -201,8 +204,14 @@ private fun FeatureContent(
                 Column(Modifier.weight(1f)) {
                     // Ventas starts directly with its period and status filters;
                     // do not show the generic explanatory label above them.
-                    if (feature != "sales" && definition.description.isNotBlank()) {
+                    if (feature != "sales" && !isAuthorizationFeature && definition.description.isNotBlank()) {
                         Text(definition.description, color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
+                    } else if (isAuthorizationFeature) {
+                        Text(
+                            "Revisa y responde las solicitudes sensibles de tu equipo.",
+                            color = BSPOSTheme.colors.textSecondary,
+                            style = MaterialTheme.typography.bodyMedium
+                        )
                     }
                 }
                 IconButton(onClick = onRefresh) {
@@ -238,44 +247,34 @@ private fun FeatureContent(
         if (module.kpis.isNotEmpty()) {
             item {
                 val kpis = module.kpis.take(if (feature in setOf("price_health", "sales")) 4 else 3)
-                Row(
-                    Modifier.fillMaxWidth().then(if (feature in setOf("price_health", "sales")) Modifier.horizontalScroll(rememberScrollState()) else Modifier),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    kpis.forEachIndexed { index, kpi ->
-                        AnimatedVisibility(
-                            visible = true,
-                            enter = fadeIn(animationSpec = tween(180, delayMillis = index * 55)) + slideInHorizontally { it / 10 }
-                        ) {
-                            FeatureKpiCard(kpi, if (feature in setOf("price_health", "sales")) Modifier.width(150.dp) else Modifier.weight(1f))
+                if (isAuthorizationFeature) {
+                    AuthorizationKpiGrid(kpis)
+                } else {
+                    Row(
+                        Modifier.fillMaxWidth().then(if (feature in setOf("price_health", "sales")) Modifier.horizontalScroll(rememberScrollState()) else Modifier),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        kpis.forEachIndexed { index, kpi ->
+                            AnimatedVisibility(
+                                visible = true,
+                                enter = fadeIn(animationSpec = tween(180, delayMillis = index * 55)) + slideInHorizontally { it / 10 }
+                            ) {
+                                FeatureKpiCard(kpi, if (feature in setOf("price_health", "sales")) Modifier.width(150.dp) else Modifier.weight(1f))
+                            }
                         }
                     }
                 }
             }
         }
-        module.note?.takeIf { it.isNotBlank() }?.let { note ->
+        module.note?.takeIf { it.isNotBlank() && !isAuthorizationFeature }?.let { note ->
             item { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.primaryLight), modifier = Modifier.animateContentSize()) { Text(note, Modifier.padding(14.dp), color = BSPOSTheme.colors.textPrimary) } }
         }
         if (feature == "authorizations") {
-            if (module.pendingRequests.isEmpty()) {
-                item {
-                    Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface)) {
-                        Column(Modifier.fillMaxWidth().padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Icon(Icons.Default.CheckCircle, contentDescription = null, tint = BSPOSTheme.colors.success)
-                            Text("Nada pendiente", fontWeight = FontWeight.ExtraBold, color = BSPOSTheme.colors.textPrimary)
-                            Text("Cuando alguien pida permiso te llegará al teléfono y aparecerá aquí.", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodySmall)
-                        }
-                    }
-                }
-            } else {
-                item {
-                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text("Esperando tu respuesta", fontWeight = FontWeight.ExtraBold, color = BSPOSTheme.colors.textPrimary)
-                        module.pendingRequests.forEach { request ->
-                            AuthorizationRequestCard(request, onDecision = { approve -> onAuthorizationDecision(request.id, approve) })
-                        }
-                    }
-                }
+            item {
+                AuthorizationContent(
+                    module = module,
+                    onDecision = { requestId, approve -> onAuthorizationDecision(requestId, approve) }
+                )
             }
         }
         if (feature == "price_health") {
@@ -391,7 +390,7 @@ private fun FeatureContent(
                 }
             }
         }
-        if (module.sections.isNotEmpty()) {
+        if (!isAuthorizationFeature && module.sections.isNotEmpty()) {
             item {
                 ReportSectionTabs(
                     sections = module.sections,
@@ -420,7 +419,7 @@ private fun FeatureContent(
                     }
                 }
             }
-        } else {
+        } else if (!isAuthorizationFeature) {
             if (module.rows.size >= 4 || feature in setOf("decants", "services", "photos", "attributes")) {
                 item {
                     OutlinedTextField(
@@ -469,22 +468,269 @@ private fun FeatureContent(
 }
 
 @Composable
-private fun AuthorizationRequestCard(request: AuthorizationRequestDto, onDecision: (Boolean) -> Unit) {
-    Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface)) {
-        Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text(request.action.ifBlank { "Solicitud de autorización" }, fontWeight = FontWeight.Bold, color = BSPOSTheme.colors.textPrimary)
-                    Text("${request.requester} · ${request.requesterEmail}", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodySmall)
+private fun AuthorizationKpiGrid(kpis: List<FeatureKpiDto>) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        kpis.chunked(2).forEach { rowKpis ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                rowKpis.forEach { kpi ->
+                    FeatureKpiCard(kpi, Modifier.weight(1f))
                 }
-                Text("Pendiente", color = BSPOSTheme.colors.warning, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelMedium)
+                if (rowKpis.size == 1) Spacer(Modifier.weight(1f))
+            }
+        }
+    }
+}
+
+@Composable
+private fun AuthorizationContent(
+    module: FeatureModuleDto,
+    onDecision: (String, Boolean) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                "Solicitudes pendientes",
+                modifier = Modifier.weight(1f),
+                fontWeight = FontWeight.ExtraBold,
+                color = BSPOSTheme.colors.textPrimary,
+                style = MaterialTheme.typography.titleMedium
+            )
+            Text(
+                module.pendingRequests.size.toString(),
+                color = if (module.pendingRequests.isEmpty()) BSPOSTheme.colors.success else BSPOSTheme.colors.warning,
+                fontWeight = FontWeight.ExtraBold
+            )
+        }
+
+        if (module.pendingRequests.isEmpty()) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface),
+                border = BorderStroke(1.dp, BSPOSTheme.colors.outline)
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(20.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(Icons.Default.CheckCircle, contentDescription = null, tint = BSPOSTheme.colors.success)
+                    Text("Nada pendiente", fontWeight = FontWeight.ExtraBold, color = BSPOSTheme.colors.textPrimary)
+                    Text(
+                        "Las solicitudes de tu equipo aparecerán aquí.",
+                        color = BSPOSTheme.colors.textSecondary,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
+        } else {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                module.pendingRequests.forEach { request ->
+                    AuthorizationRequestCard(
+                        request = request,
+                        onDecision = { approve -> onDecision(request.id, approve) }
+                    )
+                }
+            }
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                "Acceso del equipo",
+                modifier = Modifier.weight(1f),
+                fontWeight = FontWeight.ExtraBold,
+                color = BSPOSTheme.colors.textPrimary,
+                style = MaterialTheme.typography.titleMedium
+            )
+            Text(
+                "${module.rows.size} usuarios",
+                color = BSPOSTheme.colors.textSecondary,
+                style = MaterialTheme.typography.labelMedium
+            )
+        }
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface),
+            border = BorderStroke(1.dp, BSPOSTheme.colors.outline)
+        ) {
+            if (module.rows.isEmpty()) {
+                Text(
+                    "Todavía no hay vendedores activos.",
+                    modifier = Modifier.fillMaxWidth().padding(18.dp),
+                    color = BSPOSTheme.colors.textSecondary,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            } else {
+                Column {
+                    module.rows.forEachIndexed { index, row ->
+                        if (index > 0) {
+                            androidx.compose.material3.HorizontalDivider(color = BSPOSTheme.colors.outline.copy(alpha = .65f))
+                        }
+                        AuthorizationMemberRow(row)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AuthorizationMemberRow(row: FeatureRowDto) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f).padding(end = 10.dp)) {
+            Text(
+                row.primary.ifBlank { "Vendedor" },
+                fontWeight = FontWeight.Bold,
+                color = BSPOSTheme.colors.textPrimary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            if (row.secondary.isNotBlank()) {
+                Text(
+                    row.secondary,
+                    color = BSPOSTheme.colors.textSecondary,
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+        Column(horizontalAlignment = Alignment.End) {
+            if (row.value.isNotBlank()) {
+                Text(
+                    row.value,
+                    color = BSPOSTheme.colors.textPrimary,
+                    fontWeight = FontWeight.SemiBold,
+                    style = MaterialTheme.typography.labelMedium,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            if (row.status.isNotBlank()) {
+                Text(row.status, color = BSPOSTheme.colors.success, style = MaterialTheme.typography.labelSmall)
+            }
+        }
+    }
+}
+
+@Composable
+private fun AuthorizationRequestCard(request: AuthorizationRequestDto, onDecision: (Boolean) -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface),
+        border = BorderStroke(1.dp, BSPOSTheme.colors.outline)
+    ) {
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.Top
+            ) {
+                Column(Modifier.weight(1f).padding(end = 10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Text(
+                        request.action.ifBlank { "Solicitud de autorización" },
+                        fontWeight = FontWeight.Bold,
+                        color = BSPOSTheme.colors.textPrimary,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        "Solicitado por ${request.requester.ifBlank { "Vendedor" }}",
+                        color = BSPOSTheme.colors.textSecondary,
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    if (request.requesterEmail.isNotBlank()) {
+                        Text(
+                            request.requesterEmail,
+                            color = BSPOSTheme.colors.textSecondary,
+                            style = MaterialTheme.typography.bodySmall,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    if (request.createdAt.isNotBlank()) {
+                        Text(
+                            request.createdAt,
+                            color = BSPOSTheme.colors.textSecondary,
+                            style = MaterialTheme.typography.labelSmall,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+                Text(
+                    "Pendiente",
+                    modifier = Modifier
+                        .background(BSPOSTheme.colors.warning.copy(alpha = .12f), RoundedCornerShape(50))
+                        .padding(horizontal = 9.dp, vertical = 5.dp),
+                    color = BSPOSTheme.colors.warning,
+                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.labelSmall,
+                    maxLines = 1
+                )
             }
             if (request.context.isNotEmpty()) {
-                Text(request.context.entries.joinToString(" · ") { (key, value) -> "$key: ${value}" }, color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodySmall)
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        "Contexto",
+                        color = BSPOSTheme.colors.textSecondary,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                    request.context.entries.forEach { (key, value) ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.Top
+                        ) {
+                            Text(
+                                key.replace('_', ' ').replaceFirstChar { it.uppercase() },
+                                modifier = Modifier.weight(.38f).padding(end = 8.dp),
+                                color = BSPOSTheme.colors.textSecondary,
+                                style = MaterialTheme.typography.labelSmall,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                value.toString().trim('"'),
+                                modifier = Modifier.weight(.62f),
+                                color = BSPOSTheme.colors.textPrimary,
+                                style = MaterialTheme.typography.bodySmall,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
             }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = { onDecision(false) }, modifier = Modifier.weight(1f)) { Text("Rechazar") }
-                Button(onClick = { onDecision(true) }, modifier = Modifier.weight(1f)) { Text("Aprobar") }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                OutlinedButton(
+                    onClick = { onDecision(false) },
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(12.dp)
+                ) { Text("Rechazar", maxLines = 1) }
+                Button(
+                    onClick = { onDecision(true) },
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(12.dp)
+                ) { Text("Aprobar", maxLines = 1) }
             }
         }
     }
@@ -613,9 +859,22 @@ private fun String.toUriOrNull(): Uri? = runCatching {
 internal fun FeatureKpiCard(kpi: FeatureKpiDto, modifier: Modifier = Modifier) {
     Card(modifier, shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface)) {
         Column(Modifier.padding(12.dp)) {
-            Text(kpi.label, style = MaterialTheme.typography.labelSmall, color = BSPOSTheme.colors.textSecondary)
+            Text(
+                kpi.label,
+                style = MaterialTheme.typography.labelSmall,
+                color = BSPOSTheme.colors.textSecondary,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
             Spacer(Modifier.height(5.dp))
-            Text(kpi.value, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold, color = toneColor(kpi.tone))
+            Text(
+                kpi.value,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.ExtraBold,
+                color = toneColor(kpi.tone),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
         }
     }
 }
