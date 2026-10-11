@@ -15,7 +15,7 @@ class DecantsWorkspaceTest {
     @get:Rule val compose = createComposeRule()
     private val opening = DecantOpeningDto("opening", "2026-10-06", 100, 15, costCents = 100000, remainingCostCents = 15000)
     private val size = DecantSizeDto("size", "Perfume 5 ml", 5, 30000, prepared = 5, capacity = 3, emptyVials = 2, vialCostCents = 5000)
-    private val group = DecantFragranceDto("source", "Perfume Demo 100ml", volumeMl = 100, sealed = 10, tracked = true, sizes = listOf(size), openings = listOf(opening))
+    private val group = DecantFragranceDto("source", "Perfume Demo 100ml", volumeMl = 100, sealed = 10, tracked = true, sizes = listOf(size), openings = listOf(opening), sourceSaleUnit = "bottle")
     private val workspace = DecantWorkspaceDto(enabled = true, canManage = true, finance = true, groups = listOf(group), prepared = 5, preparedValueCents = 150000,
         vials = listOf(DecantVialDto("vial", "5ml", 5, empty = 2, nextCostCents = 5000, lots = listOf(DecantVialLotDto(1, "2026-10-06", 2, 2, 5000)))))
 
@@ -48,6 +48,15 @@ class DecantsWorkspaceTest {
         compose.onNodeWithText("Perfume Demo 100ml").performScrollTo().assertExists()
         compose.onNodeWithText("1 tamaños · 5 listos").assertExists()
         capture("style-decant-workspace")
+    }
+
+    @Test fun sourcePickerShowsOnlyCompleteBottlesFromInventory() {
+        val mlSource = group.copy(id = "ml-source", name = "Fuente medida histórica", sourceSaleUnit = "ml", sealed = 4)
+        compose.setContent { BSPOSTheme {
+            DecantPrepareSheet(workspace.copy(groups = listOf(group, mlSource)), null, true, {}, {}) { _, _, _, _, _ -> }
+        } }
+        compose.onNodeWithText("Perfume Demo 100ml").assertExists()
+        compose.onNodeWithText("Fuente medida histórica").assertDoesNotExist()
     }
 
     private fun capture(name: String) {

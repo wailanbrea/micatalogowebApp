@@ -179,6 +179,33 @@ class EmulatorJourneyTest {
         evidence("14-orders-return-filter-retained")
     }
 
+    @Test fun compactCustomersOpenMovementsAndExplainTheirDebt() {
+        assumeTrue(InstrumentationRegistry.getArguments().getString("emulatorQaLive")=="true")
+        check(BuildConfig.APPLICATION_ID.endsWith(".offlinecheck.emulatorqa") && BuildConfig.MICATALOGO_API_BASE_URL=="http://127.0.0.1:18766/")
+        waitFor("Iniciar sesion")
+        compose.onAllNodes(hasSetTextAction())[0].performTextReplacement("emulador-qa@example.test")
+        compose.onAllNodes(hasSetTextAction())[1].performTextReplacement("Emulador-QA-2026!")
+        Espresso.closeSoftKeyboard()
+        compose.onNodeWithText("Iniciar sesion").performClick()
+        compose.waitUntil(45_000) { compose.onAllNodesWithText("Buenas, QA Tienda A").fetchSemanticsNodes().isNotEmpty() || compose.onAllNodesWithText("Buenas, QA Tienda B").fetchSemanticsNodes().isNotEmpty() }
+        dismissAutofill()
+        if(compose.onAllNodesWithText("Buenas, QA Tienda B").fetchSemanticsNodes().isEmpty()) switchShop("QA Tienda B")
+        navigate("Clientes")
+        waitFor("QA Cliente B Activo")
+        evidence("15-compact-customer-cards")
+        compose.onNodeWithText("QA Cliente B Activo").performClick()
+        waitFor("Origen de la deuda")
+        compose.onNodeWithText("FAC-20261011-AJG8LEOW").assertExists()
+        compose.onNodeWithText("Pedido QA-PEDIDO-B · Pedido WhatsApp").assertExists()
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Abono recibido"))
+        compose.onAllNodesWithText("Abono recibido")[0].assertExists()
+        evidence("16-customer-debt-origin-and-movements")
+        Espresso.pressBack()
+        waitFor("Cartera pendiente")
+        compose.onNodeWithText("QA Cliente B Activo").assertExists()
+        compose.onNodeWithText("QA Cliente A Activo").assertDoesNotExist()
+    }
+
     private fun fill(label:String,value:String) = compose.onNodeWithText(label).performScrollTo().performTextReplacement(value)
     private fun openDrawer() {
         val menu=hasContentDescription("Abrir menu") or hasContentDescription("Abrir menú")

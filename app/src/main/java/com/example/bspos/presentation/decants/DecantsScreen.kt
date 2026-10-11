@@ -115,7 +115,7 @@ fun DecantsScreen(presentation: MiCatalogoBusinessPresentation, showCost: Boolea
             presentation = presentation, showCost = showCost, showInventoryFields = false, showProductCode = true,
             onSave = { input, _ -> catalog.add(input); createSource = null }, onDismiss = { createSource = null },
             shops = shops, activeShopId = activeShop, decantMode = true,
-            sourceProducts = products.filter { it.remoteSaleUnit in setOf("bottle", "ml") }, initialSourceRemoteId = createSource)
+            sourceProducts = products.filter { it.remoteSaleUnit == "bottle" }, initialSourceRemoteId = createSource)
     } else if (createSource != null) BSPOSAlertDialog(onDismissRequest = { createSource = null }, title = { Text("Nueva presentación") },
         text = { Text("Configura primero una categoría y una unidad activas en Catálogo.") },
         confirmButton = { BSPOSButton({ createSource = null }) { Text("Entendido") } })
@@ -285,7 +285,8 @@ internal fun DecantsContent(workspace: DecantWorkspaceDto, error: String?, messa
     var sizeId by remember { mutableStateOf(initialSizeId ?: focus?.sizes?.firstOrNull()?.id) }
     var quantity by remember { mutableIntStateOf(1) }
     var price by remember { mutableStateOf(focus?.sizes?.firstOrNull { it.id == sizeId }?.let { decimal(it.priceCents) } ?: "") }
-    val group = workspace.groups.firstOrNull { it.id == groupId }; val opening = group?.openings?.firstOrNull { it.id == openingId }; val size = group?.sizes?.firstOrNull { it.id == sizeId }
+    val eligibleGroups = workspace.groups.filter { it.sourceSaleUnit == "bottle" }
+    val group = eligibleGroups.firstOrNull { it.id == groupId }; val opening = group?.openings?.firstOrNull { it.id == openingId }; val size = group?.sizes?.firstOrNull { it.id == sizeId }
     val selected = opening != null || sealedSelected
     val remaining = opening?.remainingMl ?: if (sealedSelected) group?.volumeMl ?: 0 else 0
     val max = if (selected && size != null && size.volumeMl > 0) minOf(remaining / size.volumeMl, size.emptyVials) else 0
@@ -306,18 +307,18 @@ internal fun DecantsContent(workspace: DecantWorkspaceDto, error: String?, messa
         }
     }) {
         if (!selected) {
-            BSPOSSectionLabel("Botellas abiertas · termina estas primero")
-            workspace.groups.filter { focus == null || it.id == focus.id }.forEach { item ->
+            BSPOSSectionLabel("Botellas completas abiertas · termina estas primero")
+            eligibleGroups.filter { focus == null || it.id == focus.id }.forEach { item ->
                 item.openings.filter { it.remainingMl > 0 }.forEach { bottle ->
                     SelectionRow(item.name, "quedan ${bottle.remainingMl} de ${bottle.initialMl} ml", false,
                         imageUrl = item.imageUrl, progress = bottle.remainingMl.toFloat() / bottle.initialMl.coerceAtLeast(1)) { selectSource(item, bottle) }
                 }
             }
-            BSPOSSectionLabel("Abrir una botella nueva")
-            workspace.groups.filter { it.sealed > 0 && it.untrackedOpenMl == 0 && (focus == null || it.id == focus.id) }.forEach { item ->
+            BSPOSSectionLabel("Abrir una botella completa nueva")
+            eligibleGroups.filter { it.sealed > 0 && it.untrackedOpenMl == 0 && (focus == null || it.id == focus.id) }.forEach { item ->
                 SelectionRow(item.name, "${item.sealed} en inventario · ${item.volumeMl} ml", false, imageUrl = item.imageUrl) { selectSource(item, null) }
             }
-            if (workspace.groups.none { it.sealed > 0 || it.openings.any { b -> b.remainingMl > 0 } }) Text("No hay botellas disponibles. Recibe inventario para continuar.")
+            if (eligibleGroups.none { it.sealed > 0 || it.openings.any { b -> b.remainingMl > 0 } }) Text("No hay perfumes completos configurados como botella disponibles. Registra o recibe una botella completa para continuar.")
         } else if (group != null) {
             BSPOSSectionLabel("Tamaño")
             group.sizes.forEach { item -> SelectionRow("${item.volumeMl} ml", "${item.emptyVials} vacíos", sizeId == item.id, trailing = money(item.priceCents)) { sizeId = item.id; quantity = 1; price = decimal(item.priceCents) } }
@@ -371,8 +372,8 @@ internal fun DecantsContent(workspace: DecantWorkspaceDto, error: String?, messa
     var selected by remember { mutableStateOf<DecantFragranceDto?>(null) }
     CheckoutStyleBottomSheet("Abrir botella", onDismiss, footer = { CheckoutStylePrimaryButton("Abrir 1 botella", { selected?.let(onOpen) }, enabled = enabled && selected != null) }) {
         Text("La botella dejará de estar sellada. Sus ml y costo quedarán en una apertura trazable.")
-        groups.filter { it.sealed > 0 }.forEach { group -> SelectionRow(group.name, "${group.sealed} selladas · ${group.volumeMl} ml", selected?.id == group.id) { selected = group } }
-        if (groups.none { it.sealed > 0 }) Text("No hay botellas selladas disponibles.")
+        groups.filter { it.sourceSaleUnit == "bottle" && it.sealed > 0 }.forEach { group -> SelectionRow(group.name, "${group.sealed} selladas · ${group.volumeMl} ml", selected?.id == group.id) { selected = group } }
+        if (groups.none { it.sourceSaleUnit == "bottle" && it.sealed > 0 }) Text("No hay botellas completas selladas disponibles.")
     }
 }
 

@@ -4,6 +4,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -12,6 +14,9 @@ import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.activity.compose.BackHandler
+import com.example.bspos.core.ui.theme.BSPOSFonts
 import androidx.compose.material3.*
 import com.example.bspos.presentation.common.BSPOSButton as Button
 import com.example.bspos.presentation.common.BSPOSOutlinedButton as OutlinedButton
@@ -43,29 +48,43 @@ fun CustomerScreen(
 ) {
     val customers by viewModel.customers.collectAsState()
     val message by viewModel.message.collectAsState()
+    val detail by viewModel.detail.collectAsState()
+    val listState=rememberLazyListState()
     var query by remember { mutableStateOf("") }
     var creating by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<Customer?>(null) }
     var deleting by remember { mutableStateOf<Customer?>(null) }
+    BackHandler(enabled=detail!=null) { viewModel.closeDetail() }
+    if(detail!=null) {
+        CustomerAccountScreen(checkNotNull(detail),viewModel::closeDetail,viewModel::retryDetail)
+        return
+    }
     val filtered = customers.filter { it.fullName.contains(query, true) || it.documentNumber.orEmpty().contains(query, true) || it.phone.orEmpty().contains(query) }
     val totalBalance = customers.sumOf { it.balance }
     Column(Modifier.fillMaxSize().background(BSPOSTheme.colors.background).padding(20.dp)) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) { Text("Cartera y relaciones comerciales", color = BSPOSTheme.colors.textSecondary) }
-            Button({ creating = true }, shape = RoundedCornerShape(14.dp)) { Icon(Icons.Default.Add, null); Spacer(Modifier.width(4.dp)); Text("Nuevo") }
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Box(Modifier.size(40.dp).clip(RoundedCornerShape(12.dp)).background(BSPOSTheme.colors.warningLight), contentAlignment = Alignment.Center) {
+                Icon(Icons.Default.People, null, tint = BSPOSTheme.colors.warning)
+            }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text("Cartera pendiente", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+                Text(money(totalBalance), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
+            }
+            Button({ creating = true }, shape = RoundedCornerShape(10.dp)) {
+                Icon(Icons.Default.Add, null, Modifier.size(18.dp))
+                Spacer(Modifier.width(4.dp))
+                Text("Nuevo")
+            }
         }
-        Spacer(Modifier.height(14.dp))
-        Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface)) {
-            Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) { Box(Modifier.size(44.dp).clip(RoundedCornerShape(14.dp)).background(BSPOSTheme.colors.warningLight), contentAlignment = Alignment.Center) { Icon(Icons.Default.People, null, tint = BSPOSTheme.colors.warning) }; Spacer(Modifier.width(12.dp)); Column { Text("Cartera pendiente", color = BSPOSTheme.colors.textSecondary); Text(money(totalBalance), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold) } }
-        }
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(16.dp))
         Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), color = BSPOSTheme.colors.surface, border = androidx.compose.foundation.BorderStroke(1.dp, BSPOSTheme.colors.outline)) { Row(Modifier.padding(horizontal = 14.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.Search, null, tint = BSPOSTheme.colors.primary); OutlinedTextField(query, { query = it }, Modifier.weight(1f), placeholder = { Text("Buscar negocio, contacto o telefono") }, singleLine = true, colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = androidx.compose.ui.graphics.Color.Transparent, unfocusedBorderColor = androidx.compose.ui.graphics.Color.Transparent)) } }
         Spacer(Modifier.height(12.dp))
-        if (filtered.isEmpty()) Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) { Text(if (query.isBlank()) "Aun no hay clientes" else "Sin coincidencias", color = BSPOSTheme.colors.textSecondary) } else LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        if (filtered.isEmpty()) Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) { Text(if (query.isBlank()) "Aun no hay clientes" else "Sin coincidencias", color = BSPOSTheme.colors.textSecondary) } else LazyColumn(Modifier.weight(1f), state=listState, verticalArrangement = Arrangement.spacedBy(6.dp)) {
             items(filtered, key = { it.id }) { customer ->
                 CustomerCard(
                     customer,
                     presentation.customersShowCredit,
+                    { viewModel.openDetail(customer) },
                     { editing = customer },
                     { deleting = customer }
                 )
@@ -99,31 +118,33 @@ fun CustomerScreen(
 }
 
 @Composable
-private fun CustomerCard(customer: Customer, showCredit: Boolean, onEdit: () -> Unit, onDelete: () -> Unit) {
-    Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface), elevation = CardDefaults.cardElevation(1.dp)) {
-        Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(46.dp).clip(CircleShape).background(BSPOSTheme.colors.primaryLight), contentAlignment = Alignment.Center) {
-                    Text(customer.fullName.take(1).uppercase(), color = BSPOSTheme.colors.primary, fontWeight = FontWeight.ExtraBold)
-                }
-                Spacer(Modifier.width(12.dp))
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(customer.fullName, fontWeight = FontWeight.ExtraBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    if(!customer.isActive) Text("Inactivo",color=BSPOSTheme.colors.textSecondary,style=MaterialTheme.typography.labelMedium)
-                    Text(customer.phone ?: customer.whatsapp ?: "Sin teléfono registrado", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelMedium)
-                }
-                IconButton(onEdit) { Icon(Icons.Default.Edit, "Editar", tint = BSPOSTheme.colors.primary) }
-                IconButton(onDelete) { Icon(Icons.Default.DeleteOutline, "Eliminar", tint = BSPOSTheme.colors.error) }
+internal fun CustomerCard(customer: Customer, showCredit: Boolean, onOpen:()->Unit,onEdit: () -> Unit, onDelete: () -> Unit) {
+    var menuOpen by remember(customer.id) { mutableStateOf(false) }
+    Card(onClick=onOpen,modifier=Modifier.fillMaxWidth(),shape=RoundedCornerShape(12.dp),
+        border=BorderStroke(1.dp,BSPOSTheme.colors.outline),colors=CardDefaults.cardColors(containerColor=BSPOSTheme.colors.surface)) {
+        Row(Modifier.fillMaxWidth().padding(horizontal=12.dp,vertical=10.dp),verticalAlignment=Alignment.CenterVertically) {
+            Box(Modifier.size(36.dp).clip(RoundedCornerShape(8.dp)).background(BSPOSTheme.colors.surfaceVariant),contentAlignment=Alignment.Center) {
+                Text(customer.fullName.take(1).uppercase(),color=BSPOSTheme.colors.primary,fontWeight=FontWeight.Bold)
             }
-            customer.documentNumber?.takeIf { it.isNotBlank() }?.let {
-                Text("${customer.documentType?.replaceFirstChar(Char::uppercase) ?: "Documento"}: $it", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(2.dp)) {
+                Text(customer.fullName,fontWeight=FontWeight.SemiBold,maxLines=1,overflow=TextOverflow.Ellipsis)
+                Text(listOfNotNull(customer.phone?.takeIf { it.isNotBlank() } ?: customer.whatsapp?.takeIf { it.isNotBlank() },
+                    "Inactivo".takeUnless { customer.isActive }).joinToString(" · ").ifBlank { "Sin teléfono" },
+                    color=BSPOSTheme.colors.textSecondary,style=MaterialTheme.typography.labelSmall,maxLines=1,overflow=TextOverflow.Ellipsis)
             }
-            if (showCredit) {
-                Surface(shape = RoundedCornerShape(10.dp), color = if (customer.balance > 0) BSPOSTheme.colors.warningLight else BSPOSTheme.colors.successLight) {
-                    Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("Saldo pendiente", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelMedium)
-                        Text("${money(customer.balance)} de ${money(customer.creditLimit)}", color = if (customer.balance > 0) BSPOSTheme.colors.warning else BSPOSTheme.colors.success, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.ExtraBold)
-                    }
+            if(showCredit) Column(horizontalAlignment=Alignment.End) {
+                Text(money(customer.balance),fontFamily=BSPOSFonts.Monospace,fontWeight=FontWeight.SemiBold,
+                    color=if(customer.balance>0) BSPOSTheme.colors.warning else BSPOSTheme.colors.textPrimary,
+                    style=MaterialTheme.typography.labelLarge)
+                Text(if(customer.balance>0) "Pendiente" else "Sin deuda",color=BSPOSTheme.colors.textSecondary,style=MaterialTheme.typography.labelSmall)
+            }
+            Box {
+                IconButton(onClick={menuOpen=true}) { Icon(Icons.Default.MoreVert,"Acciones de ${customer.fullName}") }
+                DropdownMenu(expanded=menuOpen,onDismissRequest={menuOpen=false}) {
+                    DropdownMenuItem(text={Text("Ver movimientos")},onClick={menuOpen=false;onOpen()})
+                    DropdownMenuItem(text={Text("Editar cliente")},onClick={menuOpen=false;onEdit()})
+                    DropdownMenuItem(text={Text("Eliminar cliente")},onClick={menuOpen=false;onDelete()})
                 }
             }
         }

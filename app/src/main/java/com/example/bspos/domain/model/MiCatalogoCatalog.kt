@@ -124,7 +124,8 @@ fun canAccessMiCatalogoMenu(
     menuPermissions: Collection<String>,
     menu: String,
     capabilities: Map<String, String> = emptyMap(),
-    enabledMenuKeys: Collection<String>? = null
+    enabledMenuKeys: Collection<String>? = null,
+    canAccessOwnerMenus: Boolean = false
 ): Boolean {
     val requiredCapability = when (menu) {
         "products" -> "products"
@@ -139,11 +140,10 @@ fun canAccessMiCatalogoMenu(
         else -> null
     }
     if (requiredCapability != null && capabilities.isNotEmpty() && capabilities[requiredCapability] != "enabled") return false
-    val protectedForOwner = menu in ownerOnlyMenuKeys && (isPlatformOwner || canManageShop)
-    if (!protectedForOwner && enabledMenuKeys != null && menu !in enabledMenuKeys) return false
-    return protectedForOwner || isPlatformOwner || canManageShop || (
-    menu !in ownerOnlyMenuKeys && menu in menuPermissions
-    )
+    val isOwnerMenu = menu in ownerOnlyMenuKeys
+    if (isOwnerMenu) return canAccessOwnerMenus
+    if (enabledMenuKeys != null && menu !in enabledMenuKeys) return false
+    return isPlatformOwner || canManageShop || menu in menuPermissions
 }
 
 data class MiCatalogoShopQuota(

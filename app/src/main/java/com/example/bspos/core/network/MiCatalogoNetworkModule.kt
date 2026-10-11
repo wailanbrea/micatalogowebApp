@@ -21,6 +21,10 @@ import javax.inject.Named
 object MiCatalogoNetworkModule {
     @Provides
     @Singleton
+    fun provideCustomerAccountApi(retrofit:Retrofit):com.example.bspos.data.micatalogo.api.MiCatalogoCustomerAccountApi =
+        retrofit.create(com.example.bspos.data.micatalogo.api.MiCatalogoCustomerAccountApi::class.java)
+    @Provides
+    @Singleton
     fun provideOperationApi(retrofit: Retrofit): com.example.bspos.data.micatalogo.api.MiCatalogoOperationApi = retrofit.create(com.example.bspos.data.micatalogo.api.MiCatalogoOperationApi::class.java)
     @Provides
     @Singleton

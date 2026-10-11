@@ -82,7 +82,7 @@ fun CatalogHomeScreen(
     val activeShopId by viewModel.activeShopId.collectAsState()
     val sourceProducts = products.filter {
         it.isActive && it.deletedAt == null && it.remoteShopId != null && it.remoteProductId != null &&
-            it.remoteSaleUnit in setOf("bottle", "ml") && it.remoteVolumeMl != null
+            it.remoteSaleUnit == "bottle" && it.remoteVolumeMl != null
     }
     val sourceByRemoteId = sourceProducts.associateBy { it.remoteProductId }
     val comboComponentProducts = products.filter {
@@ -629,7 +629,7 @@ internal fun ProductForm(current: Product?, currentQuantity: Long, categories: L
                 Text("La presentación comparte el inventario de su producto fuente. Cada venta descuenta los ml correspondientes.", style = MaterialTheme.typography.bodySmall)
                 Spacer(Modifier.height(8.dp))
                 Box {
-                    TextButton({ sourceOpen = true }) { Text("Fuente: ${sourceProduct?.name ?: "Seleccionar botella o producto en ml"}") }
+                    TextButton({ sourceOpen = true }) { Text("Fuente: ${sourceProduct?.name ?: "Seleccionar botella completa"}") }
                     DropdownMenu(sourceOpen, { sourceOpen = false }) {
                         sourceProducts.forEach { item ->
                             DropdownMenuItem(
@@ -674,7 +674,7 @@ internal fun ProductForm(current: Product?, currentQuantity: Long, categories: L
                         }
                     }
                 }
-                if (sourceProducts.isEmpty()) Text("Primero sincroniza o crea una botella fuente con volumen y control de inventario.", color = BSPOSTheme.colors.warning, style = MaterialTheme.typography.bodySmall)
+                if (sourceProducts.isEmpty()) Text("Primero sincroniza o crea un perfume completo configurado como botella, con volumen y control de inventario.", color = BSPOSTheme.colors.warning, style = MaterialTheme.typography.bodySmall)
                 OutlinedTextField(volumeMl, { volumeMl = it.filter(Char::isDigit) }, label = { Text("Tamaño del decant (ml)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), supportingText = { Text("Máximo: ${sourceProduct?.remoteVolumeMl ?: "—"} ml") })
             }
             if (current == null) Box {

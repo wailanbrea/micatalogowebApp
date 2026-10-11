@@ -61,7 +61,7 @@ class DecantsViewModel @Inject constructor(
                             sizes = products.filter { it.saleUnit == "decant" && it.sourceProductId == source.id }.map {
                                 DecantSizeDto(it.id, it.name, it.volumeMl ?: 0, it.price?.let(MoneyUtils::parseDecimalToCents) ?: 0,
                                     legacyCapacity = it.inventory.stockQuantity ?: 0)
-                            })
+                            }, sourceSaleUnit = source.saleUnit ?: "unknown")
                     }
                     _state.update { it.copy(loading = false, workspace = DecantWorkspaceDto(groups = groups),
                         error = "El servidor aún no habilita preparaciones físicas y envases. El stock histórico se muestra como capacidad, no como frascos listos.") }

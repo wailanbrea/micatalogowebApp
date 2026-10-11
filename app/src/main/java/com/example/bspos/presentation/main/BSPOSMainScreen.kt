@@ -219,7 +219,8 @@ private fun ShopScopedMainScreen(
             menuPermissions,
             key,
             currentShop?.capabilities.orEmpty(),
-            currentShop?.enabledMenuKeys
+            currentShop?.enabledMenuKeys,
+            currentShop?.canManageMenuVisibility == true
         )
     }
     val drawerGroups = buildList {

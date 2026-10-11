@@ -19,10 +19,19 @@ class MiCatalogoMenuAccessTest {
     }
 
     @Test
-    fun shopAndPlatformOwnersGetAllShopMenus() {
-        assertTrue(canAccessMiCatalogoMenu(false, true, emptyList(), "settings"))
-        assertTrue(canAccessMiCatalogoMenu(false, true, emptyList(), "sellers"))
-        assertTrue(canAccessMiCatalogoMenu(true, false, emptyList(), "settings"))
+    fun onlyTheShopOwnerGetsOwnerMenus() {
+        assertTrue(canAccessMiCatalogoMenu(false, true, emptyList(), "settings", enabledMenuKeys = null, canAccessOwnerMenus = true))
+        assertTrue(canAccessMiCatalogoMenu(false, true, emptyList(), "sellers", enabledMenuKeys = null, canAccessOwnerMenus = true))
+        assertFalse(canAccessMiCatalogoMenu(false, true, emptyList(), "settings"))
+        assertFalse(canAccessMiCatalogoMenu(true, false, emptyList(), "settings"))
+    }
+
+    @Test
+    fun platformAdminAndShopManagerKeepOperationalAccessWithoutOwnerMenus() {
+        assertTrue(canAccessMiCatalogoMenu(true, false, emptyList(), "sales"))
+        assertTrue(canAccessMiCatalogoMenu(false, true, emptyList(), "sales"))
+        assertFalse(canAccessMiCatalogoMenu(true, false, emptyList(), "shop_settings"))
+        assertFalse(canAccessMiCatalogoMenu(false, true, emptyList(), "sellers"))
     }
 
     @Test

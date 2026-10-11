@@ -35,7 +35,8 @@ data class DecantFragranceDto(
     @SerialName("untracked_open_ml") val untrackedOpenMl: Int = 0,
     @SerialName("source_cost_cents") val sourceCostCents: Long? = null,
     val sizes: List<DecantSizeDto> = emptyList(),
-    val openings: List<DecantOpeningDto> = emptyList()
+    val openings: List<DecantOpeningDto> = emptyList(),
+    @SerialName("source_sale_unit") val sourceSaleUnit: String = "unknown"
 )
 
 @Serializable
