@@ -1068,6 +1068,13 @@ fun BSPOSNavHost(
             }
         }
         composable(Screen.Decants.route) {
+            var startDecantsTutorial by remember { mutableStateOf(false) }
+            LaunchedEffect(Unit) {
+                val previousEntry = navController.previousBackStackEntry
+                if (previousEntry?.savedStateHandle?.remove<Boolean>("start_decants_tutorial") == true) {
+                    startDecantsTutorial = true
+                }
+            }
             // Decants is an operational workspace, not a read-only feature card.
             // Keep the entry on the native flow so “Abrir botella”, “Preparar
             // decant”, “Reporte” and “Frascos” all remain actionable from the
@@ -1075,7 +1082,8 @@ fun BSPOSNavHost(
             RestrictedMenuDestination(canSeeMenu("decants"), navController) {
                 com.example.bspos.presentation.decants.DecantsScreen(
                     presentation = presentation,
-                    showCost = !sellerMode || canSeeMenu("finance")
+                    showCost = !sellerMode || canSeeMenu("finance"),
+                    startTutorial = startDecantsTutorial
                 )
             }
         }
@@ -1125,6 +1133,14 @@ fun BSPOSNavHost(
                             navController.navigate(destination.route)
                         } else {
                             UiErrorBus.show("Tu rol no tiene permiso para abrir esta sección.")
+                        }
+                    },
+                    onStartDecantsTutorial = {
+                        if (canSeeMenu("decants")) {
+                            navController.currentBackStackEntry?.savedStateHandle?.set("start_decants_tutorial", true)
+                            navController.navigate(Screen.Decants.route)
+                        } else {
+                            UiErrorBus.show("Tu rol no tiene permiso para abrir Decants.")
                         }
                     }
                 )

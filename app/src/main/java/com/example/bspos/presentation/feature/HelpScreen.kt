@@ -46,7 +46,8 @@ private data class HelpGuide(
     val title: String,
     val description: String,
     val steps: List<String>,
-    val destination: Screen? = null
+    val destination: Screen? = null,
+    val guided: Boolean = false
 )
 
 private val guides = listOf(
@@ -57,7 +58,15 @@ private val guides = listOf(
     HelpGuide("Operación", "Básico", "Pedidos", "Confirma los pedidos recibidos desde tu catálogo público.", listOf("Revisa los productos y el cliente.", "Confirma el método de pago.", "Convierte el pedido en venta para descontar inventario."), Screen.Orders),
     HelpGuide("Catálogo", "Básico", "Productos", "Nombre, costo y precio: con eso ya sabes cuánto ganas.", listOf("Crea el producto y agrega una imagen.", "Registra la existencia como un lote con su costo.", "Revisa el precio y publícalo en la tienda."), Screen.Catalog),
     HelpGuide("Catálogo", "Intermedio", "Inventario y lotes", "Cada entrada conserva su costo y las ventas salen por FIFO.", listOf("Registra cada recepción como un lote.", "Usa movimientos para aumentos, pérdidas o conteos.", "Consulta el detalle para ver cantidades y costos."), Screen.Inventory),
-    HelpGuide("Catálogo", "Intermedio", "Decants", "Vende perfume por mililitros sin perder la cuenta del costo de la botella.", listOf("Selecciona la botella fuente.", "Define presentación, ml, costo y precio.", "Vende el decant y revisa el ml restante y la recuperación del costo."), Screen.Decants),
+    HelpGuide("Catálogo", "Intermedio", "Decants", "Convierte perfumes completos en presentaciones de ml con costo trazable.", listOf(
+        "Verifica que el perfume completo esté registrado como botella, con volumen, costo y existencia.",
+        "En Frascos, recibe los envases vacíos indicando tamaño, cantidad y costo por unidad.",
+        "Abre una botella fuente para crear una apertura trazable con su costo FIFO.",
+        "Crea la presentación: elige ml, precio y el perfume completo de origen.",
+        "Prepara los frascos seleccionando la botella abierta, el tamaño y la cantidad.",
+        "Vende desde Terminal; el sistema descuenta frascos, ml y costo del lote.",
+        "Consulta Reporte para revisar ml restantes, ventas, ganancia y recuperación de la botella."
+    ), Screen.Decants, guided = true),
     HelpGuide("Catálogo", "Básico", "Importar", "Carga tu inventario desde Excel o CSV y revísalo antes de guardar.", listOf("Elige archivo, catálogo existente o creación rápida.", "Mapea columnas y valida números e imágenes.", "Confirma una sola importación para evitar duplicados."), Screen.Import),
     HelpGuide("Cobros", "Básico", "Clientes y crédito", "Registra clientes, ventas a crédito y sus abonos.", listOf("Crea o selecciona el cliente.", "Confirma una venta a crédito desde Ventas.", "Registra abonos y revisa el saldo pendiente."), Screen.Customers),
     HelpGuide("Finanzas", "Básico", "Ganancias", "Lee ventas, costo FIFO, gastos y utilidad del período.", listOf("Selecciona un período.", "Compara ventas netas con costo y gastos.", "Abre el detalle por producto para decidir qué comprar."), Screen.Finance),
@@ -71,6 +80,7 @@ private val guides = listOf(
 @Composable
 fun HelpScreen(
     onOpen: (Screen) -> Unit,
+    onStartDecantsTutorial: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var query by remember { mutableStateOf("") }
@@ -128,14 +138,26 @@ fun HelpScreen(
         items(filtered, key = { "${it.category}-${it.title}" }) { guide ->
             Card(colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface), shape = androidx.compose.foundation.shape.RoundedCornerShape(18.dp)) {
                 Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
                         Text(guide.category, color = BSPOSTheme.colors.primary, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                         Text("· ${guide.level}", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelMedium)
                     }
                     Text(guide.title, fontWeight = FontWeight.ExtraBold, color = BSPOSTheme.colors.textPrimary, style = MaterialTheme.typography.titleMedium)
                     Text(guide.description, color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodySmall)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
                         OutlinedButton(onClick = { selectedGuide = guide }) { Text("Ver pasos") }
+                        if (guide.guided) {
+                            Button(onClick = onStartDecantsTutorial) {
+                                Icon(Icons.Default.PlayArrow, contentDescription = null)
+                                Text("Tutorial")
+                            }
+                        }
                         guide.destination?.let { destination ->
                             Button(onClick = { onOpen(destination) }) {
                                 Text("Abrir")

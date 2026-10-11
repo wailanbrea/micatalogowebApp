@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -43,6 +44,7 @@ private fun decimal(cents: Long): String = BigDecimal.valueOf(cents, 2).toPlainS
 
 @Composable
 fun DecantsScreen(presentation: MiCatalogoBusinessPresentation, showCost: Boolean,
+    startTutorial: Boolean = false,
     viewModel: DecantsViewModel = hiltViewModel(), catalog: ProductCatalogViewModel = hiltViewModel()) {
     val state by viewModel.state.collectAsState()
     val products by catalog.products.collectAsState()
@@ -54,7 +56,11 @@ fun DecantsScreen(presentation: MiCatalogoBusinessPresentation, showCost: Boolea
     var focus by remember { mutableStateOf<DecantFragranceDto?>(null) }
     var focusSize by remember { mutableStateOf<String?>(null) }
     var createSource by remember { mutableStateOf<String?>(null) }
+    var showTutorial by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { viewModel.load() }
+    LaunchedEffect(startTutorial) {
+        if (startTutorial) showTutorial = true
+    }
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -70,6 +76,7 @@ fun DecantsScreen(presentation: MiCatalogoBusinessPresentation, showCost: Boolea
         Text(state.error ?: "No se pudo cargar Decants."); BSPOSButton(viewModel::load) { Text("Reintentar") }
     } else {
         DecantsContent(workspace, state.error, state.message, state.busy, viewModel::refreshSync,
+            onTutorial = { showTutorial = true },
             onAction = { sheet = it; focus = null; focusSize = null }, onPrepare = { focus = it; focusSize = null; sheet = "prepare" },
             onDiscard = { group, opening -> focus = group; sheet = "discard:${opening.id}" },
             onUndo = { viewModel.command(operation("decant_undo_open") { put("opening_id", it.id); put("expected_ml", it.remainingMl) }) },
@@ -130,11 +137,14 @@ fun DecantsScreen(presentation: MiCatalogoBusinessPresentation, showCost: Boolea
     } else if (createSource != null) BSPOSAlertDialog(onDismissRequest = { createSource = null }, title = { Text("Nueva presentación") },
         text = { Text("Configura primero una categoría y una unidad activas en Catálogo.") },
         confirmButton = { BSPOSButton({ createSource = null }) { Text("Entendido") } })
+    if (showTutorial && workspace != null) {
+        DecantsGuidedTutorial { showTutorial = false }
+    }
 }
 
 @Composable
 internal fun DecantsContent(workspace: DecantWorkspaceDto, error: String?, message: String?, busy: Boolean,
-    onRefresh: () -> Unit, onAction: (String) -> Unit, onPrepare: (DecantFragranceDto) -> Unit,
+    onRefresh: () -> Unit, onTutorial: () -> Unit = {}, onAction: (String) -> Unit, onPrepare: (DecantFragranceDto) -> Unit,
     onDiscard: (DecantFragranceDto, DecantOpeningDto) -> Unit, onUndo: (DecantOpeningDto) -> Unit,
     onMode: (DecantSizeDto, Boolean) -> Unit, onNewSize: (DecantFragranceDto) -> Unit,
     onSell: (DecantFragranceDto, DecantOpeningDto) -> Unit = { _, _ -> }, onReconcile: (DecantFragranceDto) -> Unit = {},
@@ -154,6 +164,9 @@ internal fun DecantsContent(workspace: DecantWorkspaceDto, error: String?, messa
         item {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Decants", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.ExtraBold, modifier = Modifier.weight(1f))
+                IconButton(onClick = onTutorial) {
+                    Icon(Icons.Outlined.HelpOutline, contentDescription = "Tutorial guiado de Decants")
+                }
                 IconButton(onRefresh) { Icon(Icons.Outlined.Refresh, "Actualizar") }
             }
             Text("${groups.size} fragancia(s) · ${workspace.opened} con botella abierta", color = BSPOSTheme.colors.textSecondary)
@@ -485,6 +498,97 @@ internal fun DecantsContent(workspace: DecantWorkspaceDto, error: String?, messa
         OutlinedTextField(ml, { ml = it.filter(Char::isDigit) }, label = { Text("Ml actuales de la botella") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
         Text("La fecha original y el costo inicial no se inventan; esta apertura queda identificada como conciliación.", fontSize = 12.sp, color = BSPOSTheme.colors.textSecondary)
     }
+}
+
+private data class DecantsTutorialStep(
+    val title: String,
+    val description: String,
+    val action: String
+)
+
+private val decantsTutorialSteps = listOf(
+    DecantsTutorialStep(
+        "1. Prepara el perfume fuente",
+        "Usa un perfume completo registrado como Botella. Debe tener volumen en ml, costo de compra y existencia para que el sistema pueda calcular el costo real.",
+        "Revisa el inventario de perfumes completos antes de continuar."
+    ),
+    DecantsTutorialStep(
+        "2. Registra los frascos vacíos",
+        "Toca Frascos y recibe el tamaño que vas a usar. Indica cuántos compraste y el costo por frasco; cada lote queda separado para calcular la ganancia.",
+        "Ejemplo: 20 frascos de 5 ml a RD$50 cada uno."
+    ),
+    DecantsTutorialStep(
+        "3. Abre una botella",
+        "Toca Abrir botella y selecciona el perfume completo. Al confirmar, la botella pasa a una apertura trazable y sus ml conservan el costo FIFO.",
+        "Abrir no vende ni prepara frascos: solo habilita el perfume para trabajar."
+    ),
+    DecantsTutorialStep(
+        "4. Crea la presentación",
+        "Toca Nueva presentación desde la botella y define el tamaño del decant, el precio de venta y su publicación. El tamaño debe ser menor o igual al volumen de origen.",
+        "Puedes crear 5 ml, 10 ml, 30 ml u otra presentación."
+    ),
+    DecantsTutorialStep(
+        "5. Prepara los frascos",
+        "Toca Preparar, elige la botella abierta, el tamaño y la cantidad. La cantidad máxima se limita automáticamente por los ml restantes y los envases vacíos.",
+        "Al confirmar se crea un lote preparado; todavía no es una venta."
+    ),
+    DecantsTutorialStep(
+        "6. Vende desde Terminal",
+        "Los decants preparados aparecen en Terminal. Al cobrar, se descuenta el frasco y su costo real; también baja el ml disponible de la botella fuente.",
+        "La venta genera factura, pago y movimiento de inventario."
+    ),
+    DecantsTutorialStep(
+        "7. Revisa el resultado",
+        "En Reporte consulta preparados, ml restantes, ventas, ganancia y recuperación del costo de la botella. También puedes revisar o vender el resto de una apertura.",
+        "El tutorial no modifica datos. Puedes cerrarlo y realizar cada paso cuando estés listo."
+    )
+)
+
+@Composable
+private fun DecantsGuidedTutorial(onDismiss: () -> Unit) {
+    var stepIndex by remember { mutableIntStateOf(0) }
+    val step = decantsTutorialSteps[stepIndex]
+    val isLast = stepIndex == decantsTutorialSteps.lastIndex
+    BSPOSAlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Tutorial guiado de Decants") },
+        text = {
+            Column(
+                Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Text("Paso ${stepIndex + 1} de ${decantsTutorialSteps.size}", fontWeight = FontWeight.Bold, color = BSPOSTheme.colors.primary)
+                LinearProgressIndicator(
+                    progress = { (stepIndex + 1).toFloat() / decantsTutorialSteps.size },
+                    modifier = Modifier.fillMaxWidth(),
+                    color = BSPOSTheme.colors.primary,
+                    trackColor = BSPOSTheme.colors.surfaceVariant
+                )
+                Text(step.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold, color = BSPOSTheme.colors.textPrimary)
+                Text(step.description, color = BSPOSTheme.colors.textSecondary, lineHeight = 21.sp)
+                Surface(
+                    shape = BSPOSDesign.cardRadius,
+                    color = BSPOSTheme.colors.primaryLight,
+                    border = BorderStroke(1.dp, BSPOSTheme.colors.outline)
+                ) {
+                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                        BSPOSSectionLabel("Qué hacer")
+                        Text(step.action, color = BSPOSTheme.colors.textPrimary, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+            }
+        },
+        dismissButton = {
+            if (stepIndex > 0) {
+                BSPOSOutlinedButton(onClick = { stepIndex-- }) { Text("Anterior") }
+            }
+        },
+        confirmButton = {
+            BSPOSButton(onClick = { if (isLast) onDismiss() else stepIndex++ }) {
+                Text(if (isLast) "Terminar" else "Siguiente")
+            }
+        }
+    )
 }
 
 @Composable private fun SummaryLine(label: String, value: String) {
