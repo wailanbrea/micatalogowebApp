@@ -106,6 +106,7 @@ import com.example.bspos.presentation.common.BSPOSAlertDialog as AlertDialog
 import com.example.bspos.presentation.common.BSPOSModalBottomSheet
 import coil.compose.AsyncImage
 import java.util.Locale
+import java.util.UUID
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -466,6 +467,7 @@ fun PosScreen(
     if (choosingCustomer) {
         CustomerDialog(
             customers = customers.filter { it.isActive && it.deletedAt == null },
+            selectedCustomerId = customer?.id,
             requiresCredit = reviewMethod == CheckoutReviewMethod.CREDIT || creditOnly,
             onSelect = { viewModel.selectCustomer(it); choosingCustomer = false },
             onClear = { viewModel.selectCustomer(null); choosingCustomer = false },
@@ -1758,12 +1760,18 @@ internal fun SplitPaymentDialog(
 @Composable
 private fun CustomerDialog(
     customers: List<com.example.bspos.domain.model.Customer>,
+    selectedCustomerId: UUID?,
     requiresCredit: Boolean,
     onSelect: (com.example.bspos.domain.model.Customer) -> Unit,
     onClear: () -> Unit,
     onOpenCustomers: () -> Unit
 ) {
-    val selectableCustomers = customers.filter { !requiresCredit || it.creditLimit > it.balance }
+    var query by remember { mutableStateOf("") }
+    val matchingCustomers = customers.filter { customer ->
+        query.isBlank() || listOf(customer.fullName, customer.businessName, customer.phone.orEmpty())
+            .any { it.contains(query.trim(), ignoreCase = true) }
+    }
+    val selectableCustomers = matchingCustomers.filter { !requiresCredit || it.creditLimit > it.balance }
     AlertDialog(
         onDismissRequest = onClear,
         modifier = Modifier.padding(8.dp),
@@ -1777,18 +1785,42 @@ private fun CustomerDialog(
         },
         title = { Text("Seleccionar cliente") },
         text = {
-            if (selectableCustomers.isEmpty()) {
-                Text(
-                    if (requiresCredit) "No hay clientes activos con crédito disponible. Registra o actualiza uno desde Clientes."
-                    else "No hay clientes activos. Registra uno desde Clientes."
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = { query = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    label = { Text("Buscar cliente") }
                 )
-            } else {
-                LazyColumn {
-                    lazyItems(selectableCustomers, key = { it.id }) { customer ->
-                        TextButton({ onSelect(customer) }, Modifier.fillMaxWidth()) {
+                if (selectableCustomers.isEmpty()) {
+                    Text(
+                        when {
+                            customers.isEmpty() && requiresCredit -> "No hay clientes activos con crédito disponible. Registra o actualiza uno desde Clientes."
+                            customers.isEmpty() -> "No hay clientes activos. Registra uno desde Clientes."
+                            requiresCredit -> "Ningún cliente coincide o tiene crédito disponible."
+                            else -> "No hay clientes que coincidan con la búsqueda."
+                        },
+                        color = BSPOSTheme.colors.textSecondary
+                    )
+                } else {
+                    // The shared alert sheet scrolls its content. Keeping the
+                    // rows in that same Column avoids an unreliable nested
+                    // LazyColumn when changing the selected credit customer.
+                    selectableCustomers.forEach { customer ->
+                        TextButton(
+                            onClick = { onSelect(customer) },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
                             Text(
-                                if (requiresCredit) "${customer.fullName} - Disponible: ${money(customer.creditLimit - customer.balance)}"
-                                else customer.fullName
+                                buildString {
+                                    if (customer.id == selectedCustomerId) append("✓ ")
+                                    append(customer.fullName)
+                                    if (requiresCredit) {
+                                        append(" - Disponible: ")
+                                        append(money(customer.creditLimit - customer.balance))
+                                    }
+                                }
                             )
                         }
                     }

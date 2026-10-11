@@ -64,6 +64,8 @@ import com.example.bspos.presentation.pos.InvoicePdfGenerator
 import com.example.bspos.presentation.pos.PosCartLine
 import com.example.bspos.presentation.pos.PosViewModel
 import com.example.bspos.presentation.pos.shareInvoicePdf
+import com.example.bspos.presentation.startup.StartupSnapshot
+import com.example.bspos.presentation.startup.resolveFirstSaleStatus
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -105,6 +107,8 @@ fun DashboardScreen(
     presentation: MiCatalogoBusinessPresentation = MiCatalogoBusinessPresentation(),
     businessName: String = "tu negocio",
     isExpanded: Boolean = false,
+    startupSnapshot: StartupSnapshot? = null,
+    onRetryStartup: () -> Unit = {},
     viewModel: DashboardViewModel = hiltViewModel(),
     printerViewModel: PosViewModel = hiltViewModel()
 ) {
@@ -121,11 +125,20 @@ fun DashboardScreen(
     val products by viewModel.products.collectAsState()
     val routes by viewModel.routes.collectAsState()
     val payments by viewModel.payments.collectAsState()
-    val pendingOrders by viewModel.pendingOrders.collectAsState()
-    val ordersError by viewModel.ordersError.collectAsState()
-    val firstSaleStatus by viewModel.firstSaleStatus.collectAsState()
-    LaunchedEffect(shopId, sales) { if (showSales) viewModel.loadFirstSaleStatus(shopId) }
-    LaunchedEffect(businessName, showEncargos) { if (showEncargos) viewModel.loadPendingOrders() }
+    val localPendingOrders by viewModel.pendingOrders.collectAsState()
+    val localOrdersError by viewModel.ordersError.collectAsState()
+    val localFirstSaleStatus by viewModel.firstSaleStatus.collectAsState()
+    val pendingOrders = startupSnapshot?.pendingOrders ?: localPendingOrders
+    val ordersError = startupSnapshot?.ordersError ?: localOrdersError
+    val localHasSale = sales.any { it.status == SaleStatus.COMPLETED }
+    val firstSaleCompleted = startupSnapshot?.firstSaleCompleted ?: localFirstSaleStatus.takeIf { it.shopId == shopId }?.hasSale
+    val effectiveFirstSale = resolveFirstSaleStatus(firstSaleCompleted, localHasSale)
+    LaunchedEffect(shopId, startupSnapshot == null) {
+        if (showSales && startupSnapshot == null) viewModel.loadFirstSaleStatus(shopId)
+    }
+    LaunchedEffect(shopId, showEncargos, startupSnapshot == null) {
+        if (showEncargos && startupSnapshot == null) viewModel.loadPendingOrders()
+    }
     val selectedSale by viewModel.selectedSale.collectAsState()
     val selectedItems by viewModel.selectedItems.collectAsState()
     val printers by printerViewModel.printers.collectAsState()
@@ -210,8 +223,10 @@ fun DashboardScreen(
         onPhotos = onPhotos, onEncargos = onEncargos, onDayClose = onDayClose,
         onStorefront = onStorefront, onProfile = onProfile,
         onSupport = onSupport, onHideSupport = onHideSupport, showSupport = showSupport,
-        firstSaleCompleted = firstSaleStatus.takeIf { it.shopId == shopId }?.hasSale,
-        setupStatusKnown = firstSaleStatus.shopId == shopId && firstSaleStatus.hasSale != null,
+        firstSaleCompleted = effectiveFirstSale,
+        setupStatusKnown = startupSnapshot?.firstSaleCompleted != null || (startupSnapshot == null && localFirstSaleStatus.shopId == shopId && localFirstSaleStatus.hasSale != null),
+        offline = startupSnapshot?.offline == true,
+        onRetryStartup = onRetryStartup,
         onAllSales = { showAllSales = true }, onSale = viewModel::selectSale
     )
     if (showAllSales) {

@@ -31,6 +31,8 @@ import com.example.bspos.presentation.auth.shouldLockSession
 import com.example.bspos.presentation.update.AppUpdateDialog
 import com.example.bspos.presentation.update.AppUpdateState
 import com.example.bspos.presentation.update.AppUpdateViewModel
+import com.example.bspos.presentation.startup.StartupState
+import com.example.bspos.presentation.startup.StartupViewModel
 import dagger.hilt.android.AndroidEntryPoint
 import androidx.fragment.app.FragmentActivity
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -49,11 +51,12 @@ class MainActivity : FragmentActivity() {
         enableEdgeToEdge()
         setContent {
             val windowSizeClass = calculateWindowSizeClass(this)
-            val dataReady by (application as MiCatalogoApplication).dataReady.collectAsState()
             val loginViewModel: LoginViewModel = hiltViewModel()
             val appUpdateViewModel: AppUpdateViewModel = hiltViewModel()
+            val startupViewModel: StartupViewModel = hiltViewModel()
             val connection by loginViewModel.connection.collectAsState()
             val appUpdateState by appUpdateViewModel.state.collectAsState()
+            val startupState by startupViewModel.state.collectAsState()
             var showSplash by remember { mutableStateOf(true) }
             var sessionUnlocked by rememberSaveable { mutableStateOf(false) }
             var lastBackgroundedAt by remember { mutableStateOf(0L) }
@@ -78,16 +81,36 @@ class MainActivity : FragmentActivity() {
                 if (!connection.isConfigured) {
                     sessionUnlocked = false
                     requestBiometricOnUnlock = false
+                    startupViewModel.reset()
                 }
             }
-            LaunchedEffect(connection.isConfigured, sessionUnlocked) {
-                if (connection.isConfigured && sessionUnlocked) loginViewModel.syncCatalogs()
+            LaunchedEffect(connection.isConfigured, sessionUnlocked, connection.activeShopId) {
+                if (connection.isConfigured && sessionUnlocked && startupState !is StartupState.Loading) {
+                    startupViewModel.bootstrap()
+                }
             }
+            val startupSnapshot = when (startupState) {
+                is StartupState.Ready -> (startupState as StartupState.Ready).snapshot
+                is StartupState.OfflineReady -> (startupState as StartupState.OfflineReady).snapshot
+                else -> null
+            }
+            val startupLoading = connection.isConfigured && sessionUnlocked && startupSnapshot == null
+            val startupStatus = (startupState as? StartupState.Loading)?.message
+            val startupError = (startupState as? StartupState.Error)?.message
             BSPOSTheme {
                 Box {
                     when {
-                        showSplash || !dataReady -> MiCatalogoSplash { showSplash = false }
-                        connection.isConfigured && sessionUnlocked -> BSPOSMainScreen(windowWidthSizeClass = windowSizeClass.widthSizeClass)
+                        showSplash || startupLoading -> MiCatalogoSplash(
+                            statusMessage = startupStatus,
+                            errorMessage = startupError,
+                            onRetry = startupError?.let { { startupViewModel.retry() } },
+                            onFinished = { showSplash = false }
+                        )
+                        connection.isConfigured && sessionUnlocked && startupSnapshot != null -> BSPOSMainScreen(
+                            windowWidthSizeClass = windowSizeClass.widthSizeClass,
+                            startupSnapshot = startupSnapshot,
+                            onRetryStartup = { startupViewModel.retry() }
+                        )
                         else -> LoginScreen(
                             connection = connection,
                             state = loginViewModel.uiState.collectAsState().value,

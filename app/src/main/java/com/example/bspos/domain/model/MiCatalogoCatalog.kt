@@ -236,5 +236,5 @@ data class MiCatalogoPosSaleSyncResult(
 
 sealed interface MiCatalogoResult<out T> {
     data class Success<T>(val value: T) : MiCatalogoResult<T>
-    data class Failure(val message: String) : MiCatalogoResult<Nothing>
+    data class Failure(val message: String, val code: Int? = null) : MiCatalogoResult<Nothing>
 }

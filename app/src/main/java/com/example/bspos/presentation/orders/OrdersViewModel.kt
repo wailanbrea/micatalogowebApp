@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.bspos.data.micatalogo.api.MiCatalogoApi
 import com.example.bspos.data.micatalogo.api.MiCatalogoCustomerApi
+import com.example.bspos.data.micatalogo.apiErrorMessage
 import com.example.bspos.data.micatalogo.dto.CustomerUploadRequestDto
 import com.example.bspos.data.micatalogo.dto.FeatureKpiDto
 import com.example.bspos.data.micatalogo.dto.FeatureRowDto
@@ -103,7 +104,7 @@ class OrdersViewModel @Inject constructor(
                     query = activeSearch.ifBlank { null },
                     status = activeStatus.takeIf { it != "all" }
                 )
-                if (!moduleResponse.isSuccessful) error("No se pudieron cargar los pedidos.")
+                if (!moduleResponse.isSuccessful) error(moduleResponse.apiErrorMessage("No se pudieron cargar los pedidos."))
                 val module = moduleResponse.body()?.module ?: error("MiCatalogo devolvió una respuesta vacía.")
                 _state.update {
                     it.copy(
@@ -187,7 +188,7 @@ class OrdersViewModel @Inject constructor(
                     )
                 )
             }.onSuccess { response ->
-                if (!response.isSuccessful) error("No se pudo confirmar el pedido. Revisa el cliente, el crédito y las existencias.")
+                if (!response.isSuccessful) error(response.apiErrorMessage("No se pudo confirmar el pedido. Revisa el cliente, el crédito y las existencias."))
                 val body = response.body()
                 _state.value = _state.value.copy(
                     confirmingId = null,
@@ -240,7 +241,7 @@ class OrdersViewModel @Inject constructor(
                     )
                 )
                 if (!response.isSuccessful) {
-                    throw IllegalStateException("No se pudo crear el cliente. Revisa los datos y los permisos de Clientes.")
+                    throw IllegalStateException(response.apiErrorMessage("No se pudo crear el cliente. Revisa los datos y los permisos de Clientes."))
                 }
                 val customer = response.body()
                     ?: throw IllegalStateException("MiCatalogo no devolvió el cliente creado.")

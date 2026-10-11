@@ -54,6 +54,8 @@ class MiCatalogoConnectionRepositoryImpl @Inject constructor(
     @param:MiCatalogoBaseUrl private val baseUrl: String,
     private val json: Json = Json { ignoreUnknownKeys = true }
 ) : MiCatalogoConnectionRepository {
+    private class MiCatalogoHttpException(val statusCode: Int, override val message: String) : RuntimeException(message)
+
     private val temporaryAccessToken = MutableStateFlow<String?>(null)
 
     override fun observeConnection(): Flow<MiCatalogoConnectionState> = combine(dataStore.data, temporaryAccessToken) { values, temporaryToken ->
@@ -93,11 +95,14 @@ class MiCatalogoConnectionRepositoryImpl @Inject constructor(
 
     override suspend fun refreshAccount(): MiCatalogoResult<Unit> = runCatching {
         val response = api.get().me()
-        if (!response.isSuccessful) error(response.apiErrorMessage("No se pudo validar la cuenta."))
+        if (!response.isSuccessful) throw MiCatalogoHttpException(response.code(), response.apiErrorMessage("No se pudo validar la cuenta."))
         saveAccount(response.body() ?: error("MiCatalogo no devolvio los datos de la cuenta."))
     }.fold(
         onSuccess = { MiCatalogoResult.Success(Unit) },
-        onFailure = { MiCatalogoResult.Failure(it.message ?: "No se pudo validar la cuenta.") }
+        onFailure = {
+            val httpError = it as? MiCatalogoHttpException
+            MiCatalogoResult.Failure(it.message ?: "No se pudo validar la cuenta.", httpError?.statusCode)
+        }
     )
 
     override suspend fun updateProfile(name: String, email: String): MiCatalogoResult<Unit> = runCatching {

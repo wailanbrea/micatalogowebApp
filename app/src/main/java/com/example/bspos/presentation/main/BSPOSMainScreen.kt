@@ -144,6 +144,7 @@ import com.example.bspos.presentation.orders.OrdersScreen
 import com.example.bspos.presentation.support.SupportChatScreen
 import com.example.bspos.presentation.support.SupportFloatingActionButton
 import com.example.bspos.presentation.dayclose.DayCloseScreen
+import com.example.bspos.presentation.startup.StartupSnapshot
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import kotlinx.coroutines.launch
 
@@ -157,17 +158,21 @@ private data class DrawerGroup(
 @Composable
 fun BSPOSMainScreen(
     windowWidthSizeClass: WindowWidthSizeClass,
+    startupSnapshot: StartupSnapshot,
+    onRetryStartup: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val settingsViewModel: SettingsViewModel = hiltViewModel()
     val settings by settingsViewModel.settings.collectAsState()
     val connection by settingsViewModel.miCatalogoConnection.collectAsState()
     val accountState by settingsViewModel.miCatalogoUi.collectAsState()
-    LaunchedEffect(connection.isConfigured) {
-        if (connection.isConfigured) settingsViewModel.loadShops()
+    LaunchedEffect(startupSnapshot.shops) {
+        settingsViewModel.hydrateShops(startupSnapshot.shops)
     }
-    val activeShop = accountState.shops.firstOrNull { it.id == connection.activeShopId }
-        ?: accountState.shops.firstOrNull()
+    val availableShops = accountState.shops.ifEmpty { startupSnapshot.shops }
+    val activeShopId = connection.activeShopId ?: startupSnapshot.activeShopId
+    val activeShop = availableShops.firstOrNull { it.id == activeShopId }
+        ?: availableShops.firstOrNull()
     val accountQuota = activeShop?.quota
     val routesEnabled = settings?.routesEnabled == true
     val navController = rememberNavController()
@@ -399,7 +404,7 @@ fun BSPOSMainScreen(
                     Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp)) {
                         TextButton(
                             onClick = {
-                                if (accountState.shops.size > 1) {
+                                if (availableShops.size > 1) {
                                     shopMenuOpen = true
                                 } else {
                                     UiErrorBus.show("Esta es tu única tienda activa.")
@@ -423,7 +428,7 @@ fun BSPOSMainScreen(
                             expanded = shopMenuOpen,
                             onDismissRequest = { shopMenuOpen = false }
                         ) {
-                            accountState.shops.forEach { shop ->
+                            availableShops.forEach { shop ->
                                 DropdownMenuItem(
                                     text = { Text(shop.name, fontWeight = if (shop.id == connectedShop?.id) FontWeight.Bold else FontWeight.Normal) },
                                     onClick = {
@@ -747,6 +752,8 @@ fun BSPOSMainScreen(
                 shopName = connectedShop?.name,
                 shopId = connectedShop?.id,
                 shopSlug = connectedShop?.slug,
+                startupSnapshot = startupSnapshot,
+                onRetryStartup = onRetryStartup,
                 canSeeMenu = canSeeMenu,
                 onOpenMenu = { scope.launch { drawerState.open() } },
                 modifier = Modifier.padding(paddingValues)
@@ -820,6 +827,8 @@ fun BSPOSNavHost(
     shopName: String? = null,
     shopId: String? = null,
     shopSlug: String? = null,
+    startupSnapshot: StartupSnapshot? = null,
+    onRetryStartup: () -> Unit = {},
     canSeeMenu: (String) -> Boolean = { true },
     onOpenMenu: () -> Unit = {},
     modifier: Modifier = Modifier
@@ -914,7 +923,9 @@ fun BSPOSNavHost(
                 onAllSales = { if (canSeeMenu("sales")) navController.navigate(Screen.SalesHistory.route) },
                 presentation = presentation,
                 businessName = businessName,
-                isExpanded = isTablet
+                isExpanded = isTablet,
+                startupSnapshot = startupSnapshot,
+                onRetryStartup = onRetryStartup
                 )
                 if (canOpenSupport) {
                     SupportFloatingActionButton(

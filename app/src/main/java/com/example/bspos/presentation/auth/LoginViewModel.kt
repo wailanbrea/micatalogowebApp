@@ -5,10 +5,6 @@ import androidx.lifecycle.viewModelScope
 import com.example.bspos.domain.model.MiCatalogoConnectionState
 import com.example.bspos.domain.model.MiCatalogoResult
 import com.example.bspos.domain.repository.MiCatalogoConnectionRepository
-import com.example.bspos.domain.repository.MiCatalogoCatalogRepository
-import com.example.bspos.domain.repository.MiCatalogoPosSaleRepository
-import com.example.bspos.data.micatalogo.PosSaleSyncScheduler
-import com.example.bspos.presentation.common.UiErrorBus
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -24,17 +20,11 @@ data class LoginUiState(
 
 @HiltViewModel
 class LoginViewModel @Inject constructor(
-    private val connectionRepository: MiCatalogoConnectionRepository,
-    private val catalogRepository: MiCatalogoCatalogRepository,
-    private val posSaleRepository: MiCatalogoPosSaleRepository,
-    private val posSaleSyncScheduler: PosSaleSyncScheduler
+    private val connectionRepository: MiCatalogoConnectionRepository
 ) : ViewModel() {
     val connection = connectionRepository.observeConnection()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), MiCatalogoConnectionState("", false))
     val uiState = MutableStateFlow(LoginUiState())
-    private var syncing = false
-    private var syncedToken: String? = null
-
     fun login(email: String, password: String, remember: Boolean) = viewModelScope.launch {
         uiState.value = LoginUiState(isSubmitting = true)
         when (val result = connectionRepository.login(email, password, remember)) {
@@ -45,49 +35,5 @@ class LoginViewModel @Inject constructor(
 
     fun consumeAuthenticated() {
         uiState.value = uiState.value.copy(authenticated = false)
-    }
-
-    fun syncCatalogs() = viewModelScope.launch {
-        val token = connectionRepository.accessToken() ?: return@launch
-        if (syncing || syncedToken == token) return@launch
-        syncing = true
-        try {
-            val warnings = mutableListOf<String>()
-            when (val result = posSaleRepository.syncDueSales()) {
-                is MiCatalogoResult.Success -> {
-                    if (result.value.retried > 0) posSaleSyncScheduler.enqueue()
-                    if (result.value.retried > 0) warnings += "${result.value.retried} ventas siguen pendientes de envío"
-                    if (result.value.blocked > 0) warnings += "${result.value.blocked} ventas requieren revisión"
-                }
-                is MiCatalogoResult.Failure -> {
-                    posSaleSyncScheduler.enqueue()
-                    warnings += "No se pudieron reenviar las ventas pendientes"
-                }
-            }
-            val shops = when (val result = connectionRepository.shops()) {
-                is MiCatalogoResult.Success -> result.value
-                is MiCatalogoResult.Failure -> {
-                    UiErrorBus.show("No se pudieron cargar las tiendas: ${result.message}")
-                    return@launch
-                }
-            }
-            catalogRepository.archiveRemoteProductsExcept(shops.map { it.id }.toSet())
-            val summaries = mutableListOf<com.example.bspos.domain.model.MiCatalogoCatalogSyncResult>()
-            for (shop in shops) {
-                when (val result = catalogRepository.syncCatalog(shop.id)) {
-                    is MiCatalogoResult.Success -> summaries += result.value
-                    is MiCatalogoResult.Failure -> {
-                        UiErrorBus.show("No se pudo sincronizar ${shop.name}: ${result.message}")
-                        return@launch
-                    }
-                }
-            }
-            syncedToken = token
-            val failedImages = summaries.sumOf { it.imagesFailed }
-            if (failedImages > 0) warnings += "$failedImages imágenes quedaron pendientes de descargar"
-            if (warnings.isNotEmpty()) UiErrorBus.show(warnings.joinToString(". "))
-        } finally {
-            syncing = false
-        }
     }
 }

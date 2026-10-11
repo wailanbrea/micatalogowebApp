@@ -178,7 +178,15 @@ fun CollectionScreen(viewModel: CollectionViewModel = hiltViewModel()) {
     }
 
     if (choosing) {
-        CustomerPicker(customers.filter { it.isActive && it.deletedAt == null }, { viewModel.select(it); choosing = false }, { choosing = false })
+        CustomerPicker(
+            customers = customers.filter { it.isActive && it.deletedAt == null },
+            selectedId = customer?.id,
+            onSelect = { selected ->
+                viewModel.select(selected)
+                choosing = false
+            },
+            onDismiss = { choosing = false }
+        )
     }
 }
 
@@ -288,17 +296,70 @@ private fun CreditEmptyState(tab: String) {
 }
 
 @Composable
-private fun CustomerPicker(customers: List<Customer>, onSelect: (Customer) -> Unit, onDismiss: () -> Unit) {
+internal fun CustomerPicker(
+    customers: List<Customer>,
+    selectedId: java.util.UUID?,
+    onSelect: (Customer?) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var query by remember { mutableStateOf("") }
+    val filtered = customers.filter { customer ->
+        query.isBlank() || listOf(customer.fullName, customer.businessName, customer.phone.orEmpty())
+            .any { it.contains(query.trim(), ignoreCase = true) }
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Seleccionar cliente") },
         text = {
-            LazyColumn {
-                items(customers, key = { it.id }) { customer ->
-                    TextButton(onClick = { onSelect(customer) }, modifier = Modifier.fillMaxWidth()) {
-                        Column(Modifier.fillMaxWidth()) {
-                            Text(customer.businessName, fontWeight = FontWeight.Bold)
-                            Text("Saldo: ${money(customer.balance)}", color = BSPOSTheme.colors.textSecondary)
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = { query = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    label = { Text("Buscar cliente") }
+                )
+                TextButton(
+                    onClick = { onSelect(null) },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(Modifier.fillMaxWidth()) {
+                        Text(
+                            if (selectedId == null) "Todos los clientes" else "Quitar cliente seleccionado",
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            "Mostrar las cuentas por cobrar de todos",
+                            color = BSPOSTheme.colors.textSecondary
+                        )
+                    }
+                }
+                if (filtered.isEmpty()) {
+                    Text(
+                        if (customers.isEmpty()) "No hay clientes activos registrados."
+                        else "No hay clientes que coincidan con la búsqueda.",
+                        color = BSPOSTheme.colors.textSecondary
+                    )
+                } else {
+                    // BSPOSAlertDialog already provides the scroll container. A
+                    // nested LazyColumn here made the picker unreliable after
+                    // changing the selected customer or scrolling the sheet.
+                    filtered.forEach { customer ->
+                        TextButton(
+                            onClick = { onSelect(customer) },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(Modifier.fillMaxWidth()) {
+                                Text(
+                                    if (customer.id == selectedId) "✓ ${customer.fullName}" else customer.fullName,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    "Saldo: ${money(customer.balance)}",
+                                    color = if (customer.balance > 0L) BSPOSTheme.colors.warning else BSPOSTheme.colors.textSecondary
+                                )
+                            }
                         }
                     }
                 }

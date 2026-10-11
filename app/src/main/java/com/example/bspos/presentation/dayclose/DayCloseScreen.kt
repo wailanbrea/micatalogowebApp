@@ -199,7 +199,13 @@ private fun DailyCloseDialog(busy: Boolean, onDismiss: () -> Unit, onConfirm: (S
     var notes by rememberSaveable { mutableStateOf("") }
     var attempted by remember { mutableStateOf(false) }
     AlertDialog(onDismissRequest = { if (!busy) onDismiss() }, title = { Text("Guardar cierre diario") }, text = {
-        Column(Modifier.verticalScroll(rememberScrollState()).imePadding(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(
+            Modifier
+                .heightIn(max = 420.dp)
+                .verticalScroll(rememberScrollState())
+                .imePadding(),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
             OutlinedTextField(amount, { amount = it.filter { char -> char in '0'..'9' || char == '.' }; attempted = false },
                 modifier = Modifier.fillMaxWidth().testTag("day-close-counted"), label = { Text("Efectivo contado · opcional") }, enabled = !busy,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true, isError = attempted && !validCountedCash(amount))

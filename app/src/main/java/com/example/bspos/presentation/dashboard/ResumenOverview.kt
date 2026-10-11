@@ -111,6 +111,8 @@ internal fun ResumenOverview(
     showSupport: Boolean = true,
     firstSaleCompleted: Boolean? = null,
     setupStatusKnown: Boolean = true,
+    offline: Boolean = false,
+    onRetryStartup: () -> Unit = {},
     onAllSales: () -> Unit,
     onSale: (Sale) -> Unit,
 ) {
@@ -171,6 +173,21 @@ internal fun ResumenOverview(
             }
         }
         if (showSupport) item { SupportSummaryCard(onSupport = onSupport, onHide = onHideSupport) }
+        if (offline) item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.warningLight),
+                border = BorderStroke(1.dp, BSPOSTheme.colors.warning.copy(alpha = .35f))
+            ) {
+                Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Sin conexión", fontWeight = FontWeight.Bold, color = ResumenInk)
+                        Text("Mostramos tus últimos datos guardados.", color = ResumenMuted, fontSize = 12.sp)
+                    }
+                    TextButton(onClick = onRetryStartup) { Text("Reintentar") }
+                }
+            }
+        }
         val hasFirstSale = firstSaleCompleted ?: sales.isNotEmpty()
         if (showSales && setupStatusKnown && !hasFirstSale) {
             item { ResumenSetup(active.isNotEmpty(), hasFirstSale, onProducts, onNewSale, onStorefront, onProfile) }

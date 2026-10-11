@@ -66,6 +66,11 @@ class SettingsViewModel @Inject constructor(
     fun setCurrency(currency: CurrencyUnit) = viewModelScope.launch { repository.setCurrency(currency) }
     fun saveInvoiceConfig(config: InvoiceConfig) = viewModelScope.launch { repository.setInvoiceConfig(config) }
 
+    /** Uses the startup bootstrap snapshot without issuing a second account request. */
+    fun hydrateShops(shops: List<MiCatalogoShop>) {
+        miCatalogoUi.value = miCatalogoUi.value.copy(shops = shops, isLoadingShops = false)
+    }
+
     fun connectMiCatalogo(email: String, password: String) = viewModelScope.launch {
         miCatalogoUi.value = miCatalogoUi.value.copy(isConnecting = true, successMessage = null, errorMessage = null)
         when (val result = connectionRepository.login(email, password, remember = true)) {

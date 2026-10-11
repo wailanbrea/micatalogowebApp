@@ -56,6 +56,7 @@ class DashboardViewModel @Inject constructor(
     private val completedSetupShops = mutableSetOf<String>()
 
     fun loadFirstSaleStatus(shopId: String?) {
+        if (_firstSaleStatus.value.shopId == shopId && _firstSaleStatus.value.hasSale != null) return
         firstSaleJob?.cancel()
         if (_firstSaleStatus.value.shopId != shopId) _firstSaleStatus.value = FirstSaleStatus(shopId)
         if (shopId != null && shopId in completedSetupShops) {
