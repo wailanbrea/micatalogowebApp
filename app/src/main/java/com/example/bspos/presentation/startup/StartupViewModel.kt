@@ -52,7 +52,9 @@ class StartupViewModel @Inject constructor(
     private val _state = kotlinx.coroutines.flow.MutableStateFlow<StartupState>(StartupState.Idle)
     val state = _state.asStateFlow()
     private var bootstrapJob: Job? = null
+    private var foregroundRefreshJob: Job? = null
     private var lastBootstrapKey: String? = null
+    private var lastForegroundRefreshAt = 0L
 
     fun bootstrap(force: Boolean = false) {
         bootstrapJob?.cancel()
@@ -90,6 +92,34 @@ class StartupViewModel @Inject constructor(
     }
 
     fun retry() = bootstrap(force = true)
+
+    /**
+     * Refreshes the active shop without remounting the dashboard or showing the
+     * startup splash. This covers changes made from the web panel while the
+     * Android process stayed alive.
+     *
+     * The startup bootstrap remains the source of truth for the first render;
+     * this lightweight refresh only runs after a ready snapshot exists and is
+     * throttled so returning to the app repeatedly does not create a request
+     * storm.
+     */
+    fun refreshCatalogOnForeground() {
+        val now = System.currentTimeMillis()
+        if (now - lastForegroundRefreshAt < FOREGROUND_REFRESH_COOLDOWN_MS) return
+        if (!_state.value.isContentReady()) return
+
+        foregroundRefreshJob?.cancel()
+        foregroundRefreshJob = viewModelScope.launch {
+            val token = connection.accessToken()
+            val shopId = connection.activeShopId()
+            if (token.isNullOrBlank() || shopId.isNullOrBlank()) return@launch
+            lastForegroundRefreshAt = now
+            when (catalog.syncCatalog(shopId)) {
+                is MiCatalogoResult.Success -> Unit
+                is MiCatalogoResult.Failure -> Unit
+            }
+        }
+    }
 
     fun reset() {
         bootstrapJob?.cancel()
@@ -217,6 +247,7 @@ class StartupViewModel @Inject constructor(
 
     private companion object {
         const val STARTUP_TIMEOUT_MS = 10_000L
+        const val FOREGROUND_REFRESH_COOLDOWN_MS = 15_000L
         val CLOSED_ORDER_STATUSES = setOf("delivered", "cancelled", "completed", "entregado", "cancelado", "completado")
     }
 }

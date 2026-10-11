@@ -16,6 +16,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import com.example.bspos.core.ui.theme.BSPOSFonts as FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -52,6 +55,14 @@ fun DecantsScreen(presentation: MiCatalogoBusinessPresentation, showCost: Boolea
     var focusSize by remember { mutableStateOf<String?>(null) }
     var createSource by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(Unit) { viewModel.load() }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) viewModel.load()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
     LaunchedEffect(state.enqueued) { if (state.enqueued > 0) sheet = null }
     val workspace = state.workspace
     if (state.loading) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }

@@ -70,7 +70,10 @@ class MainActivity : FragmentActivity() {
                             sessionUnlocked = false
                             requestBiometricOnUnlock = true
                         }
-                        Lifecycle.Event.ON_RESUME -> appUpdateViewModel.onActivityResumed()
+                        Lifecycle.Event.ON_RESUME -> {
+                            startupViewModel.refreshCatalogOnForeground()
+                            appUpdateViewModel.onActivityResumed()
+                        }
                         else -> Unit
                     }
                 }
