@@ -18,6 +18,7 @@ import com.example.bspos.data.micatalogo.dto.QuoteCreateRequestDto
 import com.example.bspos.data.micatalogo.dto.QuoteResponseDto
 import com.example.bspos.data.micatalogo.dto.OrderConfirmRequestDto
 import com.example.bspos.data.micatalogo.dto.OrderConfirmResponseDto
+import com.example.bspos.data.micatalogo.dto.ReturnEligibleResponseDto
 import com.example.bspos.data.micatalogo.dto.ProfileUpdateDto
 import com.example.bspos.data.micatalogo.dto.SellerCreateRequestDto
 import com.example.bspos.data.micatalogo.dto.SellerCreateResponseDto
@@ -318,6 +319,9 @@ interface MiCatalogoApi {
         @Path("shopId") shopId: String,
         @Path("quoteId") quoteId: String
     ): Response<QuoteResponseDto>
+
+    @GET("api/v1/shops/{shopId}/returns/eligible")
+    suspend fun eligibleReturns(@Path("shopId") shopId: String): Response<ReturnEligibleResponseDto>
 
     @POST("api/v1/shops/{shopId}/orders/{orderId}/confirm")
     suspend fun confirmOrder(

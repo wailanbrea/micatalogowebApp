@@ -202,7 +202,7 @@ class OrdersViewModel @Inject constructor(
             runCatching { shops.mutate { active ->
                 require(active==shopId && loadedShopId==shopId) { "El pedido no pertenece a la tienda activa" }
                 if(paymentKind in setOf("credit","mixed")) require(_state.value.customers.any { it.id==customerId && it.isActive!=false && !it.localOnly }) { "Selecciona un cliente activo de esta tienda" }
-                api.get().confirmOrder(
+                val response = api.get().confirmOrder(
                     shopId,
                     orderId,
                     OrderConfirmRequestDto(
@@ -213,10 +213,13 @@ class OrdersViewModel @Inject constructor(
                         reference = reference?.trim()?.ifBlank { null }
                     )
                 )
-            }
-            }.onSuccess { response ->
+                // Keep HTTP/application errors inside the protected block. The
+                // previous implementation threw from onSuccess, which escaped
+                // runCatching and terminated the Android process on a 422.
                 if (!response.isSuccessful) error(response.apiErrorMessage("No se pudo confirmar el pedido. Revisa el cliente, el crédito y las existencias."))
-                val body = response.body()
+                checkNotNull(response.body()) { "MiCatalogo devolvió una respuesta vacía al confirmar el pedido." }
+            }
+            }.onSuccess { body ->
                 _state.value = _state.value.copy(
                     confirmingId = null,
                     message = body?.invoiceNumber?.let { "Venta confirmada: $it" } ?: "Pedido confirmado como venta."
@@ -287,7 +290,9 @@ class OrdersViewModel @Inject constructor(
         firstName=firstName,lastName=lastName,documentType=documentType,documentNumber=documentNumber,
         phone=phone,email=email,address=address,whatsapp=whatsapp,reference=reference,
         creditLimit=MiCatalogoPosSaleOutboxMapper.decimalPrice(creditLimit),
-        balance=MiCatalogoPosSaleOutboxMapper.decimalPrice(balance),isActive=isActive,
+        balance=MiCatalogoPosSaleOutboxMapper.decimalPrice(balance),
+        availableCredit=MiCatalogoPosSaleOutboxMapper.decimalPrice((creditLimit - balance).coerceAtLeast(0L)),
+        isActive=isActive,
         updatedAt=updatedAt.toString(),localOnly=remoteCustomerId==null)
 
     fun consumeCustomerCreateError() {

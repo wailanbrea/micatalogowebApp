@@ -57,6 +57,7 @@ fun CollectionScreen(viewModel: CollectionViewModel = hiltViewModel()) {
     val customers by viewModel.customers.collectAsState()
     val sales by viewModel.sales.collectAsState()
     val customer by viewModel.customer.collectAsState()
+    val collecting by viewModel.collecting.collectAsState()
     var choosing by remember { mutableStateOf(false) }
     var method by remember { mutableStateOf(PaymentMethod.CASH) }
     var tab by remember { mutableStateOf("Por cobrar") }
@@ -131,6 +132,7 @@ fun CollectionScreen(viewModel: CollectionViewModel = hiltViewModel()) {
                         RemoteCustomerDebtCard(
                             customer = debtor,
                             method = method,
+                            busy = collecting,
                             onCollect = { amount -> viewModel.collectRemote(debtor, amount, method) }
                         )
                     }
@@ -142,6 +144,7 @@ fun CollectionScreen(viewModel: CollectionViewModel = hiltViewModel()) {
                         sale = sale,
                         customer = saleCustomer,
                         method = method,
+                        busy = collecting,
                         onCollect = { amount ->
                             if (saleCustomer == null) {
                                 UiErrorBus.show("Esta venta no tiene un cliente asociado para registrar el abono.")
@@ -158,6 +161,7 @@ fun CollectionScreen(viewModel: CollectionViewModel = hiltViewModel()) {
                         RemoteCustomerDebtCard(
                             customer = debtor,
                             method = method,
+                            busy = collecting,
                             onCollect = { amount -> viewModel.collectRemote(debtor, amount, method) }
                         )
                     }
@@ -195,6 +199,7 @@ private fun PendingSaleCard(
     sale: Sale,
     customer: Customer?,
     method: PaymentMethod,
+    busy: Boolean,
     onCollect: (Long) -> Unit
 ) {
     var amount by remember(sale.id, sale.pendingAmount) { mutableStateOf(MoneyUtils.formatCentsCompact(sale.pendingAmount)) }
@@ -220,8 +225,8 @@ private fun PendingSaleCard(
                 )
                 Button(
                     onClick = { if (value > 0L && value <= sale.pendingAmount) onCollect(value) },
-                    enabled = customer != null && value > 0L && value <= sale.pendingAmount
-                ) { Text("Cobrar") }
+                    enabled = !busy && customer != null && value > 0L && value <= sale.pendingAmount
+                ) { Text(if (busy) "Procesando…" else "Cobrar") }
             }
         }
     }
@@ -231,6 +236,7 @@ private fun PendingSaleCard(
 private fun RemoteCustomerDebtCard(
     customer: Customer,
     method: PaymentMethod,
+    busy: Boolean,
     onCollect: (Long) -> Unit
 ) {
     var amount by remember(customer.id, customer.balance) {
@@ -258,8 +264,8 @@ private fun RemoteCustomerDebtCard(
                 )
                 Button(
                     onClick = { if (value > 0L && value <= customer.balance) onCollect(value) },
-                    enabled = value > 0L && value <= customer.balance
-                ) { Text("Cobrar") }
+                    enabled = !busy && value > 0L && value <= customer.balance
+                ) { Text(if (busy) "Procesando…" else "Cobrar") }
             }
         }
     }

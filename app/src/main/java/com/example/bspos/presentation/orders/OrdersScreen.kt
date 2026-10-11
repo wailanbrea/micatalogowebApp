@@ -846,7 +846,16 @@ internal fun OrderConfirmDialog(
     val needsCustomer = kind == "credit" || kind == "mixed"
     val totalCents = remember(row.id, row.value) { MoneyUtils.parsePesosStringToCents(row.value) }
     val mixedCreditCents = if (kind == "mixed") calculateMixedCredit(totalCents, downPayment) else null
+    val requestedCreditCents = when (kind) {
+        "credit" -> totalCents
+        "mixed" -> mixedCreditCents ?: 0L
+        else -> 0L
+    }
+    val availableCreditCents = customer?.availableCredit?.let(MoneyUtils::parsePesosStringToCents)
+    val creditExceeded = needsCustomer && customer != null && availableCreditCents != null &&
+        requestedCreditCents > availableCreditCents
     val creditValid = kind != "mixed" || mixedCreditCents != null
+    val customerCreditValid = !needsCustomer || (customer != null && !creditExceeded)
     LaunchedEffect(createdCustomer?.id) {
         createdCustomer?.takeIf { it.isActive!=false && !it.localOnly }?.let {
             customer = it
@@ -867,7 +876,7 @@ internal fun OrderConfirmDialog(
                     val creditAmount = mixedCreditCents?.let { BigDecimal.valueOf(it, 2).toPlainString() }
                     onConfirm(kind, method, customer?.id, creditAmount, reference)
                 },
-                enabled = !busy && (!needsCustomer || customers.any { it.id==customer?.id && it.isActive!=false && !it.localOnly }) && creditValid,
+                enabled = !busy && (!needsCustomer || customers.any { it.id==customer?.id && it.isActive!=false && !it.localOnly }) && creditValid && customerCreditValid,
                 busy = busy
             )
         }
@@ -941,6 +950,14 @@ internal fun OrderConfirmDialog(
                                 )
                             }
                         }
+                    }
+                    if (creditExceeded) {
+                        Text(
+                            "Crédito disponible insuficiente: ${MoneyUtils.formatCents(availableCreditCents ?: 0L)}. " +
+                                "Necesitas ${MoneyUtils.formatCents(requestedCreditCents)}.",
+                            color = BSPOSTheme.colors.error,
+                            style = MaterialTheme.typography.bodySmall
+                        )
                     }
                     customerCreateError?.let { Text(it, color = BSPOSTheme.colors.error, fontSize = 12.sp) }
                 }

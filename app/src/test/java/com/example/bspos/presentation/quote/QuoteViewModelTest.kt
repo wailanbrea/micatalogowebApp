@@ -37,7 +37,7 @@ class QuoteViewModelTest {
     }
     private fun catalog() = Lazy {
         proxy<MiCatalogoCatalogRepository> { method, _ ->
-            check(method == "syncCustomers")
+            check(method == "syncCustomers" || method == "syncCatalog")
             MiCatalogoResult.Success(0)
         }
     }

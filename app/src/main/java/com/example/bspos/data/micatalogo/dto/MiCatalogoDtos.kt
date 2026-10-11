@@ -281,6 +281,36 @@ data class QuoteCreatedDto(
 )
 
 @Serializable
+data class ReturnEligibleResponseDto(
+    val invoices: List<ReturnEligibleInvoiceDto> = emptyList(),
+    @SerialName("generated_at") val generatedAt: String? = null
+)
+
+@Serializable
+data class ReturnEligibleInvoiceDto(
+    val id: Long = 0,
+    @SerialName("invoice_number") val invoiceNumber: String = "",
+    val total: String = "0.00",
+    @SerialName("issued_at") val issuedAt: String? = null,
+    @SerialName("customer_name") val customerName: String? = null,
+    val items: List<ReturnEligibleItemDto> = emptyList()
+)
+
+@Serializable
+data class ReturnEligibleItemDto(
+    val id: Long = 0,
+    @SerialName("product_id") val productId: String = "",
+    @SerialName("product_name") val productName: String = "",
+    val quantity: Int = 0,
+    @SerialName("refunded_quantity") val refundedQuantity: Int = 0,
+    @SerialName("remaining_quantity") val remainingQuantity: Int = 0,
+    @SerialName("unit_price") val unitPrice: String = "0.00",
+    @SerialName("line_total") val lineTotal: String = "0.00",
+    @SerialName("sale_unit") val saleUnit: String? = null,
+    @SerialName("volume_ml") val volumeMl: Int? = null
+)
+
+@Serializable
 data class FeatureKpiDto(
     val label: String = "",
     val value: String = "",

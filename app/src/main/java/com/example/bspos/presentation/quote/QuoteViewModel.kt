@@ -149,11 +149,19 @@ class QuoteViewModel @Inject constructor(
             }
                 .onSuccess { response ->
                     if (!response.isSuccessful) throw IllegalStateException("No se pudo convertir la cotización.")
+                    val activeShop = connection.activeShopId()
+                    val catalogMessage = activeShop?.let { shopId ->
+                        when (val sync = catalog.get().syncCatalog(shopId)) {
+                            is com.example.bspos.domain.model.MiCatalogoResult.Success -> null
+                            is com.example.bspos.domain.model.MiCatalogoResult.Failure ->
+                                " La venta fue creada, pero el inventario local se actualizará al reintentar la sincronización."
+                        }
+                    }
                     _state.value = _state.value.copy(
                         convertingId = null,
                         convertedInvoiceNumber = response.body()?.invoiceNumber,
                         convertedInvoiceUrl = response.body()?.invoiceUrl,
-                        message = response.body()?.message ?: "Cotización convertida en venta."
+                        message = (response.body()?.message ?: "Cotización convertida en venta.") + (catalogMessage ?: "")
                     )
                     load()
                 }

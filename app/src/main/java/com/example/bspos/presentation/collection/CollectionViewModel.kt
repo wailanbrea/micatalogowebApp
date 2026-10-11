@@ -49,6 +49,9 @@ class CollectionViewModel @Inject constructor(
     val customer = _customer.asStateFlow()
     private val _message = MutableStateFlow<String?>(null)
     val message = _message.asStateFlow()
+    private val _collecting = MutableStateFlow(false)
+    val collecting = _collecting.asStateFlow()
+    private val paymentGate = PaymentAttemptGate()
 
     init {
         refreshRemoteCustomers()
@@ -63,13 +66,25 @@ class CollectionViewModel @Inject constructor(
     fun select(customer: Customer?) { _customer.value = customer }
     fun collect(saleId: UUID, amount: Long, method: PaymentMethod) {
         val selected = _customer.value ?: return
+        val operationKey = "local:${selected.id}:$saleId:$amount:${method.name}"
+        val requestId = paymentGate.start(operationKey) ?: return
+        _collecting.value = true
         viewModelScope.launch {
-            runCatching {
-                recordPayment(RecordPaymentRequest("REC-${System.currentTimeMillis()}", selected.id, Instant.now(), method, listOf(PaymentAllocationInput(saleId, amount))))
-            }.onFailure {
-                val message = it.toUiMessage("No se pudo registrar el cobro")
-                _message.value = message
-                UiErrorBus.show(message)
+            var succeeded = false
+            try {
+                runCatching {
+                    recordPayment(RecordPaymentRequest("REC-$requestId", selected.id, Instant.now(), method, listOf(PaymentAllocationInput(saleId, amount))))
+                }.onSuccess {
+                    succeeded = true
+                }.onFailure {
+                    if (it is CancellationException) throw it
+                    val message = it.toUiMessage("No se pudo registrar el cobro")
+                    _message.value = message
+                    UiErrorBus.show(message)
+                }
+            } finally {
+                paymentGate.finish(operationKey, succeeded, keepIdentityOnFailure = false)
+                _collecting.value = paymentGate.isBusy()
             }
         }
     }
@@ -80,35 +95,49 @@ class CollectionViewModel @Inject constructor(
      * payment FIFO across its open invoices.
      */
     fun collectRemote(customer: Customer, amount: Long, method: PaymentMethod) {
+        val operationKey = "remote:${customer.id}:$amount:${method.name}"
+        val requestId = paymentGate.start(operationKey) ?: return
+        _collecting.value = true
         viewModelScope.launch {
-            runCatching { shops.mutate { shopId ->
-                require(amount > 0L && amount <= customer.balance) { "El monto supera el saldo pendiente." }
-                val local = checkNotNull(customerDao.findCustomer(customer.id,shopId)) { "Cliente no encontrado en la tienda activa." }
-                require(local.isActive && local.deletedAt==null) { "El cliente está inactivo" }
-                val remoteId = checkNotNull(local.miCatalogoCustomerId) {
-                    "Este cliente todavía no está vinculado a MiCatalogo. Sincroniza la tienda antes de cobrarlo."
-                }
-                val response = customerApi.get().payment(
-                    shopId,
-                    remoteId,
-                    CustomerPaymentDto(
-                        uuid = UUID.randomUUID().toString(),
-                        amount = MiCatalogoPosSaleOutboxMapper.decimalPrice(amount),
-                        paymentMethod = method.toApiValue()
+            var succeeded = false
+            try {
+                runCatching { shops.mutate { shopId ->
+                    require(amount > 0L && amount <= customer.balance) { "El monto supera el saldo pendiente." }
+                    val local = checkNotNull(customerDao.findCustomer(customer.id,shopId)) { "Cliente no encontrado en la tienda activa." }
+                    require(local.isActive && local.deletedAt==null) { "El cliente está inactivo" }
+                    val remoteId = checkNotNull(local.miCatalogoCustomerId) {
+                        "Este cliente todavía no está vinculado a MiCatalogo. Sincroniza la tienda antes de cobrarlo."
+                    }
+                    val response = customerApi.get().payment(
+                        shopId,
+                        remoteId,
+                        CustomerPaymentDto(
+                            // Keep the same identity if the network fails after the
+                            // server commits. The API is idempotent by this UUID.
+                            uuid = requestId,
+                            amount = MiCatalogoPosSaleOutboxMapper.decimalPrice(amount),
+                            paymentMethod = method.toApiValue()
+                        )
                     )
-                )
-                if (!response.isSuccessful) error(response.apiErrorMessage("No se pudo registrar el cobro."))
-                val payload = checkNotNull(response.body()) { "MiCatalogo no devolvió el saldo actualizado." }
-                val serverBalance = MoneyUtils.parsePesosStringToCents(payload.customerBalance)
-                check(customerDao.updateCustomer(local.copy(balance = serverBalance, updatedAt = Instant.now())) == 1) {
-                    "No se pudo actualizar el saldo local del cliente."
+                    if (!response.isSuccessful) error(response.apiErrorMessage("No se pudo registrar el cobro."))
+                    val payload = checkNotNull(response.body()) { "MiCatalogo no devolvió el saldo actualizado." }
+                    val serverBalance = MoneyUtils.parsePesosStringToCents(payload.customerBalance)
+                    check(customerDao.updateCustomer(local.copy(balance = serverBalance, updatedAt = Instant.now())) == 1) {
+                        "No se pudo actualizar el saldo local del cliente."
+                    }
+                } }.onSuccess {
+                    succeeded = true
+                }.onFailure {
+                    if(it is CancellationException) throw it
+                    val message = it.toUiMessage("No se pudo registrar el cobro")
+                    _message.value = message
+                    UiErrorBus.show(message)
                 }
-            }
-            }.onFailure {
-                if(it is CancellationException) throw it
-                val message = it.toUiMessage("No se pudo registrar el cobro")
-                _message.value = message
-                UiErrorBus.show(message)
+            } finally {
+                // A failed request keeps its identity for a safe retry; a
+                // successful payment starts a fresh operation next time.
+                paymentGate.finish(operationKey, succeeded, keepIdentityOnFailure = true)
+                _collecting.value = paymentGate.isBusy()
             }
         }
     }
@@ -121,4 +150,25 @@ private fun PaymentMethod.toApiValue(): String = when (this) {
     PaymentMethod.CARD -> "card"
     PaymentMethod.TRANSFER -> "bank_transfer"
     PaymentMethod.CHECK -> "other"
+}
+
+/** Prevents double taps while preserving the idempotency key for a retry. */
+internal class PaymentAttemptGate {
+    private val inFlight = mutableSetOf<String>()
+    private val identities = mutableMapOf<String, String>()
+
+    @Synchronized
+    fun start(key: String): String? {
+        if (!inFlight.add(key)) return null
+        return identities.getOrPut(key) { UUID.randomUUID().toString() }
+    }
+
+    @Synchronized
+    fun finish(key: String, success: Boolean, keepIdentityOnFailure: Boolean) {
+        inFlight.remove(key)
+        if (success || !keepIdentityOnFailure) identities.remove(key)
+    }
+
+    @Synchronized
+    fun isBusy(): Boolean = inFlight.isNotEmpty()
 }
