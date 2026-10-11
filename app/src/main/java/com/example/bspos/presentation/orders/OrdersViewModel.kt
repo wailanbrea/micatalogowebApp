@@ -98,10 +98,17 @@ class OrdersViewModel @Inject constructor(
                 it.copy(
                     // Keep the last list visible when returning to Pedidos and
                     // refresh it in the background instead of showing a blank spinner.
-                    loading = !refresh && !hasCachedModule,
-                    refreshing = refresh || hasCachedModule,
+                    // ON_RESUME also runs on the first entry: refresh is not evidence of a cache.
+                    loading = !hasCachedModule,
+                    refreshing = hasCachedModule,
+                    kpis = if (hasCachedModule) it.kpis else emptyList(),
+                    rows = if (hasCachedModule) it.rows else emptyList(),
+                    pageTotal = if (hasCachedModule) it.pageTotal else null,
+                    note = if (hasCachedModule) it.note else null,
+                    search = activeSearch,
+                    status = activeStatus,
                     // Keep the confirmation until the screen closes the dialog and consumes it.
-                    message = if (refresh) it.message else null,
+                    message = if (refresh && hasCachedModule) it.message else null,
                     error = null
                 )
             }

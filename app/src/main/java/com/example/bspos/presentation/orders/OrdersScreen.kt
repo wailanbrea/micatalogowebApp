@@ -133,8 +133,7 @@ fun OrdersScreen(
 
     Box(modifier.fillMaxSize().background(BSPOSTheme.colors.background)) {
         when {
-            state.loading -> CircularProgressIndicator(Modifier.align(Alignment.Center), color = BSPOSTheme.colors.primary)
-            state.error != null && state.rows.isEmpty() -> OrdersError(state.error!!, onRetry = { viewModel.load() })
+            !state.loading && state.error != null && state.rows.isEmpty() -> OrdersError(state.error!!, onRetry = { viewModel.load() })
             else -> OrdersContent(
                 state,
                 screenTitle,
@@ -225,6 +224,18 @@ private fun OrdersContent(
     onWhatsApp: (FeatureRowDto) -> Unit,
     onOpenChat: () -> Unit
 ) {
+    if (state.loading) {
+        Column(Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 18.dp)) {
+            Text(title, style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.ExtraBold)
+            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    CircularProgressIndicator(color = BSPOSTheme.colors.primary)
+                    Text("Cargando ${title.lowercase(Locale.ROOT)}…", color = BSPOSTheme.colors.textSecondary)
+                }
+            }
+        }
+        return
+    }
     var search by remember(title) { mutableStateOf(state.search) }
     var status by remember(title) { mutableStateOf(state.status) }
     val isOrders = title == "Pedidos"

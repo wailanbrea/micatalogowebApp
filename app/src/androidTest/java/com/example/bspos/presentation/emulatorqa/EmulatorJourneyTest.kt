@@ -154,6 +154,31 @@ class EmulatorJourneyTest {
         switchShop("QA Tienda A")
         waitFor("RD$ 600.00")
     }
+    @Test fun ordersEntryAndReturnDoNotShowTheEmptyLandingForExistingOrders() {
+        assumeTrue(InstrumentationRegistry.getArguments().getString("emulatorQaLive")=="true")
+        check(BuildConfig.APPLICATION_ID.endsWith(".offlinecheck.emulatorqa") && BuildConfig.MICATALOGO_API_BASE_URL=="http://127.0.0.1:18766/")
+        waitFor("Iniciar sesion")
+        compose.onAllNodes(hasSetTextAction())[0].performTextReplacement("emulador-qa@example.test")
+        compose.onAllNodes(hasSetTextAction())[1].performTextReplacement("Emulador-QA-2026!")
+        Espresso.closeSoftKeyboard()
+        compose.onNodeWithText("Iniciar sesion").performClick()
+        waitFor("Buenas, QA Tienda A")
+        dismissAutofill()
+        navigate("Pedidos")
+        compose.onNodeWithText("COMPARTIR MI TIENDA").assertDoesNotExist()
+        waitFor("QA Comprador A2")
+        compose.onNodeWithText("Aún no tienes pedidos").assertDoesNotExist()
+        evidence("13-orders-first-entry")
+        compose.onNode(hasText("Confirmados") and hasClickAction()).performClick()
+        waitFor("QA Comprador A2")
+        navigate("Terminal")
+        waitFor("QA Producto A")
+        navigate("Pedidos")
+        compose.onNodeWithText("COMPARTIR MI TIENDA").assertDoesNotExist()
+        waitFor("QA Comprador A2")
+        evidence("14-orders-return-filter-retained")
+    }
+
     private fun fill(label:String,value:String) = compose.onNodeWithText(label).performScrollTo().performTextReplacement(value)
     private fun openDrawer() {
         val menu=hasContentDescription("Abrir menu") or hasContentDescription("Abrir menú")
