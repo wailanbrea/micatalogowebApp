@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -164,8 +163,13 @@ internal fun DecantsContent(workspace: DecantWorkspaceDto, error: String?, messa
         item {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Decants", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.ExtraBold, modifier = Modifier.weight(1f))
-                IconButton(onClick = onTutorial) {
-                    Icon(Icons.Outlined.HelpOutline, contentDescription = "Tutorial guiado de Decants")
+                BSPOSOutlinedButton(
+                    onClick = onTutorial,
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp)
+                ) {
+                    Icon(Icons.Outlined.HelpOutline, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Tutorial", maxLines = 1)
                 }
                 IconButton(onRefresh) { Icon(Icons.Outlined.Refresh, "Actualizar") }
             }
@@ -553,10 +557,7 @@ private fun DecantsGuidedTutorial(onDismiss: () -> Unit) {
         onDismissRequest = onDismiss,
         title = { Text("Tutorial guiado de Decants") },
         text = {
-            Column(
-                Modifier.verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
-            ) {
+            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 Text("Paso ${stepIndex + 1} de ${decantsTutorialSteps.size}", fontWeight = FontWeight.Bold, color = BSPOSTheme.colors.primary)
                 LinearProgressIndicator(
                     progress = { (stepIndex + 1).toFloat() / decantsTutorialSteps.size },
