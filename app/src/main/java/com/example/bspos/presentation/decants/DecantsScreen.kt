@@ -135,16 +135,18 @@ fun DecantsScreen(presentation: MiCatalogoBusinessPresentation, showCost: Boolea
     if (createSource != null && categories.any { it.isActive } && units.any { it.isActive }) {
         ProductForm(current = null, currentQuantity = 0, categories = categories.filter { it.isActive }, units = units.filter { it.isActive },
             presentation = presentation, showCost = showCost, showInventoryFields = false, showProductCode = true,
-            onSave = { input, _ -> catalog.add(input); createSource = null }, onDismiss = { createSource = null },
+            onSave = { input, initialQuantity ->
+                catalog.add(input, initialQuantity) { viewModel.refreshAfterCatalogMutation() }
+                createSource = null
+            }, onDismiss = { createSource = null },
             shops = shops, activeShopId = activeShop, decantMode = true,
             sourceProducts = products.filter { it.remoteSaleUnit == "bottle" }, initialSourceRemoteId = createSource)
     } else if (createBottleSource && categories.any { it.isActive } && units.any { it.isActive }) {
         ProductForm(current = null, currentQuantity = 0, categories = categories.filter { it.isActive }, units = units.filter { it.isActive },
             presentation = presentation, showCost = showCost, showInventoryFields = true, showProductCode = true,
             onSave = { input, initialQuantity ->
-                catalog.add(input, initialQuantity)
+                catalog.add(input, initialQuantity) { viewModel.refreshAfterCatalogMutation() }
                 createBottleSource = false
-                viewModel.refreshSync()
             }, onDismiss = { createBottleSource = false }, shops = shops, activeShopId = activeShop,
             initialSaleUnit = "bottle")
     } else if (createSource != null) BSPOSAlertDialog(onDismissRequest = { createSource = null }, title = { Text("Nueva presentación") },

@@ -79,7 +79,7 @@ class ProductCatalogViewModel @Inject constructor(
         }
     }
 
-    fun add(input: ProductInput, initialQuantity: Long = 0L) {
+    fun add(input: ProductInput, initialQuantity: Long = 0L, onSaved: () -> Unit = {}) {
         val remoteShopId = input.remoteShopId
         if (remoteShopId != null) {
             val quota = _shops.value.firstOrNull { it.id == remoteShopId }?.quota
@@ -97,6 +97,8 @@ class ProductCatalogViewModel @Inject constructor(
                     val product = productUseCases.create(input)
                     if (initialQuantity > 0) initialInventory(product.id, initialQuantity, input.purchasePrice)
                 }
+            }.onSuccess {
+                onSaved()
             }.onFailure {
                 val message = it.toUiMessage("No se pudo guardar el producto")
                 _message.value = message

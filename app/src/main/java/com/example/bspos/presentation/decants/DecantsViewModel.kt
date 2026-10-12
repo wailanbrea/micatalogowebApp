@@ -7,6 +7,7 @@ import com.example.bspos.data.local.dao.OperationOutboxDao
 import com.example.bspos.data.micatalogo.RemoteMutationRecorder
 import com.example.bspos.data.micatalogo.api.MiCatalogoApi
 import com.example.bspos.data.micatalogo.dto.*
+import com.example.bspos.domain.repository.MiCatalogoCatalogRepository
 import com.example.bspos.domain.repository.MiCatalogoConnectionRepository
 import dagger.Lazy
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -36,11 +37,13 @@ class DecantsViewModel @Inject constructor(
     private val api: Lazy<MiCatalogoApi>,
     private val connection: MiCatalogoConnectionRepository,
     private val remote: RemoteMutationRecorder,
-    private val outbox: OperationOutboxDao
+    private val outbox: OperationOutboxDao,
+    private val catalog: MiCatalogoCatalogRepository
 ) : ViewModel() {
     private val _state = MutableStateFlow(DecantsState())
     val state = _state.asStateFlow()
     private var loadJob: Job? = null
+    private var catalogRefreshJob: Job? = null
 
     fun load() {
         loadJob?.cancel()
@@ -109,5 +112,46 @@ class DecantsViewModel @Inject constructor(
         }
     }
     fun refreshSync() { remote.wake(); load() }
+
+    /**
+     * Product forms write through the durable outbox. Wait until those
+     * mutations are accepted remotely, then pull the authoritative catalog
+     * before returning to the Decants workspace. This prevents a newly created
+     * bottle or presentation from appearing to be missing just because the
+     * screen was reloaded before the outbox finished.
+     */
+    fun refreshAfterCatalogMutation() {
+        catalogRefreshJob?.cancel()
+        catalogRefreshJob = viewModelScope.launch {
+            val shop = connection.activeShopId() ?: return@launch
+            _state.update { it.copy(busy = true, error = null, message = "Sincronizando el catálogo…") }
+            remote.wake()
+            repeat(30) {
+                val pending = outbox.activeForShop(shop)
+                val blocked = pending.firstOrNull { it.state == "BLOCKED" }
+                if (blocked != null) {
+                    _state.update { it.copy(busy = false, error = blocked.error ?: "No se pudo sincronizar el catálogo.", message = null) }
+                    load()
+                    return@launch
+                }
+                if (pending.isEmpty()) {
+                    when (val result = catalog.syncCatalog(shop)) {
+                        is com.example.bspos.domain.model.MiCatalogoResult.Success -> {
+                            _state.update { it.copy(busy = false, message = "Catálogo actualizado.") }
+                        }
+                        is com.example.bspos.domain.model.MiCatalogoResult.Failure -> {
+                            _state.update { it.copy(busy = false, error = result.message, message = null) }
+                        }
+                    }
+                    load()
+                    return@launch
+                }
+                remote.wake()
+                delay(500)
+            }
+            _state.update { it.copy(busy = false, error = "La sincronización está tardando. Pulsa actualizar para reintentar.", message = null) }
+            load()
+        }
+    }
     fun clearMessage() { _state.update { it.copy(message = null) } }
 }
