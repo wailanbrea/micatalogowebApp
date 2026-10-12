@@ -41,6 +41,11 @@ private fun operation(type: String, block: JsonObjectBuilder.() -> Unit = {}) = 
 private fun money(cents: Long): String = MoneyUtils.formatCents(cents, CurrencyUnit.DOP)
 private fun decimal(cents: Long): String = BigDecimal.valueOf(cents, 2).toPlainString()
 
+private fun DecantFragranceDto.isBottleSource(): Boolean = sourceSaleUnit.trim().equals("bottle", ignoreCase = true)
+
+private fun DecantFragranceDto.hasAvailableBottleStock(): Boolean =
+    sealed > 0 || openings.any { it.remainingMl > 0 }
+
 private data class QuickDecantLine(
     val volumeMl: Int,
     val selected: Boolean = true,
@@ -208,8 +213,8 @@ internal fun DecantsContent(workspace: DecantWorkspaceDto, error: String?, messa
         else -> true
     }
     val groups = workspace.groups.filter { it.sizes.isNotEmpty() || it.openings.isNotEmpty() }
-    val bottleSources = workspace.groups.filter { it.sourceSaleUnit == "bottle" }
-    val availableBottleSources = bottleSources.filter { it.sealed > 0 }
+    val bottleSources = workspace.groups.filter { it.isBottleSource() }
+    val availableBottleSources = bottleSources.filter { it.hasAvailableBottleStock() }
     val mlSources = workspace.groups.filter { it.sourceSaleUnit == "ml" }
     val visible = groups.filter { matches(it, filter) && "${it.name} ${it.brand.orEmpty()}".contains(query, true) }
     LazyColumn(Modifier.fillMaxSize().background(BSPOSTheme.colors.surface).padding(horizontal = BSPOSDesign.screenMargin),
@@ -415,7 +420,7 @@ private fun DecantQuickSetupSheet(
     onCreateBottle: () -> Unit,
     onSubmit: (DecantFragranceDto, String, List<QuickDecantLine>) -> Unit
 ) {
-    val sources = workspace.groups.filter { it.sourceSaleUnit == "bottle" && (it.sealed > 0 || it.openings.any { opening -> opening.remainingMl > 0 }) }
+    val sources = workspace.groups.filter { it.isBottleSource() && it.hasAvailableBottleStock() }
     var step by remember { mutableIntStateOf(0) }
     var sourceId by remember { mutableStateOf<String?>(sources.firstOrNull()?.id) }
     var mode by remember { mutableStateOf("ready") }
@@ -549,7 +554,7 @@ private fun DecantQuickSetupSheet(
     var sizeId by remember { mutableStateOf(initialSizeId ?: focus?.sizes?.firstOrNull()?.id) }
     var quantity by remember { mutableIntStateOf(1) }
     var price by remember { mutableStateOf(focus?.sizes?.firstOrNull { it.id == sizeId }?.let { decimal(it.priceCents) } ?: "") }
-    val eligibleGroups = workspace.groups.filter { it.sourceSaleUnit == "bottle" }
+    val eligibleGroups = workspace.groups.filter { it.isBottleSource() }
     val group = eligibleGroups.firstOrNull { it.id == groupId }; val opening = group?.openings?.firstOrNull { it.id == openingId }; val size = group?.sizes?.firstOrNull { it.id == sizeId }
     val selected = opening != null || sealedSelected
     val remaining = opening?.remainingMl ?: if (sealedSelected) group?.volumeMl ?: 0 else 0
@@ -579,7 +584,10 @@ private fun DecantQuickSetupSheet(
                 }
             }
             BSPOSSectionLabel("Abrir una botella completa nueva")
-            eligibleGroups.filter { it.sealed > 0 && it.untrackedOpenMl == 0 && (focus == null || it.id == focus.id) }.forEach { item ->
+            // A legacy/unreconciled open remainder must not hide sealed bottles.
+            // The sealed quantity is independently validated by the server when
+            // the bottle is opened for this preparation.
+            eligibleGroups.filter { it.sealed > 0 && (focus == null || it.id == focus.id) }.forEach { item ->
                 SelectionRow(item.name, "${item.sealed} en inventario · ${item.volumeMl} ml", false, imageUrl = item.imageUrl) { selectSource(item, null) }
             }
             if (eligibleGroups.none { it.sealed > 0 || it.openings.any { b -> b.remainingMl > 0 } }) Text("No hay perfumes completos configurados como botella disponibles. Registra o recibe una botella completa para continuar.")
@@ -636,8 +644,8 @@ private fun DecantQuickSetupSheet(
     var selected by remember { mutableStateOf<DecantFragranceDto?>(null) }
     CheckoutStyleBottomSheet("Abrir botella", onDismiss, footer = { CheckoutStylePrimaryButton("Abrir 1 botella", { selected?.let(onOpen) }, enabled = enabled && selected != null) }) {
         Text("La botella dejará de estar sellada. Sus ml y costo quedarán en una apertura trazable.")
-        groups.filter { it.sourceSaleUnit == "bottle" && it.sealed > 0 }.forEach { group -> SelectionRow(group.name, "${group.sealed} selladas · ${group.volumeMl} ml", selected?.id == group.id) { selected = group } }
-        if (groups.none { it.sourceSaleUnit == "bottle" && it.sealed > 0 }) {
+        groups.filter { it.isBottleSource() && it.sealed > 0 }.forEach { group -> SelectionRow(group.name, "${group.sealed} selladas · ${group.volumeMl} ml", selected?.id == group.id) { selected = group } }
+        if (groups.none { it.isBottleSource() && it.sealed > 0 }) {
             val mlSources = groups.count { it.sourceSaleUnit == "ml" }
             Text(
                 if (mlSources > 0) {

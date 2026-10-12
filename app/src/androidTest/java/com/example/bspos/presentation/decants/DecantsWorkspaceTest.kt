@@ -61,6 +61,14 @@ class DecantsWorkspaceTest {
         compose.onNodeWithText("Fuente medida histórica").assertDoesNotExist()
     }
 
+    @Test fun sourcePickerDoesNotHideSealedBottlesWhenThereIsAnUnreconciledRemainder() {
+        val mixedSource = group.copy(untrackedOpenMl = 15)
+        compose.setContent { BSPOSTheme {
+            DecantPrepareSheet(workspace.copy(groups = listOf(mixedSource)), null, true, {}, {}) { _, _, _, _, _ -> }
+        } }
+        compose.onNode(hasText("Perfume Demo 100ml") and hasText("10 en inventario · 100 ml")).assertExists()
+    }
+
     private fun capture(name: String) {
         val instrumentation = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()
         java.io.File(instrumentation.targetContext.getExternalFilesDir(null), "$name.png").outputStream().use {
