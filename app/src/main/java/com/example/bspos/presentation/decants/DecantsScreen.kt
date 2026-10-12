@@ -141,8 +141,8 @@ fun DecantsScreen(presentation: MiCatalogoBusinessPresentation, showCost: Boolea
     } else if (createBottleSource && categories.any { it.isActive } && units.any { it.isActive }) {
         ProductForm(current = null, currentQuantity = 0, categories = categories.filter { it.isActive }, units = units.filter { it.isActive },
             presentation = presentation, showCost = showCost, showInventoryFields = true, showProductCode = true,
-            onSave = { input, _ ->
-                catalog.add(input)
+            onSave = { input, initialQuantity ->
+                catalog.add(input, initialQuantity)
                 createBottleSource = false
                 viewModel.refreshSync()
             }, onDismiss = { createBottleSource = false }, shops = shops, activeShopId = activeShop,
