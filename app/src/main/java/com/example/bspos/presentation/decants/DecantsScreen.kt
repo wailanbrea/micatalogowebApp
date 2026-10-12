@@ -55,6 +55,7 @@ fun DecantsScreen(presentation: MiCatalogoBusinessPresentation, showCost: Boolea
     var focus by remember { mutableStateOf<DecantFragranceDto?>(null) }
     var focusSize by remember { mutableStateOf<String?>(null) }
     var createSource by remember { mutableStateOf<String?>(null) }
+    var createBottleSource by remember { mutableStateOf(false) }
     var showTutorial by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { viewModel.load() }
     LaunchedEffect(startTutorial) {
@@ -84,14 +85,18 @@ fun DecantsScreen(presentation: MiCatalogoBusinessPresentation, showCost: Boolea
             onSell = { group, opening -> focus = group; sheet = "sell:${opening.id}" },
             onReconcile = { group -> focus = group; sheet = "reconcile" },
             onPrice = { group, size -> focus = group; focusSize = size.id; sheet = "price" },
-            onPrepareSize = { group, size -> focus = group; focusSize = size.id; sheet = "prepare" })
+            onPrepareSize = { group, size -> focus = group; focusSize = size.id; sheet = "prepare" },
+            onCreateBottle = { createBottleSource = true; sheet = null; focus = null; focusSize = null })
         val enabled = workspace.enabled && workspace.canManage && !state.busy
         when {
             sheet == "report" -> DecantReportSheet(workspace) { sheet = null }
             sheet == "vials" -> DecantVialsSheet(workspace, enabled, { sheet = null }, { size, qty, cost ->
                 viewModel.command(operation("decant_vial_receive") { put("volume_ml", size); put("quantity", qty); put("unit_cost", cost) })
             }, { vial -> viewModel.command(operation("decant_vial_update") { put("vial_id", vial.id); put("active", !vial.active) }) })
-            sheet == "open" -> DecantOpenSheet(workspace.groups, enabled, { sheet = null }) { group ->
+            sheet == "open" -> DecantOpenSheet(workspace.groups, enabled, { sheet = null }, onCreateBottle = {
+                createBottleSource = true
+                sheet = null
+            }) { group ->
                 viewModel.command(operation("open_bottle") { put("product_id", group.id); put("quantity", 1); put("expected_stock", group.sealed); put("track_decants", true) }, listOf(group.id))
             }
             sheet == "prepare" -> DecantPrepareSheet(workspace, focus, enabled, { sheet = null },
@@ -133,9 +138,21 @@ fun DecantsScreen(presentation: MiCatalogoBusinessPresentation, showCost: Boolea
             onSave = { input, _ -> catalog.add(input); createSource = null }, onDismiss = { createSource = null },
             shops = shops, activeShopId = activeShop, decantMode = true,
             sourceProducts = products.filter { it.remoteSaleUnit == "bottle" }, initialSourceRemoteId = createSource)
+    } else if (createBottleSource && categories.any { it.isActive } && units.any { it.isActive }) {
+        ProductForm(current = null, currentQuantity = 0, categories = categories.filter { it.isActive }, units = units.filter { it.isActive },
+            presentation = presentation, showCost = showCost, showInventoryFields = true, showProductCode = true,
+            onSave = { input, _ ->
+                catalog.add(input)
+                createBottleSource = false
+                viewModel.refreshSync()
+            }, onDismiss = { createBottleSource = false }, shops = shops, activeShopId = activeShop,
+            initialSaleUnit = "bottle")
     } else if (createSource != null) BSPOSAlertDialog(onDismissRequest = { createSource = null }, title = { Text("Nueva presentación") },
         text = { Text("Configura primero una categoría y una unidad activas en Catálogo.") },
         confirmButton = { BSPOSButton({ createSource = null }) { Text("Entendido") } })
+    else if (createBottleSource) BSPOSAlertDialog(onDismissRequest = { createBottleSource = false }, title = { Text("Crear botella completa") },
+        text = { Text("Configura primero una categoría y una unidad activas en Catálogo.") },
+        confirmButton = { BSPOSButton({ createBottleSource = false }) { Text("Entendido") } })
     if (showTutorial && workspace != null) {
         DecantsGuidedTutorial { showTutorial = false }
     }
@@ -147,7 +164,8 @@ internal fun DecantsContent(workspace: DecantWorkspaceDto, error: String?, messa
     onDiscard: (DecantFragranceDto, DecantOpeningDto) -> Unit, onUndo: (DecantOpeningDto) -> Unit,
     onMode: (DecantSizeDto, Boolean) -> Unit, onNewSize: (DecantFragranceDto) -> Unit,
     onSell: (DecantFragranceDto, DecantOpeningDto) -> Unit = { _, _ -> }, onReconcile: (DecantFragranceDto) -> Unit = {},
-    onPrice: (DecantFragranceDto, DecantSizeDto) -> Unit = { _, _ -> }, onPrepareSize: (DecantFragranceDto, DecantSizeDto) -> Unit = { _, _ -> }) {
+    onPrice: (DecantFragranceDto, DecantSizeDto) -> Unit = { _, _ -> }, onPrepareSize: (DecantFragranceDto, DecantSizeDto) -> Unit = { _, _ -> },
+    onCreateBottle: () -> Unit = {}) {
     var query by remember { mutableStateOf("") }; var filter by remember { mutableStateOf("Todas") }
     fun matches(g: DecantFragranceDto, option: String): Boolean = when (option) {
         "Listos" -> g.sizes.any { it.prepared > 0 }
@@ -157,6 +175,9 @@ internal fun DecantsContent(workspace: DecantWorkspaceDto, error: String?, messa
         else -> true
     }
     val groups = workspace.groups.filter { it.sizes.isNotEmpty() || it.openings.isNotEmpty() }
+    val bottleSources = workspace.groups.filter { it.sourceSaleUnit == "bottle" }
+    val availableBottleSources = bottleSources.filter { it.sealed > 0 }
+    val mlSources = workspace.groups.filter { it.sourceSaleUnit == "ml" }
     val visible = groups.filter { matches(it, filter) && "${it.name} ${it.brand.orEmpty()}".contains(query, true) }
     LazyColumn(Modifier.fillMaxSize().background(BSPOSTheme.colors.surface).padding(horizontal = BSPOSDesign.screenMargin),
         contentPadding = PaddingValues(top = 18.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -174,6 +195,35 @@ internal fun DecantsContent(workspace: DecantWorkspaceDto, error: String?, messa
                 IconButton(onRefresh) { Icon(Icons.Outlined.Refresh, "Actualizar") }
             }
             Text("${groups.size} fragancia(s) · ${workspace.opened} con botella abierta", color = BSPOSTheme.colors.textSecondary)
+        }
+        if (availableBottleSources.isEmpty()) {
+            item {
+                Surface(
+                    shape = BSPOSDesign.cardRadius,
+                    color = BSPOSTheme.colors.warning.copy(alpha = .10f),
+                    border = BorderStroke(1.dp, BSPOSTheme.colors.warning.copy(alpha = .35f))
+                ) {
+                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Necesitas una botella fuente", fontWeight = FontWeight.Bold, color = BSPOSTheme.colors.textPrimary)
+                        Text(
+                            if (mlSources.isNotEmpty()) {
+                                "Encontramos ${mlSources.size} producto(s) configurado(s) por mililitro. Ese inventario no representa botellas selladas y no se puede abrir como fuente de decants."
+                            } else if (bottleSources.isNotEmpty()) {
+                                "Tus botellas completas están registradas, pero no tienen existencia sellada disponible. Recibe inventario antes de abrir una botella para decants."
+                            } else {
+                                "Registra un perfume completo como Botella completa, con volumen, costo de compra y existencia."
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = BSPOSTheme.colors.textSecondary
+                        )
+                        BSPOSOutlinedButton(onCreateBottle, enabled = workspace.enabled && workspace.canManage && !busy) {
+                            Icon(Icons.Outlined.Add, null)
+                            Spacer(Modifier.width(6.dp))
+                            Text("Crear botella completa")
+                        }
+                    }
+                }
+            }
         }
         item {
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -396,12 +446,23 @@ internal fun DecantsContent(workspace: DecantWorkspaceDto, error: String?, messa
     }
 }
 
-@Composable private fun DecantOpenSheet(groups: List<DecantFragranceDto>, enabled: Boolean, onDismiss: () -> Unit, onOpen: (DecantFragranceDto) -> Unit) {
+@Composable private fun DecantOpenSheet(groups: List<DecantFragranceDto>, enabled: Boolean, onDismiss: () -> Unit, onCreateBottle: () -> Unit = {}, onOpen: (DecantFragranceDto) -> Unit) {
     var selected by remember { mutableStateOf<DecantFragranceDto?>(null) }
     CheckoutStyleBottomSheet("Abrir botella", onDismiss, footer = { CheckoutStylePrimaryButton("Abrir 1 botella", { selected?.let(onOpen) }, enabled = enabled && selected != null) }) {
         Text("La botella dejará de estar sellada. Sus ml y costo quedarán en una apertura trazable.")
         groups.filter { it.sourceSaleUnit == "bottle" && it.sealed > 0 }.forEach { group -> SelectionRow(group.name, "${group.sealed} selladas · ${group.volumeMl} ml", selected?.id == group.id) { selected = group } }
-        if (groups.none { it.sourceSaleUnit == "bottle" && it.sealed > 0 }) Text("No hay botellas completas selladas disponibles.")
+        if (groups.none { it.sourceSaleUnit == "bottle" && it.sealed > 0 }) {
+            val mlSources = groups.count { it.sourceSaleUnit == "ml" }
+            Text(
+                if (mlSources > 0) {
+                    "No hay botellas completas selladas disponibles. Hay $mlSources producto(s) por mililitro; edítalos solo si representan ml sueltos o crea una botella completa nueva."
+                } else {
+                    "No hay botellas completas selladas disponibles. Crea primero un perfume completo con volumen, costo y existencia."
+                },
+                color = BSPOSTheme.colors.textSecondary
+            )
+            BSPOSOutlinedButton(onCreateBottle, enabled = enabled, modifier = Modifier.fillMaxWidth()) { Text("Crear perfume completo") }
+        }
     }
 }
 

@@ -518,7 +518,7 @@ private fun DecantSummaryRow(label: String, value: String) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun ProductForm(current: Product?, currentQuantity: Long, categories: List<Category>, units: List<UnitOfMeasure>, presentation: MiCatalogoBusinessPresentation, showCost: Boolean, showInventoryFields: Boolean, showProductCode: Boolean, onSave: (ProductInput, Long) -> Unit, onDismiss: () -> Unit, shops: List<com.example.bspos.domain.model.MiCatalogoShop>, activeShopId: String?, decantMode: Boolean = false, serviceMode: Boolean = false, sourceProducts: List<Product> = emptyList(), initialSourceRemoteId: String? = null, comboComponentProducts: List<Product> = emptyList()) {
+internal fun ProductForm(current: Product?, currentQuantity: Long, categories: List<Category>, units: List<UnitOfMeasure>, presentation: MiCatalogoBusinessPresentation, showCost: Boolean, showInventoryFields: Boolean, showProductCode: Boolean, onSave: (ProductInput, Long) -> Unit, onDismiss: () -> Unit, shops: List<com.example.bspos.domain.model.MiCatalogoShop>, activeShopId: String?, decantMode: Boolean = false, serviceMode: Boolean = false, sourceProducts: List<Product> = emptyList(), initialSourceRemoteId: String? = null, comboComponentProducts: List<Product> = emptyList(), initialSaleUnit: String? = null) {
     val context = LocalContext.current
     var name by remember(current?.id) { mutableStateOf(current?.name.orEmpty()) }
     var description by remember(current?.id) { mutableStateOf(current?.description.orEmpty()) }
@@ -556,8 +556,8 @@ internal fun ProductForm(current: Product?, currentQuantity: Long, categories: L
     var shopOpen by remember { mutableStateOf(false) }
     val effectiveDecantMode = decantMode || current?.remoteSaleUnit == "decant"
     var volumeMl by remember(current?.id, effectiveDecantMode) { mutableStateOf(current?.remoteVolumeMl?.toString().orEmpty()) }
-    var saleUnit by remember(current?.id, effectiveDecantMode) {
-        mutableStateOf(if (effectiveDecantMode) "decant" else if (serviceMode && current == null) "service" else (current?.remoteSaleUnit ?: "unit"))
+    var saleUnit by remember(current?.id, effectiveDecantMode, initialSaleUnit) {
+        mutableStateOf(if (effectiveDecantMode) "decant" else if (serviceMode && current == null) "service" else (current?.remoteSaleUnit ?: initialSaleUnit ?: "unit"))
     }
     var saleUnitOpen by remember { mutableStateOf(false) }
     var sourceProduct by remember(current?.id, sourceProducts, initialSourceRemoteId) { mutableStateOf(sourceProducts.firstOrNull { it.remoteProductId == (current?.remoteSourceProductId ?: initialSourceRemoteId) }) }
