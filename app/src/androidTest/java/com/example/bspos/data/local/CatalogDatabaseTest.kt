@@ -18,6 +18,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.test.runTest
 import org.junit.After
@@ -41,6 +42,7 @@ class CatalogDatabaseTest {
     private lateinit var products: ProductRepositoryImpl
     private lateinit var suppliers: SupplierRepositoryImpl
     private val at = Instant.parse("2026-09-20T12:30:45.123Z")
+    private val productFixtureId = UUID.randomUUID()
     private val category = Category(
         id = UUID.randomUUID(), name = "Bebidas", description = "Frías", icon = "drink",
         sortOrder = 7, createdAt = at, updatedAt = at
@@ -49,11 +51,11 @@ class CatalogDatabaseTest {
         id = UUID.randomUUID(), name = "Unidad", abbreviation = "ud", createdAt = at, updatedAt = at
     )
     private val product = Product(
-        id = UUID.randomUUID(), name = "Agua", internalCode = "AG-001", barcode = "123456789",
+        id = productFixtureId, name = "Agua", internalCode = "AG-001", barcode = "123456789",
         categoryId = category.id, unitId = unit.id, description = "Botella",
         salePrice = 3500, wholesalePrice = 3000, averageCost = 2000, lastPurchaseCost = 2100,
-        minimumStock = 5, imagePath = "products/water.jpg", thumbnailPath = "products/water-thumb.jpg",
-        tracksExpiration = true, createdAt = at, updatedAt = at
+        minimumStock = 5, tracksExpiration = true, createdAt = at, updatedAt = at,
+        remoteShopId = "catalog-qa", remoteProductId = com.example.bspos.data.micatalogo.RemoteMutationRecorder.productId(productFixtureId)
     )
 
     @Before
@@ -63,12 +65,16 @@ class CatalogDatabaseTest {
         val local = CatalogLocalDataSource(
             database.categoryDao(), database.unitOfMeasureDao(), database.productDao(), database.supplierDao()
         )
-        categories = CategoryRepositoryImpl(local)
-        units = UnitOfMeasureRepositoryImpl(local)
+        val shops = com.example.bspos.data.local.tenant.tenantTestScope("catalog-qa")
+        val recorder = com.example.bspos.data.micatalogo.RemoteMutationRecorder(
+            RoomDatabaseTransactor(database), database.categoryDao(), database.operationOutboxDao(),
+            com.example.bspos.data.micatalogo.PosSaleSyncScheduler(context))
+        categories = CategoryRepositoryImpl(local, shops, recorder)
+        units = UnitOfMeasureRepositoryImpl(local, shops, recorder)
         products = ProductRepositoryImpl(local, com.example.bspos.data.micatalogo.RemoteMutationRecorder(
             RoomDatabaseTransactor(database), database.categoryDao(), database.operationOutboxDao(),
-            com.example.bspos.data.micatalogo.PosSaleSyncScheduler(context)))
-        suppliers = SupplierRepositoryImpl(local)
+            com.example.bspos.data.micatalogo.PosSaleSyncScheduler(context)), shops)
+        suppliers = SupplierRepositoryImpl(local, shops)
     }
 
     @After
@@ -123,7 +129,7 @@ class CatalogDatabaseTest {
         expectFailure<SQLiteConstraintException> {
             products.insert(product.copy(id = UUID.randomUUID(), name = "Duplicado"))
         }
-        assertEquals(listOf(product), products.observeAll().first())
+        assertEquals(listOf(product), products.observeAll().drop(1).first())
     }
 
     @Test
@@ -150,7 +156,7 @@ class CatalogDatabaseTest {
     fun softDeletePreservesHistoricalReferencesAndInactiveRowsStayVisible() = runTest {
         insertProduct()
         assertTrue(categories.update(category.copy(isActive = false)))
-        assertFalse(categories.observeAll().first().single().isActive)
+        assertFalse(categories.observeAll().drop(1).first().single().isActive)
         val deletedAt = at.plusSeconds(60)
         assertTrue(categories.softDelete(category.id, deletedAt))
         assertTrue(categories.observeAll().first().isEmpty())
@@ -174,9 +180,9 @@ class CatalogDatabaseTest {
         assertTrue(units.update(updatedUnit))
         assertTrue(products.update(updatedProduct))
         assertTrue(suppliers.update(updatedSupplier))
-        assertEquals(updatedUnit, units.observeAll().first().single())
-        assertEquals(updatedProduct, products.observeAll().first().single())
-        assertEquals(updatedSupplier, suppliers.observeAll().first().single())
+        assertEquals(updatedUnit, units.observeAll().drop(1).first().single())
+        assertEquals(updatedProduct, products.observeAll().drop(1).first().single())
+        assertEquals(updatedSupplier, suppliers.observeAll().drop(1).first().single())
         assertTrue(units.softDelete(unit.id, changedAt))
         assertTrue(products.softDelete(product.id, changedAt))
         assertTrue(suppliers.softDelete(supplier.id, changedAt))
@@ -210,7 +216,7 @@ class CatalogDatabaseTest {
         assertEquals(9, categories.findById(other.id)!!.sortOrder)
         expectFailure<IllegalArgumentException> { categories.reorder(listOf(other.id, other.id), at) }
         categories.reorder(listOf(other.id, category.id), at.plusSeconds(1))
-        val ordered = categories.observeAll().first()
+        val ordered = categories.observeAll().drop(1).first()
         assertEquals(listOf(other.id, category.id), ordered.map { it.id })
         assertEquals(listOf(0, 1), ordered.map { it.sortOrder })
         assertTrue(ordered.all { it.updatedAt == at.plusSeconds(1) })

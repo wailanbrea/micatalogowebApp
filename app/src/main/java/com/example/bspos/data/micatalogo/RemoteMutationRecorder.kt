@@ -6,6 +6,9 @@ import com.example.bspos.data.local.dao.OperationOutboxDao
 import com.example.bspos.data.local.entity.OperationOutboxEntity
 import com.example.bspos.data.local.entity.CustomerEntity
 import com.example.bspos.data.local.entity.ProductEntity
+import com.example.bspos.data.local.entity.CategoryEntity
+import com.example.bspos.data.local.entity.UnitOfMeasureEntity
+import com.example.bspos.data.local.entity.InventoryAdjustmentReasonEntity
 import kotlinx.serialization.json.*
 import java.math.BigInteger
 import java.time.Instant
@@ -19,6 +22,37 @@ class RemoteMutationRecorder @Inject constructor(private val transactor: AppData
     private val images: ProductImageSnapshot? = null) {
     suspend fun <T> transaction(block: suspend () -> T): T = transactor.runInTransaction { block() }
     fun wake() = scheduler.enqueue()
+
+    suspend fun category(row: CategoryEntity) = record("category_upsert", row.id, row.tenant, row.name,
+        row.isActive, row.deletedAt, row.createdAt, row.updatedAt, buildJsonObject {
+            put("description", row.description?.let(::JsonPrimitive) ?: JsonNull)
+            put("icon", row.icon); put("sort_order", row.sortOrder)
+        })
+
+    suspend fun unit(row: UnitOfMeasureEntity) = record("unit_upsert", row.id, row.tenant, row.name,
+        row.isActive, row.deletedAt, row.createdAt, row.updatedAt, buildJsonObject { put("abbreviation", row.abbreviation) })
+
+    suspend fun reason(row: InventoryAdjustmentReasonEntity) = record("adjustment_reason_upsert", row.id, row.tenant, row.name,
+        row.isActive, row.deletedAt, row.createdAt, row.updatedAt, buildJsonObject { put("direction", row.direction.name) })
+
+    suspend fun route(row: com.example.bspos.data.local.entity.RouteEntity) {
+        val shop = checkNotNull(row.tenant.shopId)
+        enqueue(shop, emptyList(), buildJsonObject {
+            put("type", "route_upsert"); put("record_id", row.id.toString()); put("name", row.name); put("code", row.code)
+            put("description", row.description?.let(::JsonPrimitive) ?: JsonNull)
+            put("is_active", row.isActive); put("created_at", row.createdAt.toString())
+        }, row.updatedAt)
+    }
+
+    private suspend fun record(type: String, id: UUID, tenant: com.example.bspos.data.local.entity.TenantMetadata,
+        name: String, active: Boolean, deleted: Instant?, created: Instant, updated: Instant, fields: JsonObject) {
+        val shop = checkNotNull(tenant.shopId)
+        require(tenant.status == com.example.bspos.data.local.entity.TenantMetadata.ASSIGNED)
+        enqueue(shop, emptyList(), JsonObject(fields + buildJsonObject {
+            put("type", type); put("record_id", id.toString()); put("name", name)
+            put("is_active", active); put("is_deleted", deleted != null); put("created_at", created.toString())
+        }), updated)
+    }
 
     suspend fun product(product: ProductEntity, previous: ProductEntity? = null) {
         val shop = product.miCatalogoShopId ?: return
@@ -36,7 +70,11 @@ class RemoteMutationRecorder @Inject constructor(private val transactor: AppData
             if (previous == null || previous.description != product.description) put("description", product.description?.let(::JsonPrimitive) ?: JsonNull)
             if (previous == null || previous.barcode != product.barcode) put("barcode", product.barcode?.let(::JsonPrimitive) ?: JsonNull)
             photo?.let { put("image_base64", it.base64); put("image_sha256", it.sha256) }
-            if (previous == null || previous.categoryId != product.categoryId) category?.takeUnless { it.startsWith("Sin categoria") || it.startsWith("Sin categoría") }?.let { put("category_name", it) }
+            if (previous == null || previous.categoryId != product.categoryId) {
+                val assigned = !category.startsWith("Sin categoria") && !category.startsWith("Sin categoría")
+                put("category_uuid", if (assigned) JsonPrimitive(product.categoryId.toString()) else JsonNull)
+            }
+            if (previous == null || previous.unitId != product.unitId) put("unit_uuid", product.unitId.toString())
             if (previous == null || previous.minimumStock != product.minimumStock) put("minimum_stock", product.minimumStock)
             if (previous == null || previous.isActive != product.isActive) put("published", product.isActive)
             if (previous == null || previous.miCatalogoSaleUnit != product.miCatalogoSaleUnit) {

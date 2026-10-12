@@ -41,6 +41,15 @@ private fun operation(type: String, block: JsonObjectBuilder.() -> Unit = {}) = 
 private fun money(cents: Long): String = MoneyUtils.formatCents(cents, CurrencyUnit.DOP)
 private fun decimal(cents: Long): String = BigDecimal.valueOf(cents, 2).toPlainString()
 
+private data class QuickDecantLine(
+    val volumeMl: Int,
+    val selected: Boolean = true,
+    val price: String = "",
+    val quantity: String = "0",
+    val vialQuantity: String = "0",
+    val vialUnitCost: String = ""
+)
+
 @Composable
 fun DecantsScreen(presentation: MiCatalogoBusinessPresentation, showCost: Boolean,
     startTutorial: Boolean = false,
@@ -89,6 +98,28 @@ fun DecantsScreen(presentation: MiCatalogoBusinessPresentation, showCost: Boolea
             onCreateBottle = { createBottleSource = true; sheet = null; focus = null; focusSize = null })
         val enabled = workspace.enabled && workspace.canManage && !state.busy
         when {
+            sheet == "setup" -> DecantQuickSetupSheet(workspace, enabled, { sheet = null }, onCreateBottle = {
+                createBottleSource = true
+                sheet = null
+            }) { source, mode, lines ->
+                viewModel.command(operation("decant_setup") {
+                    put("source_product_id", source.id)
+                    put("expected_stock", source.sealed)
+                    put("mode", mode)
+                    put("presentations", buildJsonArray {
+                        lines.filter { it.selected }.forEach { line ->
+                            add(buildJsonObject {
+                                put("volume_ml", line.volumeMl)
+                                put("price", line.price)
+                                put("quantity", line.quantity.toIntOrNull() ?: 0)
+                                put("vial_quantity", line.vialQuantity.toIntOrNull() ?: 0)
+                                if (line.vialUnitCost.isNotBlank()) put("vial_unit_cost", line.vialUnitCost)
+                            })
+                        }
+                    })
+                }, listOf(source.id))
+            }
+            sheet == "advanced" -> DecantAdvancedSheet(enabled, { sheet = null }) { next -> sheet = next }
             sheet == "report" -> DecantReportSheet(workspace) { sheet = null }
             sheet == "vials" -> DecantVialsSheet(workspace, enabled, { sheet = null }, { size, qty, cost ->
                 viewModel.command(operation("decant_vial_receive") { put("volume_ml", size); put("quantity", qty); put("unit_cost", cost) })
@@ -230,11 +261,15 @@ internal fun DecantsContent(workspace: DecantWorkspaceDto, error: String?, messa
         item {
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 BSPOSOutlinedButton({ onAction("report") }) { Icon(Icons.Outlined.Assessment, null); Spacer(Modifier.width(8.dp)); Text("Reporte") }
-                BSPOSOutlinedButton({ onAction("vials") }) { Text("Frascos  ${workspace.emptyVials}") }
-                BSPOSOutlinedButton({ onAction("open") }, enabled = workspace.enabled && workspace.canManage && !busy) { Text("Abrir botella") }
+                BSPOSOutlinedButton({ onAction("advanced") }) { Icon(Icons.Outlined.Tune, null); Spacer(Modifier.width(8.dp)); Text("Más opciones") }
             }
             Spacer(Modifier.height(8.dp))
-            BSPOSButton({ onAction("prepare") }, enabled = workspace.enabled && workspace.canManage && !busy) { Icon(Icons.Outlined.Science, null); Spacer(Modifier.width(8.dp)); Text("Preparar decant") }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                BSPOSButton({ onAction("setup") }, enabled = workspace.enabled && workspace.canManage && !busy, modifier = Modifier.weight(1f)) {
+                    Icon(Icons.Outlined.Add, null); Spacer(Modifier.width(8.dp)); Text("Crear decants")
+                }
+                Text("Las aperturas, envases y preparaciones manuales están en Más opciones.", fontSize = 11.sp, color = BSPOSTheme.colors.textSecondary, modifier = Modifier.weight(1f))
+            }
         }
         item {
             Surface(shape = BSPOSDesign.cardRadius, border = BorderStroke(1.dp, BSPOSTheme.colors.outline)) {
@@ -351,6 +386,155 @@ internal fun DecantsContent(workspace: DecantWorkspaceDto, error: String?, messa
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DecantAdvancedSheet(enabled: Boolean, onDismiss: () -> Unit, onOpen: (String) -> Unit) {
+    CheckoutStyleBottomSheet("Opciones avanzadas", onDismiss) {
+        Text("Usa estas funciones para controlar manualmente aperturas, envases y ajustes de inventario.", color = BSPOSTheme.colors.textSecondary)
+        BSPOSOutlinedButton({ onOpen("vials") }, enabled = enabled, modifier = Modifier.fillMaxWidth()) {
+            Text("Frascos vacíos")
+        }
+        BSPOSOutlinedButton({ onOpen("open") }, enabled = enabled, modifier = Modifier.fillMaxWidth()) {
+            Text("Abrir botella manualmente")
+        }
+        BSPOSOutlinedButton({ onOpen("prepare") }, enabled = enabled, modifier = Modifier.fillMaxWidth()) {
+            Text("Preparar manualmente")
+        }
+    }
+}
+
+@Composable
+private fun DecantQuickSetupSheet(
+    workspace: DecantWorkspaceDto,
+    enabled: Boolean,
+    onDismiss: () -> Unit,
+    onCreateBottle: () -> Unit,
+    onSubmit: (DecantFragranceDto, String, List<QuickDecantLine>) -> Unit
+) {
+    val sources = workspace.groups.filter { it.sourceSaleUnit == "bottle" && (it.sealed > 0 || it.openings.any { opening -> opening.remainingMl > 0 }) }
+    var step by remember { mutableIntStateOf(0) }
+    var sourceId by remember { mutableStateOf<String?>(sources.firstOrNull()?.id) }
+    var mode by remember { mutableStateOf("ready") }
+    var customSize by remember { mutableStateOf("") }
+    var lines by remember { mutableStateOf(listOf(QuickDecantLine(5), QuickDecantLine(10), QuickDecantLine(30))) }
+    val source = sources.firstOrNull { it.id == sourceId }
+
+    fun suggestedPrice(source: DecantFragranceDto, volume: Int): String {
+        val cost = source.sourceCostCents ?: return ""
+        val mlCost = cost.toDouble() / source.volumeMl.coerceAtLeast(1)
+        return decimal((mlCost * volume * 2.0).toLong().coerceAtLeast(0))
+    }
+
+    fun selectSource(item: DecantFragranceDto) {
+        sourceId = item.id
+        lines = lines.map { line ->
+            if (line.price.isBlank()) line.copy(price = suggestedPrice(item, line.volumeMl)) else line
+        }
+    }
+
+    fun updateLine(index: Int, update: (QuickDecantLine) -> QuickDecantLine) {
+        lines = lines.mapIndexed { current, line -> if (current == index) update(line) else line }
+    }
+
+    LaunchedEffect(sourceId) {
+        source?.let { selected ->
+            lines = lines.map { line -> if (line.price.isBlank()) line.copy(price = suggestedPrice(selected, line.volumeMl)) else line }
+        }
+    }
+
+    val selectedLines = lines.filter { it.selected && it.volumeMl > 0 }
+    val validLines = selectedLines.isNotEmpty() && selectedLines.all { line ->
+        line.volumeMl <= (source?.volumeMl ?: 0) && MoneyUtils.parseDecimalToCents(line.price)?.let { it >= 0 } == true &&
+            (line.quantity.toIntOrNull() ?: 0) >= 0 && (line.vialQuantity.toIntOrNull() ?: 0) >= 0 &&
+            ((line.vialQuantity.toIntOrNull() ?: 0) == 0 || MoneyUtils.parseDecimalToCents(line.vialUnitCost)?.let { it >= 0 } == true)
+    }
+    val stepTitle = when (step) { 0 -> "Elige el perfume"; 1 -> "Tamaños y precios"; else -> "Revisa y activa" }
+    CheckoutStyleBottomSheet(
+        "Crear decants",
+        onDismiss,
+        subtitle = "Paso ${step + 1} de 3 · $stepTitle",
+        footer = {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                BSPOSOutlinedButton({ if (step == 0) onDismiss() else step-- }) { Text(if (step == 0) "Cancelar" else "Atrás") }
+                CheckoutStylePrimaryButton(
+                    if (step == 2) "Activar decants" else "Continuar",
+                    {
+                        when {
+                            step < 2 -> step++
+                            source != null && validLines -> onSubmit(source, mode, selectedLines)
+                        }
+                    },
+                    enabled = enabled && when (step) { 0 -> source != null; 1 -> validLines; else -> source != null && validLines },
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
+    ) {
+        when (step) {
+            0 -> {
+                Text("Selecciona una botella completa del inventario. El volumen, el costo FIFO y las existencias se usarán automáticamente.", color = BSPOSTheme.colors.textSecondary)
+                sources.forEach { item ->
+                    val remaining = item.openings.sumOf { opening -> opening.remainingMl }
+                    SelectionRow(
+                        item.name,
+                        "${item.sealed} selladas · ${item.volumeMl} ml · ${remaining} ml abiertos",
+                        sourceId == item.id,
+                        imageUrl = item.imageUrl,
+                        onClick = { selectSource(item) }
+                    )
+                }
+                if (sources.isEmpty()) {
+                    Text("Primero registra un perfume completo como botella, con volumen, costo y existencia.", color = BSPOSTheme.colors.warning)
+                    BSPOSOutlinedButton(onCreateBottle, enabled = enabled, modifier = Modifier.fillMaxWidth()) { Text("Crear perfume completo") }
+                }
+            }
+            1 -> {
+                Text("Puedes activar varios tamaños a la vez. El precio sugerido usa el costo de la botella y un margen inicial del 100%; puedes cambiarlo.", color = BSPOSTheme.colors.textSecondary)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(selected = mode == "ready", onClick = { mode = "ready" }, label = { Text("Listos para vender") })
+                    FilterChip(selected = mode == "on_demand", onClick = { mode = "on_demand" }, label = { Text("Bajo pedido") })
+                }
+                Text(if (mode == "ready") "Indica cuántos quieres preparar ahora. Los envases nuevos son opcionales si ya tienes existencias." else "No se preparan frascos ahora. Necesitarás envases del tamaño elegido para vender bajo pedido.", fontSize = 12.sp, color = BSPOSTheme.colors.textSecondary)
+                lines.forEachIndexed { index, line ->
+                    Surface(shape = BSPOSDesign.cardRadius, border = BorderStroke(1.dp, if (line.selected) BSPOSTheme.colors.primary else BSPOSTheme.colors.outline)) {
+                        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Checkbox(checked = line.selected, onCheckedChange = { checked -> updateLine(index) { it.copy(selected = checked) } })
+                                Text("${line.volumeMl} ml", fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                                Text("Sugerido: ${source?.let { suggestedPrice(it, line.volumeMl) }.orEmpty().ifBlank { "—" }}", fontSize = 11.sp, color = BSPOSTheme.colors.textSecondary)
+                            }
+                            if (line.selected) {
+                                OutlinedTextField(line.price, { value -> updateLine(index) { it.copy(price = value) } }, label = { Text("Precio de venta") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true, modifier = Modifier.fillMaxWidth())
+                                if (mode == "ready") OutlinedTextField(line.quantity, { value -> updateLine(index) { it.copy(quantity = value.filter(Char::isDigit)) } }, label = { Text("Preparar ahora (opcional)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true, modifier = Modifier.fillMaxWidth())
+                                OutlinedTextField(line.vialQuantity, { value -> updateLine(index) { it.copy(vialQuantity = value.filter(Char::isDigit)) } }, label = { Text("Envases nuevos (opcional)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true, modifier = Modifier.fillMaxWidth())
+                                if ((line.vialQuantity.toIntOrNull() ?: 0) > 0) OutlinedTextField(line.vialUnitCost, { value -> updateLine(index) { it.copy(vialUnitCost = value) } }, label = { Text("Costo por envase") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true, modifier = Modifier.fillMaxWidth())
+                            }
+                        }
+                    }
+                }
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(customSize, { customSize = it.filter(Char::isDigit) }, label = { Text("Otro tamaño en ml") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true, modifier = Modifier.weight(1f))
+                    BSPOSOutlinedButton({
+                        val volume = customSize.toIntOrNull()
+                        if (volume != null && volume > 0 && lines.none { it.volumeMl == volume }) {
+                            lines = lines + QuickDecantLine(volume, price = source?.let { suggestedPrice(it, volume) }.orEmpty())
+                            customSize = ""
+                        }
+                    }, enabled = (customSize.toIntOrNull() ?: 0) in 1..(source?.volumeMl ?: 0)) { Text("Agregar") }
+                }
+            }
+            else -> {
+                Text("Se crearán o actualizarán las presentaciones seleccionadas sin duplicar las que ya existan.", color = BSPOSTheme.colors.textSecondary)
+                source?.let { SummaryLine("Perfume fuente", it.name); SummaryLine("Volumen", "${it.volumeMl} ml"); SummaryLine("Modalidad", if (mode == "ready") "Listos para vender" else "Bajo pedido") }
+                selectedLines.forEach { line ->
+                    SummaryLine("Decant ${line.volumeMl} ml", "${line.quantity.toIntOrNull() ?: 0} listos · ${line.price}")
+                    if ((line.vialQuantity.toIntOrNull() ?: 0) > 0) SummaryLine("Envases", "${line.vialQuantity} · ${line.vialUnitCost} c/u")
+                }
+                Text("El sistema conservará el costo del lote, consumirá primero el lote más antiguo y actualizará Terminal al sincronizar.", fontSize = 12.sp, color = BSPOSTheme.colors.textSecondary)
             }
         }
     }
@@ -575,40 +759,35 @@ private data class DecantsTutorialStep(
 
 private val decantsTutorialSteps = listOf(
     DecantsTutorialStep(
-        "1. Prepara el perfume fuente",
-        "Usa un perfume completo registrado como Botella. Debe tener volumen en ml, costo de compra y existencia para que el sistema pueda calcular el costo real.",
-        "Revisa el inventario de perfumes completos antes de continuar."
+        "1. Elige el perfume fuente",
+        "Abre Decants y toca Crear decants. Selecciona un perfume completo que ya exista en Inventario como botella, con volumen, costo y existencia.",
+        "Si todavía no existe, usa Crear perfume completo y vuelve al asistente."
     ),
     DecantsTutorialStep(
-        "2. Registra los frascos vacíos",
-        "Toca Frascos y recibe el tamaño que vas a usar. Indica cuántos compraste y el costo por frasco; cada lote queda separado para calcular la ganancia.",
-        "Ejemplo: 20 frascos de 5 ml a RD$50 cada uno."
+        "2. Configura tamaños y precios",
+        "Selecciona 5 ml, 10 ml, 30 ml u otro tamaño. El precio sugerido se calcula usando el costo de la botella; puedes ajustarlo antes de activar.",
+        "Puedes activar varios tamaños en una sola operación."
     ),
     DecantsTutorialStep(
-        "3. Abre una botella",
-        "Toca Abrir botella y selecciona el perfume completo. Al confirmar, la botella pasa a una apertura trazable y sus ml conservan el costo FIFO.",
-        "Abrir no vende ni prepara frascos: solo habilita el perfume para trabajar."
+        "3. Elige cómo vender",
+        "Listos para vender prepara unidades inmediatamente. Bajo pedido crea la presentación y prepara el frasco cuando se confirme la venta.",
+        "Si agregas envases, indica cantidad y costo; cada compra queda como un lote separado."
     ),
     DecantsTutorialStep(
-        "4. Crea la presentación",
-        "Toca Nueva presentación desde la botella y define el tamaño del decant, el precio de venta y su publicación. El tamaño debe ser menor o igual al volumen de origen.",
-        "Puedes crear 5 ml, 10 ml, 30 ml u otra presentación."
+        "4. Activa los decants",
+        "Revisa el resumen y toca Activar decants. El sistema crea o actualiza las presentaciones sin duplicarlas, conserva el costo FIFO y sincroniza la operación con el servidor.",
+        "Si una validación falla, no se guarda una configuración incompleta."
     ),
     DecantsTutorialStep(
-        "5. Prepara los frascos",
-        "Toca Preparar, elige la botella abierta, el tamaño y la cantidad. La cantidad máxima se limita automáticamente por los ml restantes y los envases vacíos.",
-        "Al confirmar se crea un lote preparado; todavía no es una venta."
+        "5. Vende desde Terminal",
+        "Los decants activos aparecen en Terminal. Toca el producto, ajusta la cantidad y cobra como cualquier otra venta.",
+        "La cantidad no puede superar los frascos preparados, los envases ni los ml disponibles."
     ),
     DecantsTutorialStep(
-        "6. Vende desde Terminal",
-        "Los decants preparados aparecen en Terminal. Al cobrar, se descuenta el frasco y su costo real; también baja el ml disponible de la botella fuente.",
-        "La venta genera factura, pago y movimiento de inventario."
+        "6. Revisa costos y recuperación",
+        "En la tarjeta del perfume y en Reporte verás unidades listas, ml restantes, ventas, ganancia y el avance para recuperar el costo de la botella.",
+        "Las opciones técnicas como conciliar, descartar o deshacer apertura están en Opciones avanzadas."
     ),
-    DecantsTutorialStep(
-        "7. Revisa el resultado",
-        "En Reporte consulta preparados, ml restantes, ventas, ganancia y recuperación del costo de la botella. También puedes revisar o vender el resto de una apertura.",
-        "El tutorial no modifica datos. Puedes cerrarlo y realizar cada paso cuando estés listo."
-    )
 )
 
 @Composable

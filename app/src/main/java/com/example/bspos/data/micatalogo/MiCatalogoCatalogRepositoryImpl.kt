@@ -53,7 +53,8 @@ class MiCatalogoCatalogRepositoryImpl @Inject constructor(
     private val customerApi: MiCatalogoCustomerApi,
     private val customers: CustomerRouteDao,
     private val paymentQueue: PaymentSyncDao,
-    private val operationQueue: OperationOutboxDao
+    private val operationQueue: OperationOutboxDao,
+    private val storeProjection: StoreRecordProjection? = null
 ) : MiCatalogoCatalogRepository {
     private val syncMutex = Mutex()
 
@@ -74,6 +75,7 @@ class MiCatalogoCatalogRepositoryImpl @Inject constructor(
         val mutationsAtDownload = operationQueue.activeForShop(shopId).flatMap { it.productIds.split(',') }.filter { it.isNotBlank() }.toSet()
         val salesAtDownload = pendingRemoteProductIds(shopId)
         val customerMutationsAtDownload = pendingCustomerIds(shopId)
+        val recordsAtDownload = recordIds(operationQueue.activeForShop(shopId))
         val response = api.catalog(shopId)
         if (!response.isSuccessful) error(response.apiErrorMessage("No se pudo descargar el catalogo."))
         val snapshot = checkNotNull(response.body()) { "MiCatalogo devolvio un catalogo vacio." }
@@ -88,8 +90,13 @@ class MiCatalogoCatalogRepositoryImpl @Inject constructor(
             null // Customer availability must not discard a successfully downloaded catalog.
         }
         transactor.runInTransaction {
-            val result = applySnapshot(snapshot, imagePaths, salesAtDownload, mutationsAtDownload, sequenceAtDownload)
+            val result = applySnapshot(snapshot, imagePaths, salesAtDownload, mutationsAtDownload, sequenceAtDownload, recordsAtDownload)
             if (remoteCustomers != null) applyCustomers(shopId, remoteCustomers, customerMutationsAtDownload, sequenceAtDownload)
+            val pendingRecords = recordsAtDownload + recordIds(operationQueue.activeForShop(shopId) + operationQueue.eventsAfter(shopId, sequenceAtDownload))
+            storeProjection?.applyRelations(shopId, snapshot.storeRecords, pendingRecords)
+            val protectedProducts = mutationsAtDownload + salesAtDownload + pendingRemoteProductIds(shopId) +
+                (operationQueue.activeForShop(shopId) + operationQueue.eventsAfter(shopId, sequenceAtDownload)).flatMap { it.productIds.split(',') }
+            storeProjection?.applyStock(shopId, snapshot.routeStock, protectedProducts.toSet(), parseInstant(snapshot.generatedAt, Instant.now()))
             result
         }
     }.fold(
@@ -117,12 +124,21 @@ class MiCatalogoCatalogRepositoryImpl @Inject constructor(
         }
     ) }
 
+    private fun recordIds(rows: List<com.example.bspos.data.local.entity.OperationOutboxEntity>): Set<String> = rows.flatMap { row ->
+        runCatching {
+            val payload = json.parseToJsonElement(row.payload).jsonObject
+            listOfNotNull(payload["record_id"]?.jsonPrimitive?.contentOrNull) +
+                (payload["related_record_ids"] as? JsonArray).orEmpty().map { it.jsonPrimitive.content }
+        }.getOrDefault(emptyList())
+    }.toSet()
+
     private suspend fun applySnapshot(
         snapshot: CatalogSnapshotDto,
         imagePaths: Map<String, CatalogImagePaths>,
         salesAtDownload: Set<String>,
         mutationsAtDownload: Set<String>,
-        sequenceAtDownload: Long
+        sequenceAtDownload: Long,
+        recordsAtDownload: Set<String>
     ): MiCatalogoCatalogSyncResult {
         val shopId = checkNotNull(snapshot.shop.id?.takeIf { it.isNotBlank() }) { "El catalogo no incluye una tienda valida." }
         val mutations = (operationQueue.activeForShop(shopId) + operationQueue.eventsAfter(shopId, sequenceAtDownload))
@@ -135,24 +151,29 @@ class MiCatalogoCatalogRepositoryImpl @Inject constructor(
         val pendingSources = snapshot.products.filter { it.id in pending }.map { it.sourceProductId ?: it.id }.toSet()
         val pendingRemoteProductIds = pending + pendingSources + snapshot.products.filter { it.sourceProductId in pendingSources }.map { it.id }
         val synchronizedAt = parseInstant(snapshot.generatedAt, Instant.now())
+        val pendingRecords = recordsAtDownload + recordIds(operationQueue.activeForShop(shopId) + operationQueue.eventsAfter(shopId, sequenceAtDownload))
+        storeProjection?.apply(shopId, snapshot.storeRecords, pendingRecords)
         val categoryIds = snapshot.categories
             .asSequence()
             .filter { it.id.isNotBlank() }
-            .associate { it.id to MiCatalogoImportMapper.categoryId(shopId, it.id) }
+            .associate { it.id to (it.clientRecordUuid?.let(java.util.UUID::fromString) ?: MiCatalogoImportMapper.categoryId(shopId, it.id)) }
 
         snapshot.categories.distinctBy { it.id }.filter { it.id.isNotBlank() }.forEach { remote ->
             val id = checkNotNull(categoryIds[remote.id])
+            if (id.toString() in pendingRecords) return@forEach
             val existing = categories.findForReconciliation(id, shopId)
+            require(existing == null || existing.tenant == TenantMetadata.assigned(shopId)) { "La categoría histórica requiere conciliación; no se reasigna automáticamente." }
             val timestamp = parseInstant(remote.updatedAt, synchronizedAt)
             val entity = CategoryEntity(
                 id = id,
                 name = remote.name.trim().ifBlank { "Categoria ${remote.id}" },
-                description = null,
+                description = remote.description,
+                icon = remote.icon,
                 sortOrder = remote.sortOrder,
                 isActive = remote.status.trim().lowercase(Locale.ROOT) !in setOf("draft", "suspended", "inactive"),
                 createdAt = existing?.createdAt ?: timestamp,
                 updatedAt = timestamp,
-                deletedAt = null,
+                deletedAt = if (remote.isDeleted) timestamp else null,
                 tenant = TenantMetadata.assigned(shopId)
             )
             if (existing == null) categories.insert(entity) else categories.update(entity)
@@ -161,6 +182,7 @@ class MiCatalogoCatalogRepositoryImpl @Inject constructor(
         val fallbackCategoryId = MiCatalogoImportMapper.fallbackCategoryId(shopId)
         if (snapshot.products.any { it.categoryId !in categoryIds }) {
             val existing = categories.findForReconciliation(fallbackCategoryId, shopId)
+            require(existing == null || existing.tenant == TenantMetadata.assigned(shopId)) { "La categoría histórica requiere conciliación." }
             val fallback = CategoryEntity(
                 id = fallbackCategoryId,
                 name = "Sin categoria (MiCatalogo)",
@@ -182,7 +204,9 @@ class MiCatalogoCatalogRepositoryImpl @Inject constructor(
         }
         remoteProducts.map { MiCatalogoImportMapper.normalizedSaleUnit(it.saleUnit) }.distinct().forEach { saleUnit ->
             val id = MiCatalogoImportMapper.unitId(shopId, saleUnit)
+            if (id.toString() in pendingRecords || snapshot.storeRecords.any { it.kind == "unit" && it.recordId == id.toString() }) return@forEach
             val existing = units.findForReconciliation(id, shopId)
+            require(existing == null || existing.tenant == TenantMetadata.assigned(shopId)) { "La unidad histórica requiere conciliación; no se reasigna automáticamente." }
             val entity = UnitOfMeasureEntity(
                 id = id,
                 name = saleUnit,
@@ -198,8 +222,9 @@ class MiCatalogoCatalogRepositoryImpl @Inject constructor(
         var inventoryMovementsRecorded = 0
         remoteProducts.filter { it.id.isNotBlank() }.forEach { remote ->
             val candidates = products.remoteReconciliationCandidates(shopId, remote.id)
-            if (candidates.size > 1) return@forEach // Conflicting legacy copies require explicit reconciliation.
+            require(candidates.size <= 1) { "Hay copias históricas contradictorias del producto; requieren conciliación." }
             val existing = candidates.singleOrNull()
+            require(existing == null || existing.tenant == TenantMetadata.assigned(shopId)) { "El producto histórico no tiene dueño confirmado; requiere conciliación." }
             val productId = existing?.id ?: MiCatalogoImportMapper.productId(shopId, remote.id)
             val timestamp = parseInstant(remote.updatedAt, synchronizedAt)
             // Neither metadata nor a local archive may be reverted by a snapshot
@@ -224,7 +249,7 @@ class MiCatalogoCatalogRepositoryImpl @Inject constructor(
                 internalCode = MiCatalogoImportMapper.internalCode(shopId, remote.id),
                 miCatalogoInternalCode = remote.internalCode,
                 categoryId = remote.categoryId?.let(categoryIds::get) ?: fallbackCategoryId,
-                unitId = MiCatalogoImportMapper.unitId(shopId, remote.saleUnit),
+                unitId = remote.unitUuid?.let(java.util.UUID::fromString) ?: MiCatalogoImportMapper.unitId(shopId, remote.saleUnit),
                 description = remote.description?.trim()?.ifBlank { null },
                 salePrice = MiCatalogoImportMapper.cents(remote.price),
                 wholesalePrice = remote.wholesalePrice?.let(MiCatalogoImportMapper::cents),
@@ -293,6 +318,7 @@ class MiCatalogoCatalogRepositoryImpl @Inject constructor(
                 ?: clientId?.let { customers.findCustomerForReconciliation(it, shopId) }
                 ?: customers.findCustomerForReconciliation(canonicalId, shopId)
             val id = existing?.id ?: canonicalId
+            require(existing == null || existing.tenant == TenantMetadata.assigned(shopId)) { "El cliente histórico requiere conciliación; no se reasigna automáticamente." }
             if (existing != null && id.toString() in pending) return@forEach
             val at = remote.updatedAt?.let { parseInstant(it, Instant.now()) } ?: Instant.now()
             val base = existing ?: CustomerEntity(id, remote.name ?: "Cliente", createdAt = at, updatedAt = at)
@@ -336,7 +362,7 @@ class MiCatalogoCatalogRepositoryImpl @Inject constructor(
         inventory.recordMovements(
             listOf(
                 InventoryMovementEntity(
-                    id = MiCatalogoImportMapper.inventoryMovementId(shopId, remote.id, remote.updatedAt, target),
+                    id = java.util.UUID.randomUUID(),
                     productId = productId,
                     locationType = InventoryLocationType.MAIN_WAREHOUSE,
                     locationId = location.id,

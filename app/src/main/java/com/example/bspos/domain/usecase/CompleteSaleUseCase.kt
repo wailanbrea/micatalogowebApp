@@ -111,7 +111,7 @@ class CompleteSaleUseCase @Inject constructor(private val transactor:AppDatabase
       val remoteCustomerId = request.customerId?.let { customerId ->
          customers.findCustomer(customerId,shop)?.takeIf { it.miCatalogoCustomerShopId == snapshot.remoteShopId }?.miCatalogoCustomerId
       }
-      val remoteRequest = snapshot.request.copy(customerId = remoteCustomerId, discount = MiCatalogoPosSaleOutboxMapper.decimalPrice(request.discount), tax = MiCatalogoPosSaleOutboxMapper.decimalPrice(request.tax))
+       val remoteRequest = snapshot.request.copy(customerId = remoteCustomerId, discount = MiCatalogoPosSaleOutboxMapper.decimalPrice(request.discount), tax = MiCatalogoPosSaleOutboxMapper.decimalPrice(request.tax), routeUuid = request.routeId?.toString())
       outbox.insert(PosSaleOutboxEntity(saleId,snapshot.remoteShopId,json.encodeToString(remoteRequest),nextAttemptAt=request.date,createdAt=request.date,updatedAt=request.date))
      queuedForSync = true
    }

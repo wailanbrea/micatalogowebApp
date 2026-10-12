@@ -183,6 +183,8 @@ private fun ShopScopedMainScreen(
     val settings by settingsViewModel.settings.collectAsState()
     val connection by settingsViewModel.miCatalogoConnection.collectAsState()
     val accountState by settingsViewModel.miCatalogoUi.collectAsState()
+    val syncViewModel: com.example.bspos.presentation.sync.SyncStatusViewModel = hiltViewModel()
+    val syncStatus by syncViewModel.status.collectAsState()
     LaunchedEffect(startupSnapshot.shops) {
         settingsViewModel.hydrateShops(startupSnapshot.shops)
     }
@@ -682,6 +684,7 @@ private fun ShopScopedMainScreen(
                 }
             },
             topBar = {
+                Column {
                 // The application shell owns the context header for every regular
                 // module. Terminal and Cotizaciones intentionally keep their compact
                 // Puntto-style header; Support is a nested conversation screen.
@@ -752,6 +755,8 @@ private fun ShopScopedMainScreen(
                         navigationIconContentColor = BSPOSTheme.colors.textPrimary
                     )
                 )
+                com.example.bspos.presentation.sync.SyncStatusBanner(syncStatus, syncViewModel::retry)
+                }
             }
         ) { paddingValues ->
             // Keep one NavHost alive for the whole session. Recreating it when

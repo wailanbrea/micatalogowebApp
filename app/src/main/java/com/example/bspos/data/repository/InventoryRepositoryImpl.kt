@@ -94,11 +94,22 @@ class InventoryRepositoryImpl @Inject constructor(
 
 class InventoryAdjustmentReasonRepositoryImpl @Inject constructor(
     private val local: InventoryLocalDataSource,
-    private val shops: ShopScope
+    private val shops: ShopScope,
+    private val remote: RemoteMutationRecorder
 ) : InventoryAdjustmentReasonRepository {
     override fun observeAll() = shops.observe(local::observeReasons).map { rows -> rows.map { it.toDomain() } }
     override suspend fun findById(id: UUID) = local.findReason(id, shops.current())?.toDomain()
-    override suspend fun insert(record: InventoryAdjustmentReason) = shops.mutate { local.insert(record.toEntity().copy(tenant=TenantMetadata.assigned(it))) }
-    override suspend fun update(record: InventoryAdjustmentReason) = shops.mutate { local.update(record.toEntity().copy(tenant=TenantMetadata.assigned(it))) }
-    override suspend fun softDelete(id: UUID, at: Instant) = shops.mutate { local.deleteReason(id, at, it) }
+    override suspend fun insert(record: InventoryAdjustmentReason) {
+        shops.mutate { shop -> remote.transaction {
+            val row = record.toEntity().copy(tenant = TenantMetadata.assigned(shop))
+            local.insert(row); remote.reason(row)
+        } }; remote.wake()
+    }
+    override suspend fun update(record: InventoryAdjustmentReason): Boolean = shops.mutate { shop -> remote.transaction {
+        val row = record.toEntity().copy(tenant = TenantMetadata.assigned(shop))
+        local.update(row).also { if (it) remote.reason(row) }
+    } }.also { if (it) remote.wake() }
+    override suspend fun softDelete(id: UUID, at: Instant): Boolean = shops.mutate { shop -> remote.transaction {
+        local.deleteReason(id, at, shop).also { if (it) remote.reason(checkNotNull(local.findReason(id, shop))) }
+    } }.also { if (it) remote.wake() }
 }

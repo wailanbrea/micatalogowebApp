@@ -30,6 +30,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import javax.inject.Inject
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.collect
+import kotlinx.serialization.json.*
 
 data class FeatureModuleUiState(
     val loading: Boolean = true,
@@ -41,13 +45,23 @@ data class FeatureModuleUiState(
 class FeatureModuleViewModel @Inject constructor(
     private val api: Lazy<MiCatalogoApi>,
     private val connection: MiCatalogoConnectionRepository,
-    @param:ApplicationContext private val context: Context
+    @param:ApplicationContext private val context: Context,
+    private val durable: com.example.bspos.domain.repository.ShopMutationGateway,
+    private val events: com.example.bspos.data.micatalogo.ShopReadModelEvents
 ) : ViewModel() {
     private val _state = MutableStateFlow(FeatureModuleUiState())
     val state: StateFlow<FeatureModuleUiState> = _state.asStateFlow()
+    private var loadJob: Job? = null
+    private var lastQuery: Triple<String, String?, String?>? = null
+    private var loadedShop: String? = null
+    private var mutationBusy = false
+    init { viewModelScope.launch { events.changes.collect { shop ->
+        if (connection.activeShopId() == shop) lastQuery?.let { load(it.first, it.second, it.third) }
+    } } }
 
     fun load(feature: String, period: String? = null, status: String? = null) {
-        viewModelScope.launch {
+        lastQuery = Triple(feature, period, status); loadJob?.cancel()
+        loadJob = viewModelScope.launch {
             _state.value = FeatureModuleUiState(loading = true)
             val shopId = connection.activeShopId()
             if (shopId.isNullOrBlank()) {
@@ -58,8 +72,8 @@ class FeatureModuleViewModel @Inject constructor(
                 val response = api.get().feature(shopId, feature, period, status = status)
                 if (!response.isSuccessful) error(response.errorBody()?.string()?.takeIf { it.isNotBlank() } ?: "No se pudo cargar el módulo.")
                 response.body() ?: error("MiCatalogo devolvió una respuesta vacía.")
-            }.onSuccess { _state.value = FeatureModuleUiState(loading = false, response = it) }
-                .onFailure { _state.value = FeatureModuleUiState(loading = false, error = it.message ?: "No se pudo cargar el módulo.") }
+            }.onSuccess { if (connection.activeShopId() == shopId) { loadedShop = shopId; _state.value = FeatureModuleUiState(loading = false, response = it) } }
+                .onFailure { if (it is CancellationException) throw it; if (connection.activeShopId() == shopId) _state.value = FeatureModuleUiState(loading = false, error = it.message ?: "No se pudo cargar el módulo.") }
         }
     }
 
@@ -123,37 +137,40 @@ class FeatureModuleViewModel @Inject constructor(
     }
 
     fun createPartner(name: String, email: String, phone: String, ownershipPercent: String) {
+        if (mutationBusy) return
+        mutationBusy = true
         viewModelScope.launch {
-            runCatching {
+            try { runCatching {
                 val shopId = connection.activeShopId().orEmpty()
                 check(shopId.isNotBlank()) { "Selecciona una tienda activa." }
-                val response = api.get().createPartner(
-                    shopId,
-                    PartnerCreateRequestDto(name.trim(), email.trim().ifBlank { null }, phone.trim().ifBlank { null }, ownershipPercent.trim())
-                )
-                check(response.isSuccessful) { response.errorBody()?.string()?.takeIf { it.isNotBlank() } ?: "No se pudo guardar el socio." }
+                require(loadedShop == shopId) { "La tienda cambió; vuelve a abrir Socios." }
+                val json = Json { ignoreUnknownKeys = true }
+                durable.submit(shopId, "partner_create", json.encodeToJsonElement(PartnerCreateRequestDto.serializer(),
+                    PartnerCreateRequestDto(name.trim(), email.trim().ifBlank { null }, phone.trim().ifBlank { null }, ownershipPercent.trim())).jsonObject)
             }.onSuccess {
                 UiErrorBus.show("Socio guardado.")
                 load("partners")
-            }.onFailure { error -> UiErrorBus.show(error.message ?: "No se pudo guardar el socio.") }
+            }.onFailure { error -> if (error is CancellationException) throw error; UiErrorBus.show(error.message ?: "No se pudo guardar el socio.") }
+            } finally { mutationBusy = false }
         }
     }
 
     fun recordPartnerTransaction(partnerId: String, type: String, amount: String, notes: String) {
+        if (mutationBusy) return
+        mutationBusy = true
         viewModelScope.launch {
-            runCatching {
+            try { runCatching {
                 val shopId = connection.activeShopId().orEmpty()
                 check(shopId.isNotBlank()) { "Selecciona una tienda activa." }
-                val response = api.get().recordPartnerTransaction(
-                    shopId,
-                    partnerId,
-                    PartnerTransactionRequestDto(type, amount.trim(), notes.trim().ifBlank { null })
-                )
-                check(response.isSuccessful) { response.errorBody()?.string()?.takeIf { it.isNotBlank() } ?: "No se pudo registrar el movimiento." }
+                require(loadedShop == shopId) { "La tienda cambió; vuelve a abrir Socios." }
+                val json = Json { ignoreUnknownKeys = true }
+                durable.submit(shopId, "partner_transaction", json.encodeToJsonElement(PartnerTransactionRequestDto.serializer(),
+                    PartnerTransactionRequestDto(type, amount.trim(), notes.trim().ifBlank { null })).jsonObject, partnerId)
             }.onSuccess {
                 UiErrorBus.show("Movimiento de socio registrado en caja.")
                 load("partners")
-            }.onFailure { error -> UiErrorBus.show(error.message ?: "No se pudo registrar el movimiento.") }
+            }.onFailure { error -> if (error is CancellationException) throw error; UiErrorBus.show(error.message ?: "No se pudo registrar el movimiento.") }
+            } finally { mutationBusy = false }
         }
     }
 
@@ -196,16 +213,13 @@ class FeatureModuleViewModel @Inject constructor(
             runCatching {
                 val shopId = connection.activeShopId().orEmpty()
                 check(shopId.isNotBlank()) { "Selecciona una tienda activa." }
-                val response = if (approve) {
-                    api.get().approveAuthorization(shopId, requestId)
-                } else {
-                    api.get().rejectAuthorization(shopId, requestId)
-                }
-                check(response.isSuccessful) {
-                    response.errorBody()?.string()?.takeIf { it.isNotBlank() }
-                        ?: "No se pudo actualizar la autorización."
-                }
-                response.body()?.message?.takeIf { it.isNotBlank() }
+                val result = durable.submit(
+                    shopId,
+                    if (approve) "authorization_approve" else "authorization_reject",
+                    buildJsonObject { },
+                    requestId
+                )
+                result["message"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
                     ?: if (approve) "Solicitud aprobada." else "Solicitud rechazada."
             }.onSuccess {
                 UiErrorBus.show(it)

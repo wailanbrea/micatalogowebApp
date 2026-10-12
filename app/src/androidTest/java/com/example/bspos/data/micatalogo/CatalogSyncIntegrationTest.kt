@@ -63,22 +63,22 @@ class CatalogSyncIntegrationTest {
         val first = repository.syncCatalog(shopId) as MiCatalogoResult.Success<MiCatalogoCatalogSyncResult>
         assertEquals(2, first.value.productsApplied)
         assertEquals(2, first.value.inventoryMovementsRecorded)
-        val before = db.productDao().observeAll().first()
+        val before = db.productDao().observeAll(shopId).first()
         val second = repository.syncCatalog(shopId) as MiCatalogoResult.Success<MiCatalogoCatalogSyncResult>
         assertEquals(0, second.value.inventoryMovementsRecorded)
-        assertEquals(before, db.productDao().observeAll().first())
-        assertEquals(2, db.productDao().observeAll().first().size)
+        assertEquals(before, db.productDao().observeAll(shopId).first())
+        assertEquals(2, db.productDao().observeAll(shopId).first().size)
         val id = MiCatalogoImportMapper.productId(shopId, "product-a")
-        assertEquals(280000L, db.productDao().findById(id)!!.salePrice)
-        assertEquals(10L, db.inventoryDao().findStock(id, InventoryLocationType.MAIN_WAREHOUSE, "MAIN")!!.quantity)
-        assertEquals(1, db.inventoryDao().observeMovements(id, InventoryLocationType.MAIN_WAREHOUSE, "MAIN", null, null).first().size)
+        assertEquals(280000L, db.productDao().findById(id, shopId)!!.salePrice)
+        assertEquals(10L, db.inventoryDao().findStock(id, InventoryLocationType.MAIN_WAREHOUSE, "MAIN", shopId)!!.quantity)
+        assertEquals(1, db.inventoryDao().observeMovements(id, InventoryLocationType.MAIN_WAREHOUSE, "MAIN", null, null, shopId).first().size)
     }
 
     @Test
     fun wrongShopSnapshotIsRejectedWithoutImportingAnything() = runTest {
         api.snapshot = api.snapshot.copy(shop = ShopDto(id = "other-shop"))
         assertTrue(repository.syncCatalog(shopId) is MiCatalogoResult.Failure)
-        assertTrue(db.productDao().observeAll().first().isEmpty())
+        assertTrue(db.productDao().observeAll(shopId).first().isEmpty())
     }
 
     @Test
@@ -88,12 +88,12 @@ class CatalogSyncIntegrationTest {
         val saleAt = at.plusSeconds(1)
         db.inventoryDao().recordMovements(listOf(InventoryMovementEntity(
             UUID.randomUUID(), id, InventoryLocationType.MAIN_WAREHOUSE, "MAIN",
-            InventoryMovementType.SALE, -2, 10, 8, 100000, -200000, createdAt = saleAt
+            InventoryMovementType.SALE, -2, 10, 8, 100000, -200000, createdAt = saleAt, tenant = com.example.bspos.data.local.entity.TenantMetadata.assigned(shopId)
         )), false)
         val saleId = UUID.randomUUID()
         db.saleDao().insertWithItems(SaleEntity(
             saleId, "TEST-PENDING", date = saleAt, subtotal = 560000, total = 560000,
-            paymentType = SalePaymentType.CASH, paidAmount = 560000, createdAt = saleAt, updatedAt = saleAt
+            paymentType = SalePaymentType.CASH, paidAmount = 560000, createdAt = saleAt, updatedAt = saleAt, tenant = com.example.bspos.data.local.entity.TenantMetadata.assigned(shopId)
         ), listOf(SaleItemEntity(UUID.randomUUID(), saleId, id, 2, 280000, 100000, subtotal = 560000)))
         val request = PosSaleUploadRequestDto(
             clientSaleUuid = saleId.toString(),
@@ -104,24 +104,24 @@ class CatalogSyncIntegrationTest {
             saleId, shopId, json.encodeToString(request), nextAttemptAt = saleAt, createdAt = saleAt, updatedAt = saleAt
         ))
         assertTrue(repository.syncCatalog(shopId) is MiCatalogoResult.Success)
-        assertEquals(8L, db.inventoryDao().findStock(id, InventoryLocationType.MAIN_WAREHOUSE, "MAIN")!!.quantity)
-        assertEquals(2, db.inventoryDao().observeMovements(id, InventoryLocationType.MAIN_WAREHOUSE, "MAIN", null, null).first().size)
+        assertEquals(8L, db.inventoryDao().findStock(id, InventoryLocationType.MAIN_WAREHOUSE, "MAIN", shopId)!!.quantity)
+        assertEquals(2, db.inventoryDao().observeMovements(id, InventoryLocationType.MAIN_WAREHOUSE, "MAIN", null, null, shopId).first().size)
     }
 
     @Test
     fun pendingMutationSurvivesStaleMetadataAndRetirementSnapshot() = runTest {
         assertTrue(repository.syncCatalog(shopId) is MiCatalogoResult.Success)
         val id = MiCatalogoImportMapper.productId(shopId, "product-a")
-        val edited = db.productDao().findById(id)!!.copy(name = "Edición sin conexión", salePrice = 310000L)
+        val edited = db.productDao().findById(id, shopId)!!.copy(name = "Edición sin conexión", salePrice = 310000L)
         db.productDao().update(edited)
         db.operationOutboxDao().insert(com.example.bspos.data.local.entity.OperationOutboxEntity(
             UUID.randomUUID().toString(), shopId, "product-a", "{}", at.plusSeconds(1)
         ))
         assertTrue(repository.syncCatalog(shopId) is MiCatalogoResult.Success)
-        assertEquals(edited, db.productDao().findById(id))
+        assertEquals(edited, db.productDao().findById(id, shopId))
         api.snapshot = api.snapshot.copy(products = api.snapshot.products.filter { it.id != "product-a" })
         assertTrue(repository.syncCatalog(shopId) is MiCatalogoResult.Success)
-        assertEquals(edited, db.productDao().findById(id))
+        assertEquals(edited, db.productDao().findById(id, shopId))
     }
 
     @Test
@@ -134,7 +134,7 @@ class CatalogSyncIntegrationTest {
         try {
             file.outputStream().use { assertTrue(bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)) }
             val id = MiCatalogoImportMapper.productId(shopId, "product-a")
-            val original = db.productDao().findById(id)!!
+            val original = db.productDao().findById(id, shopId)!!
             val edited = original.copy(imagePath = file.absolutePath, updatedAt = at.plusSeconds(1))
             val recorder = RemoteMutationRecorder(RoomDatabaseTransactor(db), db.categoryDao(), db.operationOutboxDao(),
                 PosSaleSyncScheduler(context), ProductImageSnapshot(context))
@@ -153,7 +153,7 @@ class CatalogSyncIntegrationTest {
             assertEquals(hash, (photo["image_sha256"] as kotlinx.serialization.json.JsonPrimitive).content)
             val invalid = edited.copy(imagePath = file.absolutePath + ".missing")
             assertTrue(runCatching { recorder.transaction { db.productDao().update(invalid); recorder.product(invalid, edited) } }.isFailure)
-            assertEquals(edited, db.productDao().findById(id))
+            assertEquals(edited, db.productDao().findById(id, shopId))
             assertEquals(1, db.operationOutboxDao().activeForShop(shopId).size)
         } finally { bitmap.recycle(); file.delete() }
     }
@@ -175,9 +175,9 @@ class CatalogSyncIntegrationTest {
             inventory = RemoteInventoryDto(true, stockQuantity = 12, costPrice = "2000.00"))))
         assertFalse(refresh.sync())
         val id = MiCatalogoImportMapper.productId(shopId, "product-a")
-        assertEquals(350000L, db.productDao().findById(id)!!.salePrice)
-        assertEquals(200000L, db.productDao().findById(id)!!.lastPurchaseCost)
-        assertEquals(12L, db.inventoryDao().findStock(id, InventoryLocationType.MAIN_WAREHOUSE, "MAIN")!!.quantity)
+        assertEquals(350000L, db.productDao().findById(id, shopId)!!.salePrice)
+        assertEquals(200000L, db.productDao().findById(id, shopId)!!.lastPurchaseCost)
+        assertEquals(12L, db.inventoryDao().findStock(id, InventoryLocationType.MAIN_WAREHOUSE, "MAIN", shopId)!!.quantity)
         assertTrue(db.operationOutboxDao().pendingRefreshes().isEmpty())
         val sale = queueSale(at, "product-a")
         db.posSaleOutboxDao().markSent(sale, "ACK", at)
@@ -190,22 +190,22 @@ class CatalogSyncIntegrationTest {
         val id = MiCatalogoImportMapper.productId(shopId, "product-a")
         db.operationOutboxDao().requestRefresh(com.example.bspos.data.local.entity.CatalogRefreshEntity(shopId, "old"))
         api.beforeCatalog = {
-            db.productDao().update(db.productDao().findById(id)!!.copy(name = "Cambio durante descarga", salePrice = 350000L))
+            db.productDao().update(db.productDao().findById(id, shopId)!!.copy(name = "Cambio durante descarga", salePrice = 350000L))
             db.operationOutboxDao().insert(com.example.bspos.data.local.entity.OperationOutboxEntity(
                 "edit", shopId, "product-a", "{}", at))
             db.operationOutboxDao().confirmSent("edit", shopId)
         }
         val refresh = CatalogRefreshSyncRepository(db.operationOutboxDao(), repository)
         assertTrue(refresh.sync())
-        assertEquals("Cambio durante descarga", db.productDao().findById(id)!!.name)
-        assertEquals(350000L, db.productDao().findById(id)!!.salePrice)
+        assertEquals("Cambio durante descarga", db.productDao().findById(id, shopId)!!.name)
+        assertEquals(350000L, db.productDao().findById(id, shopId)!!.salePrice)
         assertNotEquals("old", db.operationOutboxDao().pendingRefreshes().single().revision)
         api.beforeCatalog = null
         api.snapshot = api.snapshot.copy(products = api.snapshot.products.map {
             if (it.id == "product-a") it.copy(name = "Cambio durante descarga", price = "3500.00") else it
         })
         assertFalse(refresh.sync())
-        assertEquals(350000L, db.productDao().findById(id)!!.salePrice)
+        assertEquals(350000L, db.productDao().findById(id, shopId)!!.salePrice)
     }
 
     @Test
@@ -420,23 +420,23 @@ class CatalogSyncIntegrationTest {
             PosSaleSyncScheduler(ApplicationProvider.getApplicationContext<Context>()))
         val inventoryRepository = com.example.bspos.data.repository.InventoryRepositoryImpl(
             com.example.bspos.data.local.InventoryLocalDataSource(db.inventoryDao(), db.inventoryAdjustmentReasonDao()),
-            db.productDao(), db.inventoryDao(), recorder)
+            db.productDao(), db.inventoryDao(), recorder, com.example.bspos.data.local.tenant.tenantTestScope(shopId))
         val movement = InventoryMovement(UUID.randomUUID(), id, InventoryLocation.MAIN, InventoryMovementType.PURCHASE,
             2, 10, 12, 200000, 400000, createdAt = at.plusSeconds(1))
         inventoryRepository.recordMovements(listOf(movement))
         val payload = json.parseToJsonElement(db.operationOutboxDao().oldestActive(shopId)!!.payload).toString()
         assertTrue(payload.contains("2000.00"))
-        assertEquals(200000L, db.productDao().findById(id)!!.lastPurchaseCost)
-        assertEquals(116666L, db.productDao().findById(id)!!.averageCost)
+        assertEquals(200000L, db.productDao().findById(id, shopId)!!.lastPurchaseCost)
+        assertEquals(116666L, db.productDao().findById(id, shopId)!!.averageCost)
         assertTrue(runCatching { inventoryRepository.recordMovements(listOf(movement.copy(id = UUID.randomUUID()))) }.isFailure)
         assertEquals(1, db.operationOutboxDao().activeForShop(shopId).size)
-        assertEquals(12L, db.inventoryDao().findStock(id, InventoryLocationType.MAIN_WAREHOUSE, "MAIN")!!.quantity)
+        assertEquals(12L, db.inventoryDao().findStock(id, InventoryLocationType.MAIN_WAREHOUSE, "MAIN", shopId)!!.quantity)
         assertTrue(repository.syncCatalog(shopId) is MiCatalogoResult.Success)
-        assertEquals(12L, db.inventoryDao().findStock(id, InventoryLocationType.MAIN_WAREHOUSE, "MAIN")!!.quantity)
+        assertEquals(12L, db.inventoryDao().findStock(id, InventoryLocationType.MAIN_WAREHOUSE, "MAIN", shopId)!!.quantity)
         inventoryRepository.recordMovements(listOf(InventoryMovement(UUID.randomUUID(), id, InventoryLocation.MAIN,
             InventoryMovementType.PHYSICAL_COUNT_OUT, -3, 12, 9, 116666, -349998, notes = "Conteo físico", createdAt = at.plusSeconds(2))))
         assertEquals(2, db.operationOutboxDao().activeForShop(shopId).size)
-        assertEquals(200000L, db.productDao().findById(id)!!.lastPurchaseCost)
+        assertEquals(200000L, db.productDao().findById(id, shopId)!!.lastPurchaseCost)
     }
 
     @Test
@@ -454,15 +454,15 @@ class CatalogSyncIntegrationTest {
             PosSaleSyncScheduler(ApplicationProvider.getApplicationContext<Context>()))
         val inventoryRepository = com.example.bspos.data.repository.InventoryRepositoryImpl(
             com.example.bspos.data.local.InventoryLocalDataSource(db.inventoryDao(), db.inventoryAdjustmentReasonDao()),
-            db.productDao(), db.inventoryDao(), recorder)
+            db.productDao(), db.inventoryDao(), recorder, com.example.bspos.data.local.tenant.tenantTestScope(shopId))
         inventoryRepository.recordMovements(listOf(InventoryMovement(UUID.randomUUID(), id, InventoryLocation.MAIN,
             InventoryMovementType.PURCHASE, 1, 0, 1, 200000, 200000, createdAt = at.plusSeconds(1))))
-        assertEquals(195, db.productDao().findById(id)!!.miCatalogoAvailableMl)
-        assertEquals(39L, db.inventoryDao().findStock(decantId, InventoryLocationType.MAIN_WAREHOUSE, "MAIN")!!.quantity)
+        assertEquals(195, db.productDao().findById(id, shopId)!!.miCatalogoAvailableMl)
+        assertEquals(39L, db.inventoryDao().findStock(decantId, InventoryLocationType.MAIN_WAREHOUSE, "MAIN", shopId)!!.quantity)
         assertEquals(1, db.operationOutboxDao().activeForShop(shopId).size)
         assertTrue(repository.syncCatalog(shopId) is MiCatalogoResult.Success)
-        assertEquals(195, db.productDao().findById(id)!!.miCatalogoAvailableMl)
-        assertEquals(39L, db.inventoryDao().findStock(decantId, InventoryLocationType.MAIN_WAREHOUSE, "MAIN")!!.quantity)
+        assertEquals(195, db.productDao().findById(id, shopId)!!.miCatalogoAvailableMl)
+        assertEquals(39L, db.inventoryDao().findStock(decantId, InventoryLocationType.MAIN_WAREHOUSE, "MAIN", shopId)!!.quantity)
     }
 
     private suspend fun queueSale(timestamp: Instant, label: String): UUID =
@@ -478,7 +478,7 @@ class CatalogSyncIntegrationTest {
         val id = UUID.randomUUID()
         db.saleDao().insertWithItems(SaleEntity(id, label, date = timestamp, subtotal = 100,
             total = 100, paymentType = SalePaymentType.CASH, paidAmount = 100,
-            createdAt = timestamp, updatedAt = timestamp), listOf(SaleItemEntity(UUID.randomUUID(), id,
+            createdAt = timestamp, updatedAt = timestamp, tenant = com.example.bspos.data.local.entity.TenantMetadata.assigned(remoteShopId)), listOf(SaleItemEntity(UUID.randomUUID(), id,
                 MiCatalogoImportMapper.productId(remoteShopId, remoteProductId), 1, 100, 50, subtotal = 100)))
         val body = PosSaleUploadRequestDto(
             clientSaleUuid = id.toString(),
@@ -518,6 +518,7 @@ class CatalogSyncIntegrationTest {
     }
 
     private class SnapshotApi(var snapshot: CatalogSnapshotDto) : MiCatalogoApi {
+        override suspend fun eligibleReturns(shopId: String): Response<ReturnEligibleResponseDto> = error("Not used by catalog tests")
         override suspend fun decants(shopId: String): Response<com.example.bspos.data.micatalogo.dto.DecantWorkspaceDto> = error("Not used by catalog tests")
         override suspend fun quotePdf(shopId: String, quoteId: String): Response<okhttp3.ResponseBody> = error("Not used by catalog tests")
         override suspend fun inventoryValue(shopId: String): Response<kotlinx.serialization.json.JsonObject> = error("Not used by catalog tests")

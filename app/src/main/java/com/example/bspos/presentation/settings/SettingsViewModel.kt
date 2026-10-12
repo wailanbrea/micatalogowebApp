@@ -21,6 +21,8 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
 import javax.inject.Inject
 
 data class MiCatalogoSettingsUiState(
@@ -49,7 +51,10 @@ class SettingsViewModel @Inject constructor(
     private val paymentQueue: com.example.bspos.data.local.dao.PaymentSyncDao,
     private val scheduler: com.example.bspos.data.micatalogo.PosSaleSyncScheduler,
     private val catalogRefresh: com.example.bspos.data.micatalogo.CatalogRefreshSyncRepository,
-    private val shops:ShopScope
+    private val shops:ShopScope,
+    private val durable: com.example.bspos.data.micatalogo.DurableShopMutation,
+    private val accountDurable: com.example.bspos.data.micatalogo.DurableAccountMutation,
+    private val json: Json
 ) : ViewModel() {
     val settings = repository.observe().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
     val miCatalogoConnection = connectionRepository.observeConnection()
@@ -98,8 +103,18 @@ class SettingsViewModel @Inject constructor(
 
     fun updateProfile(name: String, email: String) = viewModelScope.launch {
         miCatalogoUi.value = miCatalogoUi.value.copy(isUpdatingProfile = true, successMessage = null, errorMessage = null)
-        when (val result = connectionRepository.updateProfile(name, email)) {
-            is MiCatalogoResult.Success -> miCatalogoUi.value = miCatalogoUi.value.copy(isUpdatingProfile = false, successMessage = "Perfil actualizado.")
+        when (val result = runCatching {
+            accountDurable.submit(
+                "profile_update",
+                json.encodeToJsonElement(com.example.bspos.data.micatalogo.dto.ProfileUpdateDto.serializer(), com.example.bspos.data.micatalogo.dto.ProfileUpdateDto(name.trim(), email.trim())).jsonObject
+            )
+        }.fold({ MiCatalogoResult.Success(Unit) }, { MiCatalogoResult.Failure(it.message ?: "No se pudo actualizar el perfil.") })) {
+            is MiCatalogoResult.Success -> {
+                // The durable envelope is authoritative; refresh the local account projection
+                // so the menu and subsequent screens reflect the new name/email immediately.
+                connectionRepository.refreshAccount()
+                miCatalogoUi.value = miCatalogoUi.value.copy(isUpdatingProfile = false, successMessage = "Perfil actualizado.")
+            }
             is MiCatalogoResult.Failure -> miCatalogoUi.value = miCatalogoUi.value.copy(isUpdatingProfile = false, errorMessage = result.message)
         }
     }
@@ -107,7 +122,9 @@ class SettingsViewModel @Inject constructor(
     fun updateSellerMenus(shop: MiCatalogoShop, sellerId: String, permissions: List<String>) = viewModelScope.launch {
         if (miCatalogoUi.value.updatingSellerMenuId != null) return@launch
         miCatalogoUi.value = miCatalogoUi.value.copy(updatingSellerMenuId = sellerId, successMessage = null, errorMessage = null)
-        when (val result = connectionRepository.updateSellerMenus(shop.id, sellerId, permissions)) {
+        when (val result = runCatching {
+            durable.submit(shop.id, "seller_menu_permissions_update", json.encodeToJsonElement(com.example.bspos.data.micatalogo.dto.MenuPermissionsUpdateDto.serializer(), com.example.bspos.data.micatalogo.dto.MenuPermissionsUpdateDto(permissions)).jsonObject, sellerId)
+        }.fold({ MiCatalogoResult.Success(Unit) }, { MiCatalogoResult.Failure(it.message ?: "No se pudieron guardar los menus.") })) {
             is MiCatalogoResult.Success -> {
                 miCatalogoUi.value = miCatalogoUi.value.copy(updatingSellerMenuId = null, successMessage = "Menús del vendedor actualizados.")
                 loadShops()
@@ -119,7 +136,9 @@ class SettingsViewModel @Inject constructor(
     fun updateShopMenuVisibility(shop: MiCatalogoShop, enabledMenuKeys: List<String>) = viewModelScope.launch {
         if (miCatalogoUi.value.updatingMenuVisibilityShopId != null) return@launch
         miCatalogoUi.value = miCatalogoUi.value.copy(updatingMenuVisibilityShopId = shop.id, successMessage = null, errorMessage = null)
-        when (val result = connectionRepository.updateShopMenuVisibility(shop.id, enabledMenuKeys)) {
+        when (val result = runCatching {
+            durable.submit(shop.id, "shop_menu_visibility_update", json.encodeToJsonElement(com.example.bspos.data.micatalogo.dto.MenuVisibilityUpdateDto.serializer(), com.example.bspos.data.micatalogo.dto.MenuVisibilityUpdateDto(enabledMenuKeys)).jsonObject)
+        }.fold({ MiCatalogoResult.Success(Unit) }, { MiCatalogoResult.Failure(it.message ?: "No se pudieron guardar los menus de la tienda.") })) {
             is MiCatalogoResult.Success -> {
                 miCatalogoUi.value = miCatalogoUi.value.copy(updatingMenuVisibilityShopId = null, successMessage = "Menús de la tienda actualizados.")
                 loadShops()
@@ -131,7 +150,10 @@ class SettingsViewModel @Inject constructor(
     fun createSeller(shop: MiCatalogoShop, email: String, commissionType: String, commissionValue: String, permissions: List<String>) = viewModelScope.launch {
         if (miCatalogoUi.value.isCreatingSeller) return@launch
         miCatalogoUi.value = miCatalogoUi.value.copy(isCreatingSeller = true, successMessage = null, errorMessage = null)
-        when (val result = connectionRepository.createSeller(shop.id, email, commissionType, commissionValue, permissions)) {
+        when (val result = runCatching {
+            val ack = durable.submit(shop.id, "seller_create", json.encodeToJsonElement(com.example.bspos.data.micatalogo.dto.SellerCreateRequestDto.serializer(), com.example.bspos.data.micatalogo.dto.SellerCreateRequestDto(email.trim(), commissionType, commissionValue.trim(), permissions)).jsonObject)
+            ack["message"]?.toString()?.trim('"') ?: "Vendedor creado."
+        }.fold({ MiCatalogoResult.Success(it) }, { MiCatalogoResult.Failure(it.message ?: "No se pudo crear el vendedor.") })) {
             is MiCatalogoResult.Success -> {
                 miCatalogoUi.value = miCatalogoUi.value.copy(isCreatingSeller = false, successMessage = result.value)
                 loadShops()

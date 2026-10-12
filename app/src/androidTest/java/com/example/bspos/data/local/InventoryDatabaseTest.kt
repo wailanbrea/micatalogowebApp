@@ -27,6 +27,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
@@ -57,18 +58,22 @@ class InventoryDatabaseTest {
             ApplicationProvider.getApplicationContext<Context>(), AppDatabase::class.java
         ).addCallback(InventoryIntegrity).build()
         val local = InventoryLocalDataSource(database.inventoryDao(), database.inventoryAdjustmentReasonDao())
+        val shops = com.example.bspos.data.local.tenant.tenantTestScope("inventory-qa")
         inventory = InventoryRepositoryImpl(local, database.productDao(), database.inventoryDao(),
             com.example.bspos.data.micatalogo.RemoteMutationRecorder(RoomDatabaseTransactor(database),
-                database.categoryDao(), database.operationOutboxDao(), com.example.bspos.data.micatalogo.PosSaleSyncScheduler(ApplicationProvider.getApplicationContext<Context>())))
-        reasons = InventoryAdjustmentReasonRepositoryImpl(local)
+                 database.categoryDao(), database.operationOutboxDao(), com.example.bspos.data.micatalogo.PosSaleSyncScheduler(ApplicationProvider.getApplicationContext<Context>())), shops)
+        reasons = InventoryAdjustmentReasonRepositoryImpl(local, shops, com.example.bspos.data.micatalogo.RemoteMutationRecorder(
+            RoomDatabaseTransactor(database), database.categoryDao(), database.operationOutboxDao(),
+            com.example.bspos.data.micatalogo.PosSaleSyncScheduler(ApplicationProvider.getApplicationContext<Context>())))
         runBlocking {
             val categoryId = UUID.randomUUID()
             val unitId = UUID.randomUUID()
-            database.categoryDao().insert(CategoryEntity(id = categoryId, name = "Test", createdAt = at, updatedAt = at))
-            database.unitOfMeasureDao().insert(UnitOfMeasureEntity(id = unitId, name = "Unidad", abbreviation = "ud", createdAt = at, updatedAt = at))
+            val tenant = com.example.bspos.data.local.entity.TenantMetadata.assigned("inventory-qa")
+            database.categoryDao().insert(CategoryEntity(id = categoryId, name = "Test", createdAt = at, updatedAt = at, tenant = tenant))
+            database.unitOfMeasureDao().insert(UnitOfMeasureEntity(id = unitId, name = "Unidad", abbreviation = "ud", createdAt = at, updatedAt = at, tenant = tenant))
             database.productDao().insert(ProductEntity(
                 id = productId, name = "Producto", internalCode = "INV-001", categoryId = categoryId,
-                unitId = unitId, salePrice = 3500, averageCost = 2000, createdAt = at, updatedAt = at
+                unitId = unitId, salePrice = 3500, averageCost = 2000, createdAt = at, updatedAt = at, tenant = tenant
             ))
         }
     }
@@ -93,7 +98,7 @@ class InventoryDatabaseTest {
         val sale = movement(-5, 70, InventoryMovementType.SALE).copy(createdAt = at.plusMillis(2))
         inventory.recordMovements(listOf(initial, purchase, sale))
         val stock = inventory.findStock(productId, main)!!
-        val ledger = inventory.observeMovements(productId, main).first()
+        val ledger = inventory.observeMovements(productId, main).drop(1).first()
         assertEquals(65L, stock.quantity)
         assertEquals(0L, stock.reservedQuantity)
         assertEquals(sale.createdAt, stock.updatedAt)
@@ -115,8 +120,8 @@ class InventoryDatabaseTest {
         assertEquals(40L, inventory.findStock(productId, main)!!.quantity)
         assertEquals(10L, inventory.findStock(productId, route)!!.quantity)
         assertEquals(originalId, inventory.findStock(productId, main)!!.id)
-        assertEquals(2000L, database.productDao().findById(productId)!!.averageCost)
-        assertEquals(1, inventory.observeMovements(productId, route).first().size)
+        assertEquals(2000L, database.productDao().findById(productId, "inventory-qa")!!.averageCost)
+        assertEquals(1, inventory.observeMovements(productId, route).drop(1).first().size)
     }
 
     @Test
@@ -127,7 +132,7 @@ class InventoryDatabaseTest {
             inventory.recordMovements(listOf(movement(2, 5, InventoryMovementType.PURCHASE).copy(id = original.id)))
         }
         assertEquals(5L, inventory.findStock(productId, main)!!.quantity)
-        assertEquals(listOf(original), inventory.observeMovements(productId, main).first())
+        assertEquals(listOf(original), inventory.observeMovements(productId, main).drop(1).first())
     }
 
     @Test
@@ -142,7 +147,7 @@ class InventoryDatabaseTest {
         }
         assertEquals(10L, inventory.findStock(productId, main)!!.quantity)
         assertNull(inventory.findStock(missingProduct, main))
-        assertEquals(1, inventory.observeMovements(productId, main).first().size)
+        assertEquals(1, inventory.observeMovements(productId, main).drop(1).first().size)
     }
 
     @Test
@@ -155,7 +160,7 @@ class InventoryDatabaseTest {
         }.awaitAll()
         assertEquals(1, results.count { it.isSuccess })
         assertTrue(results.single { it.isFailure }.exceptionOrNull() is IllegalStateException)
-        val ledger = inventory.observeMovements(productId, main).first()
+        val ledger = inventory.observeMovements(productId, main).drop(1).first()
         assertEquals(7L, inventory.findStock(productId, main)!!.quantity)
         assertEquals(7L, ledger.sumOf { it.quantity })
         assertEquals(2, ledger.size)
@@ -168,7 +173,7 @@ class InventoryDatabaseTest {
         assertNull(inventory.findStock(productId, main))
         inventory.recordMovements(listOf(sale), allowNegativeStock = true)
         assertEquals(-2L, inventory.findStock(productId, main)!!.quantity)
-        assertEquals(listOf(sale), inventory.observeMovements(productId, main).first())
+        assertEquals(listOf(sale), inventory.observeMovements(productId, main).drop(1).first())
     }
 
     @Test
@@ -265,7 +270,7 @@ class InventoryDatabaseTest {
                 SELECT ?, product_id, location_type, location_id, quantity, reserved_quantity, updated_at FROM inventory_stock
             """.trimIndent(), arrayOf(UUID.randomUUID().toString()))
         }
-        assertEquals(1, inventory.observeStock(main).first().size)
+        assertEquals(1, inventory.observeStock(main).drop(1).first().size)
     }
 
     @Test
@@ -274,8 +279,8 @@ class InventoryDatabaseTest {
         val second = movement(2, 5, InventoryMovementType.PURCHASE)
         val third = movement(-1, 7, InventoryMovementType.SALE).copy(createdAt = at.plusMillis(1))
         inventory.recordMovements(listOf(first, second, third))
-        assertEquals(listOf(second, first), inventory.observeMovements(productId, main, at, at.plusMillis(1)).first())
-        assertEquals(listOf(third), inventory.observeMovements(productId, main, at.plusMillis(1)).first())
+        assertEquals(listOf(second, first), inventory.observeMovements(productId, main, at, at.plusMillis(1)).drop(1).first())
+        assertEquals(listOf(third), inventory.observeMovements(productId, main, at.plusMillis(1)).drop(1).first())
         expectFailure<IllegalArgumentException> { inventory.observeMovements(productId, main, at, at) }
     }
 
@@ -288,7 +293,7 @@ class InventoryDatabaseTest {
         subscribed.await()
         inventory.recordMovements(listOf(movement(4, 0, InventoryMovementType.INITIAL)))
         assertEquals(4L, observed.await().single().quantity)
-        assertEquals(1, inventory.observeMovements(productId, main).first().size)
+        assertEquals(1, inventory.observeMovements(productId, main).drop(1).first().size)
     }
 
     @Test

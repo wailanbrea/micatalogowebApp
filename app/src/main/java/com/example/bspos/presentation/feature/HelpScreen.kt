@@ -59,13 +59,13 @@ private val guides = listOf(
     HelpGuide("Catálogo", "Básico", "Productos", "Nombre, costo y precio: con eso ya sabes cuánto ganas.", listOf("Crea el producto y agrega una imagen.", "Registra la existencia como un lote con su costo.", "Revisa el precio y publícalo en la tienda."), Screen.Catalog),
     HelpGuide("Catálogo", "Intermedio", "Inventario y lotes", "Cada entrada conserva su costo y las ventas salen por FIFO.", listOf("Registra cada recepción como un lote.", "Usa movimientos para aumentos, pérdidas o conteos.", "Consulta el detalle para ver cantidades y costos."), Screen.Inventory),
     HelpGuide("Catálogo", "Intermedio", "Decants", "Convierte perfumes completos en presentaciones de ml con costo trazable.", listOf(
-        "Verifica que el perfume completo esté registrado como botella, con volumen, costo y existencia.",
-        "En Frascos, recibe los envases vacíos indicando tamaño, cantidad y costo por unidad.",
-        "Abre una botella fuente para crear una apertura trazable con su costo FIFO.",
-        "Crea la presentación: elige ml, precio y el perfume completo de origen.",
-        "Prepara los frascos seleccionando la botella abierta, el tamaño y la cantidad.",
-        "Vende desde Terminal; el sistema descuenta frascos, ml y costo del lote.",
-        "Consulta Reporte para revisar ml restantes, ventas, ganancia y recuperación de la botella."
+        "Abre Decants y toca Crear decants.",
+        "Selecciona un perfume completo del inventario.",
+        "Elige varios tamaños y ajusta sus precios sugeridos.",
+        "Selecciona Listos para vender o Bajo pedido.",
+        "Registra envases nuevos solo si los necesitas y toca Activar decants.",
+        "Vende las presentaciones desde Terminal.",
+        "Consulta el reporte para revisar costos, ganancia y recuperación de la botella."
     ), Screen.Decants, guided = true),
     HelpGuide("Catálogo", "Básico", "Importar", "Carga tu inventario desde Excel o CSV y revísalo antes de guardar.", listOf("Elige archivo, catálogo existente o creación rápida.", "Mapea columnas y valida números e imágenes.", "Confirma una sola importación para evitar duplicados."), Screen.Import),
     HelpGuide("Cobros", "Básico", "Clientes y crédito", "Registra clientes, ventas a crédito y sus abonos.", listOf("Crea o selecciona el cliente.", "Confirma una venta a crédito desde Ventas.", "Registra abonos y revisa el saldo pendiente."), Screen.Customers),

@@ -31,6 +31,9 @@ import kotlinx.coroutines.launch
 import java.time.Instant
 import java.util.UUID
 import javax.inject.Inject
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.json.Json
 
 @HiltViewModel
 class CollectionViewModel @Inject constructor(
@@ -41,7 +44,10 @@ class CollectionViewModel @Inject constructor(
     private val connection: MiCatalogoConnectionRepository,
     private val customerDao: CustomerRouteDao,
     private val catalog: MiCatalogoCatalogRepository,
-    private val shops:ShopScope
+    private val shops:ShopScope,
+    private val paymentQueue: com.example.bspos.data.local.dao.PaymentSyncDao,
+    private val paymentSync: com.example.bspos.data.micatalogo.PaymentSyncRepository,
+    private val mutations: com.example.bspos.data.micatalogo.RemoteMutationRecorder
 ) : ViewModel() {
     val customers = customers.observeAll().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val sales = sales.observeAll().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
@@ -102,28 +108,38 @@ class CollectionViewModel @Inject constructor(
             var succeeded = false
             try {
                 runCatching { shops.mutate { shopId ->
-                    require(amount > 0L && amount <= customer.balance) { "El monto supera el saldo pendiente." }
                     val local = checkNotNull(customerDao.findCustomer(customer.id,shopId)) { "Cliente no encontrado en la tienda activa." }
+                    require(amount > 0L && amount <= local.balance) { "El monto supera el saldo pendiente." }
                     require(local.isActive && local.deletedAt==null) { "El cliente está inactivo" }
                     val remoteId = checkNotNull(local.miCatalogoCustomerId) {
                         "Este cliente todavía no está vinculado a MiCatalogo. Sincroniza la tienda antes de cobrarlo."
                     }
-                    val response = customerApi.get().payment(
-                        shopId,
-                        remoteId,
-                        CustomerPaymentDto(
-                            // Keep the same identity if the network fails after the
-                            // server commits. The API is idempotent by this UUID.
-                            uuid = requestId,
-                            amount = MiCatalogoPosSaleOutboxMapper.decimalPrice(amount),
-                            paymentMethod = method.toApiValue()
-                        )
-                    )
-                    if (!response.isSuccessful) error(response.apiErrorMessage("No se pudo registrar el cobro."))
-                    val payload = checkNotNull(response.body()) { "MiCatalogo no devolvió el saldo actualizado." }
-                    val serverBalance = MoneyUtils.parsePesosStringToCents(payload.customerBalance)
-                    check(customerDao.updateCustomer(local.copy(balance = serverBalance, updatedAt = Instant.now())) == 1) {
-                        "No se pudo actualizar el saldo local del cliente."
+                    val queued = mutations.transaction {
+                        val existing = paymentQueue.activeForCustomer(shopId, local.id.toString()).firstOrNull()
+                        if (existing != null) {
+                            val body = Json.decodeFromString<CustomerPaymentDto>(existing.payload)
+                            require(existing.dependencies.isBlank() && body.amount == MiCatalogoPosSaleOutboxMapper.decimalPrice(amount) && body.paymentMethod == method.toApiValue()) {
+                                "Este cliente tiene otro abono pendiente. Confírmalo antes de registrar uno distinto."
+                            }
+                            check(existing.state != "BLOCKED") { existing.error ?: "El abono requiere revisión." }
+                            existing
+                        } else {
+                            val row = com.example.bspos.data.local.entity.PaymentSyncEntity(requestId, shopId, local.id.toString(),
+                                Json.encodeToString(CustomerPaymentDto(requestId, MiCatalogoPosSaleOutboxMapper.decimalPrice(amount), method.toApiValue())), "")
+                            paymentQueue.insert(row); row
+                        }
+                    }
+                    mutations.wake()
+                    paymentSync.sync()
+                    val ack = checkNotNull(paymentQueue.find(queued.id))
+                    when (ack.state) {
+                            "SENT" -> {
+                                succeeded = true
+                                catalog.syncCustomers(shopId)
+                                _message.value = "Cobro sincronizado."
+                            }
+                            "BLOCKED" -> error(ack.error ?: "El abono requiere revisión.")
+                            else -> _message.value = "Abono pendiente de sincronización. Se conserva para reintentar sin duplicarlo."
                     }
                 } }.onSuccess {
                     succeeded = true
@@ -159,6 +175,7 @@ internal class PaymentAttemptGate {
 
     @Synchronized
     fun start(key: String): String? {
+        if (inFlight.isNotEmpty()) return null
         if (!inFlight.add(key)) return null
         return identities.getOrPut(key) { UUID.randomUUID().toString() }
     }

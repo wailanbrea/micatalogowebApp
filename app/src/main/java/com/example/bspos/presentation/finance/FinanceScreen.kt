@@ -164,7 +164,8 @@ fun FinanceScreen(
                             )
                             3 -> ExpensesTab(
                                 expenses = uiState.expenses,
-                                onAddExpense = { showExpenseDialog = true }.takeIf { canMutateExpenses }
+                                onAddExpense = { showExpenseDialog = true }.takeIf { canMutateExpenses },
+                                loading = uiState.expensesLoading, error = uiState.expensesError, onRetry = viewModel::refresh
                             )
                             4 -> RemoteCashTab(
                                 cash = uiState.cashSession,
@@ -869,8 +870,20 @@ fun CashFlowTab(
 @Composable
 private fun ExpensesTab(
     expenses: List<ExpenseDto>,
-    onAddExpense: (() -> Unit)?
+    onAddExpense: (() -> Unit)?,
+    loading: Boolean = false,
+    error: String? = null,
+    onRetry: () -> Unit = {}
 ) {
+    if (expenses.isEmpty() && (loading || error != null)) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(if (loading) "Cargando gastos…" else error.orEmpty(), color = BSPOSTheme.colors.textSecondary)
+                if (!loading) TextButton(onRetry) { Text("Reintentar") }
+            }
+        }
+        return
+    }
     if (expenses.isEmpty()) {
         Box(
             modifier = Modifier

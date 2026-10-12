@@ -30,7 +30,11 @@ class FinancialOutboxTest {
                 override suspend fun submit(shopId: String, payload: JsonObject): Response<JsonObject> {
                     assertEquals("shop-1", shopId)
                     requests.add(payload.toString())
-                    return if (status == 200) Response.success(buildJsonObject { put("client_operation_uuid", id) })
+                    return if (status == 200) Response.success(buildJsonObject {
+                        put("client_operation_uuid", id)
+                        put("expense", buildJsonObject { put("id", "expense-1") })
+                        put("payment", buildJsonObject { put("id", "payment-1") })
+                    })
                     else Response.error(status, """{"message":"Retry or conflict"}""".toResponseBody())
                 }
             }

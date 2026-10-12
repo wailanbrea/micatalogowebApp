@@ -23,6 +23,7 @@ import com.example.bspos.core.ui.theme.BSPOSTheme
 import com.example.bspos.domain.model.*
 import com.example.bspos.presentation.inventory.InventoryImportMappingDialog
 import org.junit.Rule
+import com.example.bspos.data.local.tenant.LiveQaFixture
 
 /** Requires the isolated Laravel fixture server and adb reverse tcp:8893 tcp:8893. */
 @RunWith(AndroidJUnit4::class)
@@ -30,14 +31,15 @@ class InventoryImportLiveIntegrationTest {
     @get:Rule val compose = createComposeRule()
     @Test fun anonymousRowEightWorkbookTravelsFromAndroidToRealLaravelAndConfirmsBySession() = runBlocking {
         val arguments = InstrumentationRegistry.getArguments()
-        val shop = arguments.getString("inventoryImportShop")
-        if (shop.isNullOrBlank()) return@runBlocking
+        val fixture = LiveQaFixture.optional("anonymousRowEightWorkbookTravelsFromAndroidToRealLaravelAndConfirmsBySession")
+        val shop = fixture?.getString("shop_a") ?: arguments.getString("inventoryImportShop").orEmpty()
+        org.junit.Assume.assumeTrue("Requires an isolated import fixture", !shop.isNullOrBlank())
         val context = InstrumentationRegistry.getInstrumentation().context
         val bytes = context.assets.open("inventory-import-row8.xlsx").use { it.readBytes() }
         val client = OkHttpClient.Builder().callTimeout(60, TimeUnit.SECONDS).addInterceptor { chain ->
-            chain.proceed(chain.request().newBuilder().header("Authorization", "Bearer 1|isolated-import-e2e").header("Accept", "application/json").header("X-MiCatalogo-Version-Code", BuildConfig.VERSION_CODE.toString()).build())
+            chain.proceed(chain.request().newBuilder().header("Authorization", "Bearer ${fixture?.getString("token") ?: arguments.getString("inventoryImportToken").orEmpty()}").header("Accept", "application/json").header("X-MiCatalogo-Version-Code", BuildConfig.VERSION_CODE.toString()).build())
         }.build()
-        val api = Retrofit.Builder().baseUrl("http://127.0.0.1:8893/").client(client)
+        val api = Retrofit.Builder().baseUrl(BuildConfig.MICATALOGO_API_BASE_URL.also { check(java.net.URI(it).host in setOf("127.0.0.1", "localhost", "10.0.2.2")) }).client(client)
             .addConverterFactory(Json { ignoreUnknownKeys = true }.asConverterFactory("application/json".toMediaType())).build().create(MiCatalogoApi::class.java)
         val part = MultipartBody.Part.createFormData("file", "inventario-anonimo.xlsx", bytes.toRequestBody("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet".toMediaType()))
         val response = api.previewInventoryImport(shop!!, part, emptyMap())

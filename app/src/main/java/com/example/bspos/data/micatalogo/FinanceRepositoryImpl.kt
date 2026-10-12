@@ -7,10 +7,18 @@ import com.example.bspos.domain.repository.FinanceRepository
 import kotlinx.coroutines.CancellationException
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.encodeToJsonElement
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.decodeFromString
 
 @Singleton
 class FinanceRepositoryImpl @Inject constructor(
-    private val api: MiCatalogoApi
+    private val api: MiCatalogoApi,
+    private val durable: DurableShopMutation,
+    private val json: Json
 ) : FinanceRepository {
 
     override suspend fun getFinanceSummary(
@@ -57,9 +65,8 @@ class FinanceRepositoryImpl @Inject constructor(
         countedCash: String?,
         notes: String?
     ): MiCatalogoResult<DailyCloseDto> = runCatching {
-        val response = api.closeDay(shopId, DailyCloseRequestDto(date, countedCash, notes))
-        if (!response.isSuccessful) error(response.apiErrorMessage("No se pudo guardar el cierre diario."))
-        response.body() ?: error("MiCatalogo devolvió una respuesta vacía.")
+        val ack = durable.submit(shopId, "day_close", json.encodeToJsonElement(DailyCloseRequestDto(date, countedCash, notes)).jsonObject)
+        json.decodeFromJsonElement(DailyCloseDto.serializer(), ack)
     }.toMiCatalogoResult("No se pudo guardar el cierre diario.")
 
     override suspend fun getCurrentCashSession(shopId: String): MiCatalogoResult<CashCurrentSessionResponseDto> = runCatching {
@@ -74,9 +81,8 @@ class FinanceRepositoryImpl @Inject constructor(
         notes: String?,
         clientOperationUuid: String
     ): MiCatalogoResult<CashSessionActionResponseDto> = runCatching {
-        val response = api.openCashSession(shopId, CashSessionOpenRequestDto(openingAmount, notes, clientOperationUuid))
-        if (!response.isSuccessful) error(response.apiErrorMessage("No se pudo abrir la caja."))
-        response.body() ?: error("MiCatalogo devolvió una respuesta vacía.")
+        val ack = durable.submit(shopId, "cash_open", json.encodeToJsonElement(CashSessionOpenRequestDto(openingAmount, notes, clientOperationUuid)).jsonObject)
+        json.decodeFromJsonElement(CashSessionActionResponseDto.serializer(), ack)
     }.toMiCatalogoResult("No se pudo abrir la caja.")
 
     override suspend fun closeCashSession(
@@ -86,9 +92,8 @@ class FinanceRepositoryImpl @Inject constructor(
         notes: String?,
         clientOperationUuid: String
     ): MiCatalogoResult<CashSessionActionResponseDto> = runCatching {
-        val response = api.closeCashSession(shopId, sessionId, CashSessionCloseRequestDto(countedAmount, notes, clientOperationUuid))
-        if (!response.isSuccessful) error(response.apiErrorMessage("No se pudo cerrar la caja."))
-        response.body() ?: error("MiCatalogo devolvió una respuesta vacía.")
+        val ack = durable.submit(shopId, "cash_close", json.encodeToJsonElement(CashSessionCloseRequestDto(countedAmount, notes, clientOperationUuid)).jsonObject, sessionId)
+        json.decodeFromJsonElement(CashSessionActionResponseDto.serializer(), ack)
     }.toMiCatalogoResult("No se pudo cerrar la caja.")
 
     override suspend fun recordCashMovement(
@@ -99,9 +104,8 @@ class FinanceRepositoryImpl @Inject constructor(
         notes: String,
         clientOperationUuid: String
     ): MiCatalogoResult<CashMovementActionResponseDto> = runCatching {
-        val response = api.recordCashMovement(shopId, sessionId, CashMovementRequestDto(type, amount, notes, clientOperationUuid))
-        if (!response.isSuccessful) error(response.apiErrorMessage("No se pudo registrar el movimiento de caja."))
-        response.body() ?: error("MiCatalogo devolvió una respuesta vacía.")
+        val ack = durable.submit(shopId, "cash_movement", json.encodeToJsonElement(CashMovementRequestDto(type, amount, notes, clientOperationUuid)).jsonObject, sessionId)
+        json.decodeFromJsonElement(CashMovementActionResponseDto.serializer(), ack)
     }.toMiCatalogoResult("No se pudo registrar el movimiento de caja.")
 
     override suspend fun getExpenses(
@@ -123,9 +127,8 @@ class FinanceRepositoryImpl @Inject constructor(
         shopId: String,
         request: ExpenseCreateRequestDto
     ): MiCatalogoResult<ExpenseActionResponseDto> = runCatching {
-        val response = api.createExpense(shopId, request)
-        if (!response.isSuccessful) error(response.apiErrorMessage("No se pudo registrar el gasto."))
-        response.body() ?: error("MiCatalogo devolvió una respuesta vacía.")
+        val ack = durable.submit(shopId, "expense_create", json.encodeToJsonElement(request).jsonObject)
+        json.decodeFromJsonElement(ExpenseActionResponseDto.serializer(), ack)
     }.toMiCatalogoResult("No se pudo registrar el gasto.")
 
     private fun <T> Result<T>.toMiCatalogoResult(defaultError: String): MiCatalogoResult<T> = fold(

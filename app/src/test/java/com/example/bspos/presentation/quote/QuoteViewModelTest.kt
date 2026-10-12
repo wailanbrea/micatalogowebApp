@@ -16,6 +16,18 @@ import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.Assert.*
 import org.junit.Test
 import retrofit2.Response
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.*
+import com.example.bspos.core.database.ShopScope
+import com.example.bspos.core.database.ShopSwitchLock
+import com.example.bspos.data.micatalogo.ShopReadModelEvents
+import com.example.bspos.domain.repository.CustomerRepository
+import com.example.bspos.domain.repository.ShopMutationGateway
+import com.example.bspos.domain.model.Customer
+import kotlinx.coroutines.flow.*
+import kotlinx.serialization.json.*
+import java.time.Instant
+import java.util.UUID
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class QuoteViewModelTest {
@@ -41,6 +53,31 @@ class QuoteViewModelTest {
             MiCatalogoResult.Success(0)
         }
     }
+    private suspend fun model(api: MiCatalogoApi, clientApi: Lazy<MiCatalogoCustomerApi> = clients()): QuoteViewModel {
+        val values = MutableStateFlow<Preferences>(preferencesOf(ShopScope.ACTIVE_SHOP_ID to "shop-1"))
+        val store = object : DataStore<Preferences> {
+            override val data: Flow<Preferences> = values
+            override suspend fun updateData(transform: suspend (Preferences) -> Preferences) = transform(values.value).also { values.value = it }
+        }
+        val rows = clientApi.get().customers("shop-1").body()!!.customers.map { row -> Customer(
+            UUID.nameUUIDFromBytes(row.id.toByteArray()), row.name ?: "Cliente", phone = row.phone,
+            isActive = row.isActive != false, remoteCustomerId = row.id, remoteShopId = "shop-1", createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH) }
+        val customers = proxy<CustomerRepository> { method, _ -> check(method == "observeAll"); flowOf(rows) }
+        val json = Json { ignoreUnknownKeys = true }
+        val gateway = object : ShopMutationGateway {
+            override suspend fun submit(shop: String, type: String, request: JsonObject, resource: String?): JsonObject {
+                val response = when (type) {
+                    "quote_create" -> api.createQuote(shop, json.decodeFromJsonElement(QuoteCreateRequestDto.serializer(), request))
+                    "quote_convert" -> api.convertQuote(shop, checkNotNull(resource))
+                    else -> error("A quote must not perform another mutation: $type")
+                }
+                check(response.isSuccessful) { "Rejected quote operation" }
+                return json.encodeToJsonElement(QuoteResponseDto.serializer(), checkNotNull(response.body())).jsonObject
+            }
+        }
+        return QuoteViewModel(Lazy { api }, connection(), clientApi, catalog(), gateway,
+            ShopScope(store, ShopSwitchLock()), ShopReadModelEvents(), json, customers)
+    }
 
     @Test fun savingCallsOnlyQuoteCreationAndBlocksDuplicateTap() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
@@ -53,7 +90,8 @@ class QuoteViewModelTest {
                     else -> error("Saving a quote must not call sales or inventory: $method")
                 }
             }
-            val model = QuoteViewModel(Lazy { api }, connection(), clients(), catalog())
+            val model = model(api)
+            advanceUntilIdle()
             model.add(product)
             model.add(product)
             model.save(" Cliente ", "8298144525", "2026-10-14", "Solo cotización")
@@ -74,10 +112,14 @@ class QuoteViewModelTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         try {
             val api = proxy<MiCatalogoApi> { method, _ ->
-                check(method == "createQuote")
-                Response.error<QuoteResponseDto>(422, "{}".toResponseBody())
+                when (method) {
+                    "feature" -> Response.success(FeatureResponseDto())
+                    "createQuote" -> Response.error<QuoteResponseDto>(422, "{}".toResponseBody())
+                    else -> error("Unexpected operation: $method")
+                }
             }
-            val model = QuoteViewModel(Lazy { api }, connection(), clients(), catalog())
+            val model = model(api)
+            advanceUntilIdle()
             model.add(product)
             model.save("", "", "", "")
             advanceUntilIdle()
@@ -101,7 +143,8 @@ class QuoteViewModelTest {
                     else -> error("Unexpected operation: $method")
                 }
             }
-            val model = QuoteViewModel(Lazy { api }, connection(), clients(), catalog())
+            val model = model(api)
+            advanceUntilIdle()
             model.convert("quote-1")
             model.convert("quote-1")
             advanceUntilIdle()
@@ -122,7 +165,7 @@ class QuoteViewModelTest {
                     else -> error("Unexpected operation: $method")
                 }
             }
-            val model = QuoteViewModel(Lazy { api }, connection(), clients(RemoteCustomerDto(id = "customer-1", name = "María Gómez", phone = "8295550100")), catalog())
+            val model = model(api, clients(RemoteCustomerDto(id = "customer-1", name = "María Gómez", phone = "8295550100")))
             model.load(); advanceUntilIdle()
             model.add(product)
             model.save("Nombre genérico anterior", "000", "2026-10-14", "", "customer-1")

@@ -17,6 +17,7 @@ import com.example.bspos.domain.model.RouteCustomer
 import com.example.bspos.domain.repository.CustomerRepository
 import com.example.bspos.domain.repository.RouteRepository
 import kotlinx.coroutines.flow.map
+import kotlinx.serialization.json.*
 import java.time.Instant
 import java.util.UUID
 import javax.inject.Inject
@@ -80,13 +81,50 @@ class CustomerRepositoryImpl @Inject constructor(
     }
 }
 
-class RouteRepositoryImpl @Inject constructor(private val local: CustomerRouteDao, private val shops: ShopScope) : RouteRepository {
+class RouteRepositoryImpl @Inject constructor(private val local: CustomerRouteDao, private val shops: ShopScope,
+    private val remote: RemoteMutationRecorder) : RouteRepository {
     override fun observeAll() = shops.observe(local::observeRoutes).map { it.map { row -> row.toDomain() } }
     override suspend fun findById(id: UUID) = local.findRoute(id, shops.current())?.toDomain()
-    override suspend fun insert(route: CommercialRoute) = shops.mutate { local.insertRoute(route.toEntity().copy(tenant=TenantMetadata.assigned(it))) }
-    override suspend fun update(route: CommercialRoute) = shops.mutate { shop -> local.findRoute(route.id, shop)!=null && local.updateRoute(route.toEntity().copy(tenant=TenantMetadata.assigned(shop)))==1 }
+    override suspend fun insert(route: CommercialRoute) {
+        shops.mutate { shop -> remote.transaction {
+            val row = route.toEntity().copy(tenant = TenantMetadata.assigned(shop))
+            local.insertRoute(row); remote.route(row)
+        } }; remote.wake()
+    }
+    override suspend fun update(route: CommercialRoute): Boolean = shops.mutate { shop -> remote.transaction {
+        val row = route.toEntity().copy(tenant = TenantMetadata.assigned(shop))
+        (local.findRoute(route.id, shop) != null && local.updateRoute(row) == 1).also { if (it) remote.route(row) }
+    } }.also { if (it) remote.wake() }
     override fun observeCustomers(routeId: UUID) = shops.observe { local.observeRouteCustomers(routeId, it) }.map { it.map { row -> row.toDomain() } }
-    override suspend fun assign(customer: RouteCustomer) = shops.mutate { local.assignCustomer(customer.toEntity().copy(tenant=TenantMetadata.assigned(it))) }
-    override suspend fun unassign(customerId: UUID) = shops.mutate { local.unassignCustomer(customerId, it) }
-    override suspend fun reorder(routeId: UUID, customerIds: List<UUID>) = shops.mutate { local.reorderRoute(routeId, customerIds, it) }
+    override suspend fun assign(customer: RouteCustomer) {
+        shops.mutate { shop -> remote.transaction {
+            val previous = local.findRouteCustomer(customer.customerId, shop)
+            val key = customerKey(customer.customerId, shop)
+            local.assignCustomer(customer.toEntity().copy(tenant = TenantMetadata.assigned(shop)))
+            remote.enqueue(shop, emptyList(), buildJsonObject {
+                put("type", "route_assign"); put("record_id", customer.routeId.toString()); put("customer_id", key)
+                put("visit_order", customer.visitOrder)
+                put("related_record_ids", buildJsonArray { previous?.routeId?.let { add(JsonPrimitive(it.toString())) } })
+            }, Instant.now())
+        } }; remote.wake()
+    }
+    override suspend fun unassign(customerId: UUID): Boolean = shops.mutate { shop -> remote.transaction {
+        val previous = local.findRouteCustomer(customerId, shop) ?: return@transaction false
+        val key = customerKey(customerId, shop)
+        local.unassignCustomer(customerId, shop).also { if (it) remote.enqueue(shop, emptyList(), buildJsonObject {
+            put("type", "route_unassign"); put("record_id", previous.routeId.toString()); put("customer_id", key)
+        }, Instant.now()) }
+    } }.also { if (it) remote.wake() }
+    override suspend fun reorder(routeId: UUID, customerIds: List<UUID>) {
+        shops.mutate { shop -> remote.transaction {
+            val keys = customerIds.map { customerKey(it, shop) }
+            local.reorderRoute(routeId, customerIds, shop)
+            remote.enqueue(shop, emptyList(), buildJsonObject {
+                put("type", "route_reorder"); put("record_id", routeId.toString())
+                put("customer_ids", buildJsonArray { keys.forEach { add(JsonPrimitive(it)) } })
+            }, Instant.now())
+        } }; remote.wake()
+    }
+    private suspend fun customerKey(id: UUID, shop: String): String = checkNotNull(local.findCustomer(id, shop))
+        .let { it.miCatalogoCustomerId ?: it.id.toString() }
 }

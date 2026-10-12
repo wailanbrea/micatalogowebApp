@@ -9,4 +9,7 @@ import retrofit2.http.Path
 interface MiCatalogoOperationApi {
     @POST("api/v1/shops/{shopId}/mobile-operations")
     suspend fun submit(@Path("shopId") shopId: String, @Body payload: JsonObject): Response<JsonObject>
+
+    @POST("api/v1/me/mobile-operations")
+    suspend fun submitAccount(@Body payload: JsonObject): Response<JsonObject>
 }

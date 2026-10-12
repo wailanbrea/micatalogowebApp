@@ -30,6 +30,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -52,7 +53,8 @@ class InventoryViewModel @Inject constructor(
     private val connection: MiCatalogoConnectionRepository,
     private val catalog: MiCatalogoCatalogRepository,
     private val productUseCases: ProductUseCases,
-    private val api: dagger.Lazy<com.example.bspos.data.micatalogo.api.MiCatalogoApi>
+    private val api: dagger.Lazy<com.example.bspos.data.micatalogo.api.MiCatalogoApi>,
+    private val events: com.example.bspos.data.micatalogo.ShopReadModelEvents
 ) : ViewModel() {
     private val selected = MutableStateFlow<UUID?>(null)
     val stock = repository.observeStock(InventoryLocation.MAIN).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
@@ -82,18 +84,22 @@ class InventoryViewModel @Inject constructor(
     private val _isLoadingImport = MutableStateFlow(false)
     val isLoadingImport = _isLoadingImport.asStateFlow()
     init {
+        viewModelScope.launch { events.changes.collect { if (connection.activeShopId() == it) refreshValuation() } }
         viewModelScope.launch {
-            connection.observeConnection().collect { state ->
+            connection.observeConnection().collectLatest { state ->
+                valuationJob?.cancel(); _remoteValuation.value = null; selected.value = null; _importShop.value = null
                 if (!state.isConfigured) {
                     _editableShopIds.value = emptySet()
                     _importShop.value = null
-                    return@collect
+                    return@collectLatest
                 }
-                when (val result = connection.shops()) {
+                val result = connection.shops()
+                if (connection.activeShopId() != state.activeShopId) return@collectLatest
+                when (result) {
                     is MiCatalogoResult.Success -> {
                         _editableShopIds.value = result.value.filter { state.isAdmin || it.canManageSellers }.map { it.id }.toSet()
                         _importShop.value = result.value.firstOrNull { shop ->
-                            (state.isAdmin || shop.canManageSellers) &&
+                            shop.id == state.activeShopId && (state.isAdmin || shop.canManageSellers) &&
                                 (state.isAdmin || "bulk_import" in (shop.quota?.features.orEmpty()))
                         }
                     }

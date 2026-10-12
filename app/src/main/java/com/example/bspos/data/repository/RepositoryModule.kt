@@ -28,6 +28,7 @@ import dagger.hilt.components.SingletonComponent
 @Module
 @InstallIn(SingletonComponent::class)
 abstract class RepositoryModule {
+    @Binds abstract fun bindShopMutations(repository: com.example.bspos.data.micatalogo.DurableShopMutation): com.example.bspos.domain.repository.ShopMutationGateway
     @Binds
     abstract fun bindCategories(repository: CategoryRepositoryImpl): CategoryRepository
 

@@ -110,6 +110,7 @@ class PaymentSyncResilienceTest {
             pendingAmount = 50000,
             createdAt = now,
             updatedAt = now,
+            tenant = com.example.bspos.data.local.entity.TenantMetadata.assigned(shopId),
         )
         db.saleDao().insertWithItems(
             sale,

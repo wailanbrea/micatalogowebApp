@@ -23,6 +23,10 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.util.UUID
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.collect
+import kotlinx.serialization.json.*
 
 data class PurchaseLineDraft(
     val productId: String = "",
@@ -31,6 +35,7 @@ data class PurchaseLineDraft(
 )
 
 data class PurchaseModuleUiState(
+    val shopId: String? = null,
     val loading: Boolean = true,
     val saving: Boolean = false,
     val workspace: PurchaseWorkspaceDto? = null,
@@ -43,13 +48,24 @@ data class PurchaseModuleUiState(
 class PurchaseModuleViewModel @Inject constructor(
     private val api: Lazy<MiCatalogoApi>,
     private val connection: MiCatalogoConnectionRepository,
-    @param:ApplicationContext private val context: Context
+    @param:ApplicationContext private val context: Context,
+    private val durable: com.example.bspos.data.micatalogo.DurableShopMutation,
+    private val shops: com.example.bspos.core.database.ShopScope,
+    private val events: com.example.bspos.data.micatalogo.ShopReadModelEvents,
+    private val json: Json
 ) : ViewModel() {
     private val _state = MutableStateFlow(PurchaseModuleUiState())
     val state: StateFlow<PurchaseModuleUiState> = _state.asStateFlow()
+    private var loadJob: Job? = null
+    private var activeFeature = "containers"
+    init {
+        viewModelScope.launch { shops.changes.collect { shop -> loadJob?.cancel(); _state.value = PurchaseModuleUiState(shopId = shop); if (shop != null) load(activeFeature) } }
+        viewModelScope.launch { events.changes.collect { if (connection.activeShopId() == it) load(activeFeature) } }
+    }
 
     fun load(feature: String = "containers") {
-        viewModelScope.launch {
+        activeFeature = feature; loadJob?.cancel()
+        loadJob = viewModelScope.launch {
             val shopId = connection.activeShopId()
             if (shopId.isNullOrBlank()) {
                 _state.value = PurchaseModuleUiState(loading = false, error = "Selecciona una tienda activa para gestionar Compras.")
@@ -61,9 +77,10 @@ class PurchaseModuleViewModel @Inject constructor(
                 if (!response.isSuccessful) error(response.errorBody()?.string().orEmpty().ifBlank { "No se pudo cargar Compras." })
                 response.body() ?: error("MiCatalogo devolvió una respuesta vacía.")
             }.onSuccess { workspace ->
-                _state.value = _state.value.copy(loading = false, workspace = workspace, error = null)
+                if (connection.activeShopId() == shopId) _state.value = _state.value.copy(shopId = shopId, loading = false, workspace = workspace, error = null)
             }.onFailure { failure ->
-                _state.value = _state.value.copy(loading = false, error = failure.message ?: "No se pudo cargar Compras.")
+                if (failure is CancellationException) throw failure
+                if (connection.activeShopId() == shopId) _state.value = _state.value.copy(loading = false, error = failure.message ?: "No se pudo cargar Compras.")
             }
         }
     }
@@ -89,9 +106,11 @@ class PurchaseModuleViewModel @Inject constructor(
         invoiceDate: String? = null,
         dueAt: String? = null
     ) {
+        if (_state.value.saving) return
+        val draftShop = _state.value.shopId ?: return
+        _state.value = _state.value.copy(saving = true, error = null, message = null)
         viewModelScope.launch {
             val shopId = connection.activeShopId() ?: return@launch
-            _state.value = _state.value.copy(saving = true, error = null, message = null)
             val request = PurchaseCreateRequestDto(
                 type = type,
                 documentNumber = documentNumber.trim().ifBlank { "DEUDA-${UUID.randomUUID().toString().take(8).uppercase()}" },
@@ -120,14 +139,15 @@ class PurchaseModuleViewModel @Inject constructor(
                 }
             )
             runCatching {
-                val response = api.get().createPurchase(shopId, request)
-                if (!response.isSuccessful) error(response.errorBody()?.string().orEmpty().ifBlank { "No se pudo guardar la compra." })
-                response.body()?.message ?: "Compra guardada."
+                require(shopId == draftShop) { "La tienda cambió; vuelve a abrir la compra." }
+                durable.submit(shopId, "purchase_create", json.encodeToJsonElement(PurchaseCreateRequestDto.serializer(), request).jsonObject)["message"]?.jsonPrimitive?.content ?: "Compra sincronizada."
             }.onSuccess { message ->
+                if (connection.activeShopId() != shopId) return@onSuccess
                 _state.value = _state.value.copy(saving = false, message = message)
                 load(featureForType(type))
             }.onFailure { failure ->
-                _state.value = _state.value.copy(saving = false, error = failure.message ?: "No se pudo guardar la compra.")
+                if (failure is CancellationException) throw failure
+                if (connection.activeShopId() == shopId) _state.value = _state.value.copy(saving = false, error = failure.message ?: "No se pudo guardar la compra.")
             }
         }
     }
@@ -139,13 +159,14 @@ class PurchaseModuleViewModel @Inject constructor(
     }
 
     fun createSupplier(name: String, invoiceCurrency: String, phone: String, email: String, address: String, notes: String) {
+        if (_state.value.saving) return
+        val draftShop = _state.value.shopId ?: return
+        _state.value = _state.value.copy(saving = true, error = null, message = null)
         viewModelScope.launch {
             val shopId = connection.activeShopId() ?: return@launch
-            _state.value = _state.value.copy(saving = true, error = null, message = null)
             runCatching {
-                val response = api.get().createSupplier(
-                    shopId,
-                    SupplierCreateRequestDto(
+                require(shopId == draftShop) { "La tienda cambió; vuelve a abrir Suplidores." }
+                val request = SupplierCreateRequestDto(
                         name = name.trim(),
                         invoiceCurrency = invoiceCurrency.trim().uppercase().takeIf { it.isNotBlank() },
                         phone = phone.trim().takeIf { it.isNotBlank() },
@@ -153,14 +174,14 @@ class PurchaseModuleViewModel @Inject constructor(
                         address = address.trim().takeIf { it.isNotBlank() },
                         notes = notes.trim().takeIf { it.isNotBlank() }
                     )
-                )
-                if (!response.isSuccessful) error(response.errorBody()?.string().orEmpty().ifBlank { "No se pudo guardar el suplidor." })
-                response.body()?.message ?: "Suplidor guardado."
+                durable.submit(shopId, "supplier_create", json.encodeToJsonElement(SupplierCreateRequestDto.serializer(), request).jsonObject)["message"]?.jsonPrimitive?.content ?: "Suplidor sincronizado."
             }.onSuccess { message ->
+                if (connection.activeShopId() != shopId) return@onSuccess
                 _state.value = _state.value.copy(saving = false, message = message)
                 load()
             }.onFailure { failure ->
-                _state.value = _state.value.copy(saving = false, error = failure.message ?: "No se pudo guardar el suplidor.")
+                if (failure is CancellationException) throw failure
+                if (connection.activeShopId() == shopId) _state.value = _state.value.copy(saving = false, error = failure.message ?: "No se pudo guardar el suplidor.")
             }
         }
     }
@@ -182,26 +203,30 @@ class PurchaseModuleViewModel @Inject constructor(
                 if (!response.isSuccessful) error(response.errorBody()?.string().orEmpty().ifBlank { "No se pudo leer la factura." })
                 response.body() ?: error("El lector no devolvió líneas.")
             }.onSuccess { preview ->
-                _state.value = _state.value.copy(saving = false, preview = preview)
+                if (connection.activeShopId() == shopId) _state.value = _state.value.copy(saving = false, preview = preview)
             }.onFailure { failure ->
-                _state.value = _state.value.copy(saving = false, error = failure.message ?: "No se pudo leer la factura.")
+                if (failure is CancellationException) throw failure
+                if (connection.activeShopId() == shopId) _state.value = _state.value.copy(saving = false, error = failure.message ?: "No se pudo leer la factura.")
             }
         }
     }
 
     fun receive(documentId: String, feature: String = "containers") {
+        if (_state.value.saving) return
+        val draftShop = _state.value.shopId ?: return
+        _state.value = _state.value.copy(saving = true, error = null, message = null)
         viewModelScope.launch {
             val shopId = connection.activeShopId() ?: return@launch
-            _state.value = _state.value.copy(saving = true, error = null, message = null)
             runCatching {
-                val response = api.get().receivePurchase(shopId, documentId)
-                if (!response.isSuccessful) error(response.errorBody()?.string().orEmpty().ifBlank { "No se pudo recibir la compra." })
-                response.body()?.message ?: "Compra recibida."
+                require(shopId == draftShop) { "La tienda cambió; vuelve a abrir la compra." }
+                durable.submit(shopId, "purchase_receive", buildJsonObject {}, documentId)["message"]?.jsonPrimitive?.content ?: "Compra recibida y sincronizada."
             }.onSuccess { message ->
+                if (connection.activeShopId() != shopId) return@onSuccess
                 _state.value = _state.value.copy(saving = false, message = message)
                 load(feature)
             }.onFailure { failure ->
-                _state.value = _state.value.copy(saving = false, error = failure.message ?: "No se pudo recibir la compra.")
+                if (failure is CancellationException) throw failure
+                if (connection.activeShopId() == shopId) _state.value = _state.value.copy(saving = false, error = failure.message ?: "No se pudo recibir la compra.")
             }
         }
     }

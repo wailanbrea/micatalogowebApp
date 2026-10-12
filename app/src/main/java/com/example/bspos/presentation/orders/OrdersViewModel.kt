@@ -1,4 +1,5 @@
 package com.example.bspos.presentation.orders
+import kotlinx.serialization.json.jsonObject
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -59,7 +60,9 @@ class OrdersViewModel @Inject constructor(
     private val connection: MiCatalogoConnectionRepository,
     private val customerRepository:CustomerRepository,
     private val catalog:MiCatalogoCatalogRepository,
-    private val shops:ShopScope
+    private val shops:ShopScope,
+    private val events: com.example.bspos.data.micatalogo.ShopReadModelEvents? = null,
+    private val durable: com.example.bspos.data.micatalogo.DurableShopMutation? = null
 ) : ViewModel() {
     private val _state = MutableStateFlow(OrdersUiState())
     val state = _state.asStateFlow()
@@ -74,6 +77,9 @@ class OrdersViewModel @Inject constructor(
     private var loadedShopId:String?=null
 
     init {
+        events?.let { source -> viewModelScope.launch { source.changes.collect { shop ->
+            if (loadedShopId == shop && connection.activeShopId() == shop) load(activeFeature, refresh = true)
+        } } }
         viewModelScope.launch {
             customerRepository.observeAll().collect { customers ->
                 _state.update { it.copy(customers=customers.map { customer -> customer.asRemoteOption() }) }
@@ -196,28 +202,25 @@ class OrdersViewModel @Inject constructor(
     ) {
         val orderId = row.id?.takeIf { it.isNotBlank() } ?: return
         if (_state.value.confirmingId != null) return
+        _state.value = _state.value.copy(confirmingId = orderId, error = null, message = null)
         viewModelScope.launch {
-            val shopId = connection.activeShopId() ?: return@launch
-            _state.value = _state.value.copy(confirmingId = orderId, error = null, message = null)
+            val shopId = connection.activeShopId() ?: run { _state.value = _state.value.copy(confirmingId = null); return@launch }
             runCatching { shops.mutate { active ->
                 require(active==shopId && loadedShopId==shopId) { "El pedido no pertenece a la tienda activa" }
                 if(paymentKind in setOf("credit","mixed")) require(_state.value.customers.any { it.id==customerId && it.isActive!=false && !it.localOnly }) { "Selecciona un cliente activo de esta tienda" }
-                val response = api.get().confirmOrder(
-                    shopId,
-                    orderId,
-                    OrderConfirmRequestDto(
+                val request = OrderConfirmRequestDto(
                         paymentKind = paymentKind,
                         paymentMethod = paymentMethod,
                         customerId = customerId,
                         creditAmount = creditAmount?.trim()?.ifBlank { null },
                         reference = reference?.trim()?.ifBlank { null }
                     )
-                )
                 // Keep HTTP/application errors inside the protected block. The
                 // previous implementation threw from onSuccess, which escaped
                 // runCatching and terminated the Android process on a 422.
-                if (!response.isSuccessful) error(response.apiErrorMessage("No se pudo confirmar el pedido. Revisa el cliente, el crédito y las existencias."))
-                checkNotNull(response.body()) { "MiCatalogo devolvió una respuesta vacía al confirmar el pedido." }
+                val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+                val ack = checkNotNull(durable).submit(shopId, "order_confirm", json.encodeToJsonElement(OrderConfirmRequestDto.serializer(), request).jsonObject, orderId)
+                json.decodeFromJsonElement(com.example.bspos.data.micatalogo.dto.OrderConfirmResponseDto.serializer(), ack)
             }
             }.onSuccess { body ->
                 _state.value = _state.value.copy(

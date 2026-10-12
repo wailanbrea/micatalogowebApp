@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.Flow
 interface MiCatalogoConnectionRepository {
     fun observeConnection(): Flow<MiCatalogoConnectionState>
     suspend fun accessToken(): String?
+    suspend fun accountId(): String? = null
     suspend fun login(email: String, password: String, remember: Boolean): MiCatalogoResult<Unit>
     suspend fun refreshAccount(): MiCatalogoResult<Unit>
     suspend fun updateProfile(name: String, email: String): MiCatalogoResult<Unit>

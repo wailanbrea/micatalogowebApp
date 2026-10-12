@@ -8,6 +8,8 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.longOrNull
 import javax.inject.Inject
 
 enum class OperationSubmission { SENT, RETRY, BLOCKED }
@@ -23,14 +25,28 @@ class OperationSyncRepository @Inject constructor(private val api: MiCatalogoOpe
             return OperationSubmission.BLOCKED
         }
         return try {
-            val response = api.submit(row.shopId, body)
+            val response = if (body["scope"]?.jsonPrimitive?.contentOrNull == "account") {
+                api.submitAccount(body)
+            } else {
+                api.submit(row.shopId, body)
+            }
             when {
                 response.isSuccessful -> {
                     if (response.body()?.get("client_operation_uuid")?.jsonPrimitive?.contentOrNull != row.id) {
                         queue.mark(row.id,"PENDING","La respuesta no confirma esta operación; se reintentará con el mismo identificador.")
                         return OperationSubmission.RETRY
                     }
-                    queue.confirmSent(row.id, row.shopId)
+                    val ack = checkNotNull(response.body())
+                    if (!confirmsResource(body, ack)) {
+                        queue.mark(row.id, "PENDING", "La respuesta no incluye un comprobante válido; se reintentará con el mismo UUID.")
+                        return OperationSubmission.RETRY
+                    }
+                    val expectedRecord = body["record_id"]?.jsonPrimitive?.contentOrNull
+                    if (expectedRecord != null && ack["record_id"]?.jsonPrimitive?.contentOrNull != expectedRecord) {
+                        queue.mark(row.id, "PENDING", "La respuesta no confirma el registro solicitado; se reintentará con el mismo UUID.")
+                        return OperationSubmission.RETRY
+                    }
+                    queue.confirmSent(row.id, row.shopId, ack.toString())
                     OperationSubmission.SENT
                 }
                 response.code() in listOf(401, 426, 429) || response.code() >= 500 -> {
@@ -46,6 +62,28 @@ class OperationSyncRepository @Inject constructor(private val api: MiCatalogoOpe
             if (error is CancellationException) throw error
             queue.mark(row.id,"PENDING","No se pudo confirmar el envío. Se conserva la operación para reintentar.")
             OperationSubmission.RETRY
+        }
+    }
+
+    private fun confirmsResource(body: JsonObject, ack: JsonObject): Boolean {
+        fun nestedId(key: String) = (ack[key] as? JsonObject)?.get("id")?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
+        val resource = body["resource_id"]?.jsonPrimitive?.contentOrNull
+        return when (body["type"]?.jsonPrimitive?.contentOrNull) {
+            "return" -> (ack["return_id"]?.jsonPrimitive?.longOrNull ?: 0) > 0
+            "cash_open" -> nestedId("session") != null
+            "cash_close" -> nestedId("session") == resource && resource != null
+            "cash_movement" -> nestedId("movement") != null
+            "expense_create" -> nestedId("expense") != null
+            "expense_payment" -> nestedId("payment") != null && nestedId("expense") == resource && resource != null
+            "quote_create" -> nestedId("quote") != null
+            "quote_convert", "order_confirm" -> !ack["invoice_number"]?.jsonPrimitive?.contentOrNull.isNullOrBlank()
+            "purchase_create", "purchase_receive" -> nestedId("document") != null
+            "supplier_create" -> nestedId("supplier") != null
+            "partner_create" -> nestedId("partner") != null
+            "partner_transaction" -> nestedId("transaction") != null && nestedId("partner") == resource && resource != null
+            "inventory_import_confirm" -> (ack["imported"]?.jsonPrimitive?.longOrNull ?: -1) >= 0
+            "day_close" -> (ack["closure"] as? JsonObject)?.get("id") != null
+            else -> true
         }
     }
 }

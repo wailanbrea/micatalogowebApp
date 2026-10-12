@@ -15,6 +15,7 @@ import com.example.bspos.domain.model.RouteLoadItem
 import com.example.bspos.domain.model.RouteLoadStatus
 import com.example.bspos.domain.model.CommercialRoute
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -36,12 +37,16 @@ class RouteLoadDatabaseTest {
 
     @Before fun setUp() = runTest {
         db = Room.inMemoryDatabaseBuilder(ApplicationProvider.getApplicationContext<Context>(), AppDatabase::class.java).build()
-        loads = RouteLoadRepositoryImpl(db.routeLoadDao())
-        db.customerRouteDao().insertRoute(CommercialRoute(routeId, "Ruta", "R", createdAt = at, updatedAt = at).toEntity())
+        val tenant = com.example.bspos.data.local.entity.TenantMetadata.assigned("loads-qa")
+        loads = RouteLoadRepositoryImpl(db.routeLoadDao(), com.example.bspos.data.local.tenant.tenantTestScope("loads-qa"),
+            com.example.bspos.data.micatalogo.RemoteMutationRecorder(com.example.bspos.core.database.RoomDatabaseTransactor(db),
+                db.categoryDao(), db.operationOutboxDao(), com.example.bspos.data.micatalogo.PosSaleSyncScheduler(ApplicationProvider.getApplicationContext<Context>())),
+            db.productDao(), db.inventoryDao())
+        db.customerRouteDao().insertRoute(CommercialRoute(routeId, "Ruta", "R", createdAt = at, updatedAt = at).toEntity().copy(tenant = tenant))
         val categoryId = UUID.randomUUID(); val unitId = UUID.randomUUID()
-        db.categoryDao().insert(CategoryEntity(categoryId, "Cat", createdAt = at, updatedAt = at))
-        db.unitOfMeasureDao().insert(UnitOfMeasureEntity(unitId, "Unidad", "ud", createdAt = at, updatedAt = at))
-        db.productDao().insert(ProductEntity(productId, "Producto", "LOAD-001", categoryId = categoryId, unitId = unitId, salePrice = 100, averageCost = 50, createdAt = at, updatedAt = at))
+        db.categoryDao().insert(CategoryEntity(categoryId, "Cat", createdAt = at, updatedAt = at, tenant = tenant))
+        db.unitOfMeasureDao().insert(UnitOfMeasureEntity(unitId, "Unidad", "ud", createdAt = at, updatedAt = at, tenant = tenant))
+        db.productDao().insert(ProductEntity(productId, "Producto", "LOAD-001", categoryId = categoryId, unitId = unitId, salePrice = 100, averageCost = 50, createdAt = at, updatedAt = at, tenant = tenant))
     }
     @After fun tearDown() = db.close()
 
@@ -49,10 +54,10 @@ class RouteLoadDatabaseTest {
         val load = RouteLoad(UUID.randomUUID(), routeId, at, notes = "Salida", createdAt = at)
         val item = RouteLoadItem(UUID.randomUUID(), load.id, productId, 7, 50)
         loads.insert(load, listOf(item))
-        assertEquals(listOf(load), loads.observeForRoute(routeId).first())
-        assertEquals(listOf(item), loads.observeItems(load.id).first())
+        assertEquals(listOf(load), loads.observeForRoute(routeId).drop(1).first())
+        assertEquals(listOf(item), loads.observeItems(load.id).drop(1).first())
         loads.updateStatus(load.id, RouteLoadStatus.SETTLED)
-        assertEquals(RouteLoadStatus.SETTLED, db.routeLoadDao().findById(load.id)!!.status)
+        assertEquals(RouteLoadStatus.SETTLED, db.routeLoadDao().findById(load.id, "loads-qa")!!.status)
         expectFailure<IllegalArgumentException> { loads.updateStatus(load.id, RouteLoadStatus.CANCELLED) }
     }
 

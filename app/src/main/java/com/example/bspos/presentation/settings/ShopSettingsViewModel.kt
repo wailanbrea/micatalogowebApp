@@ -3,6 +3,7 @@ package com.example.bspos.presentation.settings
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.bspos.data.micatalogo.api.MiCatalogoApi
+import com.example.bspos.data.micatalogo.DurableShopMutation
 import com.example.bspos.data.micatalogo.dto.ShopSettingsDto
 import com.example.bspos.data.micatalogo.dto.ShopSettingsUpdateDto
 import com.example.bspos.data.micatalogo.dto.ShopLogoUploadResponseDto
@@ -15,6 +16,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
@@ -30,7 +33,9 @@ data class ShopSettingsUiState(
 @HiltViewModel
 class ShopSettingsViewModel @Inject constructor(
     private val api: Lazy<MiCatalogoApi>,
-    private val connection: MiCatalogoConnectionRepository
+    private val connection: MiCatalogoConnectionRepository,
+    private val durable: DurableShopMutation,
+    private val json: Json
 ) : ViewModel() {
     private val _state = MutableStateFlow(ShopSettingsUiState())
     val state: StateFlow<ShopSettingsUiState> = _state.asStateFlow()
@@ -55,9 +60,12 @@ class ShopSettingsViewModel @Inject constructor(
             runCatching {
                 val shopId = connection.activeShopId().orEmpty()
                 check(shopId.isNotBlank()) { "Selecciona una tienda activa." }
-                val response = api.get().updateShopSettings(shopId, settings)
-                check(response.isSuccessful) { response.apiErrorMessage("No se pudo guardar la configuración.") }
-                response.body() ?: error("La configuración guardada llegó vacía.")
+                val ack = durable.submit(
+                    shopId,
+                    "shop_settings_update",
+                    json.encodeToJsonElement(ShopSettingsUpdateDto.serializer(), settings).jsonObject
+                )
+                json.decodeFromJsonElement(ShopSettingsDto.serializer(), ack)
             }.onSuccess {
                 _state.value = ShopSettingsUiState(loading = false, saving = false, settings = it)
                 UiErrorBus.show("Configuración guardada.")

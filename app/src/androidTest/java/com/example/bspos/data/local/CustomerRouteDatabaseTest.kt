@@ -11,6 +11,7 @@ import com.example.bspos.domain.model.CommercialRoute
 import com.example.bspos.domain.model.Customer
 import com.example.bspos.domain.model.RouteCustomer
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -32,17 +33,24 @@ class CustomerRouteDatabaseTest {
 
     @Before fun setUp() {
         db = Room.inMemoryDatabaseBuilder(ApplicationProvider.getApplicationContext<Context>(), AppDatabase::class.java).build()
-        customers = CustomerRepositoryImpl(db.customerRouteDao())
-        routes = RouteRepositoryImpl(db.customerRouteDao())
+        val shops = com.example.bspos.data.local.tenant.tenantTestScope("customer-route-qa")
+        customers = CustomerRepositoryImpl(db.customerRouteDao(), shops = shops,
+            api = com.example.bspos.data.local.tenant.OfflineCustomerTestApi,
+            remote = com.example.bspos.data.micatalogo.RemoteMutationRecorder(
+                com.example.bspos.core.database.RoomDatabaseTransactor(db), db.categoryDao(), db.operationOutboxDao(),
+                com.example.bspos.data.micatalogo.PosSaleSyncScheduler(ApplicationProvider.getApplicationContext<Context>())))
+        routes = RouteRepositoryImpl(db.customerRouteDao(), shops, com.example.bspos.data.micatalogo.RemoteMutationRecorder(
+            com.example.bspos.core.database.RoomDatabaseTransactor(db), db.categoryDao(), db.operationOutboxDao(),
+            com.example.bspos.data.micatalogo.PosSaleSyncScheduler(ApplicationProvider.getApplicationContext<Context>())))
     }
     @After fun tearDown() = db.close()
 
     @Test fun customersRoundTripMoneyCoordinatesAndSoftDelete() = runTest {
         val customer = Customer(UUID.randomUUID(), "Colmado", "Ana", "8095550000", "8095550001", "Calle 1", "Frente al parque", "123", "LUN,VIE", 500_00, 25_00, 18.45, -69.93, "Paga viernes", createdAt = at, updatedAt = at)
         customers.insert(customer)
-        assertEquals(customer, customers.findById(customer.id))
+        assertEquals(customer.copy(remoteShopId = "customer-route-qa"), customers.findById(customer.id))
         assertTrue(customers.update(customer.copy(balance = 0, isActive = false, updatedAt = at.plusSeconds(1))))
-        assertFalse(customers.observeAll().first().single().isActive)
+        assertFalse(customers.observeAll().drop(1).first().single().isActive)
         assertTrue(customers.softDelete(customer.id, at.plusSeconds(2)))
         assertTrue(customers.observeAll().first().isEmpty())
         assertEquals(at.plusSeconds(2), customers.findById(customer.id)!!.deletedAt)
@@ -55,10 +63,10 @@ class CustomerRouteDatabaseTest {
         customers.insert(customer); routes.insert(routeA); routes.insert(routeB)
         expectFailure<SQLiteConstraintException> { routes.insert(routeB.copy(id = UUID.randomUUID(), name = "Duplicada", code = "N")) }
         routes.assign(RouteCustomer(routeA.id, customer.id, 0))
-        assertEquals(listOf(RouteCustomer(routeA.id, customer.id, 0)), routes.observeCustomers(routeA.id).first())
+        assertEquals(listOf(RouteCustomer(routeA.id, customer.id, 0)), routes.observeCustomers(routeA.id).drop(1).first())
         routes.assign(RouteCustomer(routeB.id, customer.id, 0))
         assertTrue(routes.observeCustomers(routeA.id).first().isEmpty())
-        assertEquals(listOf(RouteCustomer(routeB.id, customer.id, 0)), routes.observeCustomers(routeB.id).first())
+        assertEquals(listOf(RouteCustomer(routeB.id, customer.id, 0)), routes.observeCustomers(routeB.id).drop(1).first())
     }
 
     @Test fun inactiveOrDeletedCustomerAndInactiveRouteCannotBeAssigned() = runTest {
@@ -83,12 +91,12 @@ class CustomerRouteDatabaseTest {
         routes.assign(RouteCustomer(route.id, first.id, 0)); routes.assign(RouteCustomer(route.id, second.id, 1))
         expectFailure<IllegalArgumentException> { routes.reorder(route.id, listOf(first.id, first.id)) }
         expectFailure<IllegalStateException> { routes.reorder(route.id, listOf(second.id, UUID.randomUUID())) }
-        assertEquals(listOf(first.id, second.id), routes.observeCustomers(route.id).first().map { it.customerId })
+        assertEquals(listOf(first.id, second.id), routes.observeCustomers(route.id).drop(1).first().map { it.customerId })
         routes.reorder(route.id, listOf(second.id, first.id))
-        assertEquals(listOf(second.id, first.id), routes.observeCustomers(route.id).first().map { it.customerId })
+        assertEquals(listOf(second.id, first.id), routes.observeCustomers(route.id).drop(1).first().map { it.customerId })
         db.openHelper.writableDatabase.execSQL("DELETE FROM routes WHERE id = ?", arrayOf(route.id.toString()))
         assertTrue(routes.observeCustomers(route.id).first().isEmpty())
-        assertEquals(first, customers.findById(first.id))
+        assertEquals(first.copy(remoteShopId = "customer-route-qa"), customers.findById(first.id))
     }
 
     private suspend inline fun <reified T : Throwable> expectFailure(block: suspend () -> Unit) {

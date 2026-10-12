@@ -48,6 +48,8 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -84,7 +86,8 @@ import java.util.Locale
 fun SalesHistoryScreen(
     onReturns: () -> Unit,
     viewModel: DashboardViewModel = hiltViewModel(),
-    printerViewModel: PosViewModel = hiltViewModel()
+    printerViewModel: PosViewModel = hiltViewModel(),
+    remoteViewModel: RemoteSalesViewModel = hiltViewModel()
 ) {
     val sales by viewModel.sales.collectAsState()
     val saleItems by viewModel.saleItems.collectAsState()
@@ -94,6 +97,11 @@ fun SalesHistoryScreen(
     val printerMessage by printerViewModel.printerMessage.collectAsState()
     val selectedSale by viewModel.selectedSale.collectAsState()
     val selectedItems by viewModel.selectedItems.collectAsState()
+    val remote by remoteViewModel.state.collectAsState()
+    val pendingRows by remoteViewModel.pending.collectAsState()
+    val pendingIds = pendingRows.map { it.saleId }.toSet()
+    var selectedRemote by remember { mutableStateOf<com.example.bspos.data.micatalogo.dto.FeatureRowDto?>(null) }
+    val exportScope = rememberCoroutineScope()
     val context = LocalContext.current
     val currency = LocalCurrency.current
     var period by remember { mutableStateOf("Hoy") }
@@ -130,7 +138,15 @@ fun SalesHistoryScreen(
     }
     val customerNames = customers.associate { it.id to it.fullName }
     val normalizedQuery = query.trim()
+    androidx.compose.runtime.LaunchedEffect(period, paymentFilter, query, originFilter, minAmount, maxAmount) {
+        remoteViewModel.load(SalesReadFilters(
+            period = when (period) { "Este mes" -> "month"; "Últimos 7" -> "last_7"; "Todo" -> "all"; else -> "today" },
+            status = when (paymentFilter) { "Pagadas" -> "paid"; "A crédito" -> "credit"; "Parciales" -> "partial"; "Anuladas" -> "void"; else -> "all" },
+            query = normalizedQuery.ifBlank { null }, origin = when (originFilter) { "Ruta" -> "route"; "Terminal" -> "warehouse"; else -> "all" },
+            minimum = minAmount.ifBlank { null }, maximum = maxAmount.ifBlank { null }))
+    }
     val visibleSales = sales
+        .filter { it.id in pendingIds }
         .filter { sale ->
             val isCancelled = sale.status != SaleStatus.COMPLETED
             when (paymentFilter) {
@@ -211,13 +227,17 @@ fun SalesHistoryScreen(
                     Icon(Icons.Default.FilterList, null); Spacer(Modifier.width(8.dp)); Text("Filtros" + if (originFilter != "Todos" || minAmount.isNotBlank() || maxAmount.isNotBlank()) " · activos" else "")
                 }
             }
-            item { SalesSummary(visibleSales) }
+            item {
+                remote.module?.let { RemoteSalesSummary(it.kpis) }
+                    ?: Text(if (remote.loading) "Cargando ventas confirmadas…" else remote.error ?: "No se pudo confirmar el historial.", color = BSPOSTheme.colors.textSecondary)
+                if (remote.error != null && remote.module != null) Text(remote.error.orEmpty(), color = BSPOSTheme.colors.error)
+            }
             item {
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                     Icon(Icons.Default.ReceiptLong, contentDescription = null, tint = BSPOSTheme.colors.primary)
                     Spacer(Modifier.width(8.dp))
                     Text("Historial de ventas", fontWeight = FontWeight.ExtraBold, modifier = Modifier.weight(1f))
-                    Text("${visibleSales.size} ventas", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+                    Text("${remote.module?.rows?.size ?: 0} confirmadas", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelMedium)
                 }
             }
             item {
@@ -239,9 +259,21 @@ fun SalesHistoryScreen(
                     }
                 }
             }
-            if (visibleSales.isEmpty()) {
+            if (remote.module?.rows?.isEmpty() == true && visibleSales.isEmpty()) {
                 item { EmptySalesState() }
-            } else {
+            }
+            items(remote.module?.rows.orEmpty(), key = { "server-${it.id ?: it.primary}" }) { row ->
+                Card(onClick = { selectedRemote = row }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp),
+                    colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface)) {
+                    Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(row.primary, fontWeight = FontWeight.ExtraBold)
+                        Text(row.secondary, style = MaterialTheme.typography.bodySmall, color = BSPOSTheme.colors.textSecondary)
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(row.status); Text(row.value, fontWeight = FontWeight.Bold, color = BSPOSTheme.colors.primary) }
+                    }
+                }
+            }
+            if (visibleSales.isNotEmpty()) {
+                item { Text("Pendientes de confirmación en MiCatalogo", color = BSPOSTheme.colors.warning) }
                 items(visibleSales, key = { it.id }) { sale ->
                     SaleHistoryCard(
                         sale = sale,
@@ -251,12 +283,22 @@ fun SalesHistoryScreen(
                 }
             }
             item {
-                val total = visibleSales.sumOf { it.total }
-                Text("${visibleSales.size} ventas · ${money(total)}", color = BSPOSTheme.colors.textSecondary, modifier = Modifier.padding(vertical = 6.dp))
+                Text("El historial muestra hasta 100 facturas. La exportación consulta el período completo en el servidor.", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(vertical = 6.dp))
             }
         }
     }
 
+    selectedRemote?.let { invoice ->
+        AlertDialog(onDismissRequest = { selectedRemote = null }, title = { Text(invoice.primary) }, text = {
+            com.example.bspos.presentation.common.DialogScrollableColumn {
+                Text(invoice.secondary)
+                invoice.items.forEach { item -> Text("${item.quantity} × ${item.name} · ${item.lineTotal}") }
+                Text("Total: ${invoice.value}", fontWeight = FontWeight.Bold)
+                Text(invoice.status)
+            }
+        }, confirmButton = { TextButton({ selectedRemote = null }) { Text("Cerrar") } },
+            dismissButton = { TextButton({ selectedRemote = null; onReturns() }) { Text("Ver devoluciones") } })
+    }
     selectedSale?.let { sale ->
         SaleDetailDialog(
             sale = sale,
@@ -301,20 +343,25 @@ fun SalesHistoryScreen(
                 Column {
                     Row(Modifier.fillMaxWidth().clickable { exportAll = false }, verticalAlignment = Alignment.CenterVertically) {
                         RadioButton(selected = !exportAll, onClick = { exportAll = false })
-                        Text("Lo que ves ahora · ${visibleSales.size} ventas")
+                        Text("Período y filtros actuales · exportación completa")
                     }
                     Row(Modifier.fillMaxWidth().clickable { exportAll = true }, verticalAlignment = Alignment.CenterVertically) {
                         RadioButton(selected = exportAll, onClick = { exportAll = true })
-                        Text("Todas las ventas · ${sales.count { it.status == SaleStatus.COMPLETED }} ventas")
+                        Text("Todas las ventas confirmadas de la tienda")
                     }
                 }
             },
             confirmButton = {
                 TextButton(onClick = {
-                    val rows = if (exportAll) sales.filter { it.status == SaleStatus.COMPLETED }.sortedByDescending { it.date } else visibleSales
-                    exportContents = buildSalesCsv(rows, customerNames, products.associateBy { it.id }, saleItems, currency)
                     showExportDialog = false
-                    exportLauncher.launch("ventas-${LocalDate.now()}.csv")
+                    exportScope.launch {
+                        runCatching { remoteViewModel.export(exportAll) }.onSuccess {
+                            exportContents = it; exportLauncher.launch("ventas-${LocalDate.now()}.csv")
+                        }.onFailure { error ->
+                            if (error is kotlinx.coroutines.CancellationException) throw error
+                            UiErrorBus.show(error.message ?: "No se pudo exportar el historial confirmado.")
+                        }
+                    }
                 }) { Text("Guardar CSV") }
             },
             dismissButton = { TextButton(onClick = { showExportDialog = false }) { Text("Cancelar") } }
@@ -346,6 +393,23 @@ fun SalesHistoryScreen(
                     Button(onClick = { showFilters = false }, modifier = Modifier.weight(1f)) { Text("Ver ventas") }
                 }
                 Spacer(Modifier.height(10.dp))
+            }
+        }
+    }
+}
+
+@Composable
+internal fun RemoteSalesSummary(kpis: List<com.example.bspos.data.micatalogo.dto.FeatureKpiDto>) {
+    Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface)) {
+        Column(Modifier.fillMaxWidth()) {
+            kpis.chunked(2).forEachIndexed { rowIndex, pair ->
+                if (rowIndex > 0) HorizontalDivider(color = BSPOSTheme.colors.outline)
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    pair.forEachIndexed { index, metric ->
+                        if (index > 0) VerticalDivider(Modifier.height(88.dp), color = BSPOSTheme.colors.outline)
+                        Metric(metric.label, metric.value, BSPOSTheme.colors.primary, Modifier.weight(1f))
+                    }
+                }
             }
         }
     }

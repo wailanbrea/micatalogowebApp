@@ -11,6 +11,11 @@ import com.example.bspos.BuildConfig
 import com.example.bspos.MainActivity
 import org.junit.Assume.assumeTrue
 import org.junit.Rule
+import org.junit.Before
+import org.junit.After
+import org.junit.rules.TestName
+import com.example.bspos.data.local.tenant.LiveQaFixture
+import kotlinx.coroutines.runBlocking
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
@@ -18,18 +23,46 @@ import java.io.File
 /** Real activity + real local QA API. Never eligible against production. */
 @RunWith(AndroidJUnit4::class)
 class EmulatorJourneyTest {
+    @get:Rule val testName = TestName()
     @get:Rule val compose=createAndroidComposeRule<MainActivity>()
     private var drawerQuery=""
     private val newCustomer="QA Nuevo A2"
+    private var fixture: org.json.JSONObject? = null
+    private var previousAutofill: String? = null
+    private fun shell(command: String): String = android.os.ParcelFileDescriptor.AutoCloseInputStream(
+        InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand(command)).bufferedReader().use { it.readText().trim() }
+    @Before fun prepareIndependentScenario() {
+        fixture = LiveQaFixture.optional(testName.methodName)
+        if (fixture != null) {
+            previousAutofill = shell("settings get secure autofill_service").also {
+                require(it == "null" || Regex("[A-Za-z0-9_.]+/[A-Za-z0-9_.$]+").matches(it)) { "Unexpected autofill component" }
+            }
+            shell("settings put secure autofill_service null")
+            dismissAutofill()
+            val context = InstrumentationRegistry.getInstrumentation().targetContext
+            val dependencies = dagger.hilt.android.EntryPointAccessors.fromApplication(context.applicationContext,
+                com.example.bspos.data.micatalogo.PosSaleSyncWorkerDependencies::class.java)
+            runBlocking { dependencies.connectionRepository().logout() }
+            compose.activityRule.scenario.recreate()
+        }
+    }
+    @After fun restoreAutofill() {
+        previousAutofill?.let { shell("settings put secure autofill_service $it") }
+    }
+    private fun requireLive() {
+        assumeTrue(fixture != null || InstrumentationRegistry.getArguments().getString("emulatorQaLive") == "true")
+        check(BuildConfig.APPLICATION_ID.contains(".offlinecheck"))
+        check(BuildConfig.MICATALOGO_API_BASE_URL in setOf("http://127.0.0.1:18765/", "http://127.0.0.1:18766/", "http://127.0.0.1:18767/"))
+    }
+    private fun fixtureEmail() = fixture?.getString("email") ?: "emulador-qa@example.test"
+    private fun fixturePassword() = fixture?.getString("password") ?: "Emulador-QA-2026!"
 
     @Test fun loginSharedCustomerCreditOrderCollectionAndShopSwitch() {
-        assumeTrue(InstrumentationRegistry.getArguments().getString("emulatorQaLive")=="true")
-        check(BuildConfig.APPLICATION_ID.endsWith(".offlinecheck.emulatorqa"))
-        check(BuildConfig.MICATALOGO_API_BASE_URL in setOf("http://127.0.0.1:18765/","http://127.0.0.1:18766/"))
+        requireLive()
         try {
             waitFor("Iniciar sesion")
-            compose.onAllNodes(hasSetTextAction())[0].performTextReplacement("emulador-qa@example.test")
-            compose.onAllNodes(hasSetTextAction())[1].performTextReplacement("Emulador-QA-2026!")
+            compose.onAllNodes(hasSetTextAction())[0].performTextReplacement(fixtureEmail())
+            compose.onAllNodes(hasSetTextAction())[1].performTextReplacement(fixturePassword())
             Espresso.closeSoftKeyboard()
             compose.onNodeWithText("Iniciar sesion").performClick()
             waitFor("Buenas, QA Tienda A")
@@ -39,7 +72,7 @@ class EmulatorJourneyTest {
             navigate("Clientes")
             waitFor("QA Cliente A Activo")
             compose.onNodeWithText("QA Cliente A Inactivo").assertExists()
-            compose.onNodeWithText("Inactivo").assertExists()
+            compose.onNodeWithText("8095550101 · Inactivo").assertExists()
             compose.onNodeWithText("QA Cliente B Activo").assertDoesNotExist()
             if (InstrumentationRegistry.getArguments().getString("skipQaCustomerCreation")!="true") {
                 compose.onNodeWithText("Nuevo").performClick()
@@ -130,11 +163,10 @@ class EmulatorJourneyTest {
     }
 
     @Test fun ownerSummaryReadsServerForEachShop() {
-        assumeTrue(InstrumentationRegistry.getArguments().getString("emulatorQaLive")=="true")
-        check(BuildConfig.APPLICATION_ID.endsWith(".offlinecheck.emulatorqa") && BuildConfig.MICATALOGO_API_BASE_URL=="http://127.0.0.1:18766/")
+        requireLive()
         waitFor("Iniciar sesion")
-        compose.onAllNodes(hasSetTextAction())[0].performTextReplacement("emulador-qa@example.test")
-        compose.onAllNodes(hasSetTextAction())[1].performTextReplacement("Emulador-QA-2026!")
+        compose.onAllNodes(hasSetTextAction())[0].performTextReplacement(fixtureEmail())
+        compose.onAllNodes(hasSetTextAction())[1].performTextReplacement(fixturePassword())
         Espresso.closeSoftKeyboard()
         compose.onNodeWithText("Iniciar sesion").performClick()
         waitFor("Buenas, QA Tienda A")
@@ -155,11 +187,10 @@ class EmulatorJourneyTest {
         waitFor("RD$ 600.00")
     }
     @Test fun ordersEntryAndReturnDoNotShowTheEmptyLandingForExistingOrders() {
-        assumeTrue(InstrumentationRegistry.getArguments().getString("emulatorQaLive")=="true")
-        check(BuildConfig.APPLICATION_ID.endsWith(".offlinecheck.emulatorqa") && BuildConfig.MICATALOGO_API_BASE_URL=="http://127.0.0.1:18766/")
+        requireLive()
         waitFor("Iniciar sesion")
-        compose.onAllNodes(hasSetTextAction())[0].performTextReplacement("emulador-qa@example.test")
-        compose.onAllNodes(hasSetTextAction())[1].performTextReplacement("Emulador-QA-2026!")
+        compose.onAllNodes(hasSetTextAction())[0].performTextReplacement(fixtureEmail())
+        compose.onAllNodes(hasSetTextAction())[1].performTextReplacement(fixturePassword())
         Espresso.closeSoftKeyboard()
         compose.onNodeWithText("Iniciar sesion").performClick()
         waitFor("Buenas, QA Tienda A")
@@ -180,11 +211,10 @@ class EmulatorJourneyTest {
     }
 
     @Test fun compactCustomersOpenMovementsAndExplainTheirDebt() {
-        assumeTrue(InstrumentationRegistry.getArguments().getString("emulatorQaLive")=="true")
-        check(BuildConfig.APPLICATION_ID.endsWith(".offlinecheck.emulatorqa") && BuildConfig.MICATALOGO_API_BASE_URL=="http://127.0.0.1:18766/")
+        requireLive()
         waitFor("Iniciar sesion")
-        compose.onAllNodes(hasSetTextAction())[0].performTextReplacement("emulador-qa@example.test")
-        compose.onAllNodes(hasSetTextAction())[1].performTextReplacement("Emulador-QA-2026!")
+        compose.onAllNodes(hasSetTextAction())[0].performTextReplacement(fixtureEmail())
+        compose.onAllNodes(hasSetTextAction())[1].performTextReplacement(fixturePassword())
         Espresso.closeSoftKeyboard()
         compose.onNodeWithText("Iniciar sesion").performClick()
         compose.waitUntil(45_000) { compose.onAllNodesWithText("Buenas, QA Tienda A").fetchSemanticsNodes().isNotEmpty() || compose.onAllNodesWithText("Buenas, QA Tienda B").fetchSemanticsNodes().isNotEmpty() }
@@ -195,8 +225,8 @@ class EmulatorJourneyTest {
         evidence("15-compact-customer-cards")
         compose.onNodeWithText("QA Cliente B Activo").performClick()
         waitFor("Origen de la deuda")
-        compose.onNodeWithText("FAC-20261011-AJG8LEOW").assertExists()
-        compose.onNodeWithText("Pedido QA-PEDIDO-B · Pedido WhatsApp").assertExists()
+        compose.onNodeWithText(fixture?.getString("invoice_number") ?: "FAC-20261011-AJG8LEOW").assertExists()
+        compose.onNodeWithText("Pedido ${fixture?.getString("order_b_number") ?: "QA-PEDIDO-B"} · Pedido WhatsApp").assertExists()
         compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Abono recibido"))
         compose.onAllNodesWithText("Abono recibido")[0].assertExists()
         evidence("16-customer-debt-origin-and-movements")

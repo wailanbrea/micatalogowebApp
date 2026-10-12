@@ -37,12 +37,29 @@ abstract class CustomerRouteDao {
     @Update abstract suspend fun updateRoute(route: RouteEntity): Int
 
     @Query("SELECT * FROM route_customers WHERE route_id = :routeId AND remote_shop_id=:shopId AND tenancy_status='assigned' AND active_slot=1 ORDER BY visit_order, customer_id") abstract fun observeRouteCustomers(routeId: UUID, shopId: String? = null): Flow<List<RouteCustomerEntity>>
+    @Query("SELECT * FROM route_customers WHERE route_id=:routeId AND remote_shop_id=:shop AND tenancy_status='assigned' AND active_slot=1 ORDER BY visit_order,customer_id") abstract suspend fun assignmentsForSync(routeId: UUID, shop: String): List<RouteCustomerEntity>
     @Query("SELECT * FROM route_customers WHERE customer_id = :customerId AND remote_shop_id=:shopId AND tenancy_status='assigned' AND active_slot=1") abstract suspend fun findRouteCustomer(customerId: UUID, shopId: String? = null): RouteCustomerEntity?
     @Query("SELECT * FROM route_customers WHERE route_id=:routeId AND customer_id=:customerId AND remote_shop_id=:shopId AND tenancy_status='assigned'") protected abstract suspend fun findAssignment(routeId: UUID, customerId: UUID, shopId: String?): RouteCustomerEntity?
     @Insert protected abstract suspend fun insertRouteCustomer(assignment: RouteCustomerEntity)
     @Update protected abstract suspend fun updateAssignment(assignment: RouteCustomerEntity): Int
     @Query("UPDATE route_customers SET active_slot=NULL WHERE customer_id = :customerId AND remote_shop_id=:shopId AND tenancy_status='assigned' AND active_slot=1") protected abstract suspend fun removeRouteCustomer(customerId: UUID, shopId: String?): Int
     @Query("UPDATE route_customers SET visit_order = :visitOrder WHERE route_id = :routeId AND customer_id = :customerId AND remote_shop_id=:shopId AND tenancy_status='assigned' AND active_slot=1") protected abstract suspend fun updateVisitOrder(routeId: UUID, customerId: UUID, visitOrder: Int, shopId: String?): Int
+
+    @Transaction
+    open suspend fun applyRemoteAssignments(routeId: UUID, rows: List<RouteCustomerEntity>, shop: String) {
+        checkNotNull(findRoute(routeId, shop))
+        require(rows.map { it.customerId }.distinct().size == rows.size)
+        require(rows.map { it.visitOrder }.distinct().size == rows.size)
+        val current = assignmentsForSync(routeId, shop)
+        current.forEach { removeRouteCustomer(it.customerId, shop) }
+        rows.forEach { row ->
+            require(row.routeId == routeId && row.tenant.shopId == shop)
+            checkNotNull(findCustomer(row.customerId, shop))
+            removeRouteCustomer(row.customerId, shop)
+            if (findAssignment(routeId, row.customerId, shop) == null) insertRouteCustomer(row.copy(activeSlot = 1))
+            else updateAssignment(row.copy(activeSlot = 1))
+        }
+    }
 
     @Transaction
     open suspend fun assignCustomer(assignment: RouteCustomerEntity) {

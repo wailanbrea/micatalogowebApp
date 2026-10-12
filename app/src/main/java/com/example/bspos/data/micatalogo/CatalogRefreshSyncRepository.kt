@@ -11,14 +11,15 @@ import javax.inject.Singleton
 @Singleton
 class CatalogRefreshSyncRepository @Inject constructor(
     private val queue: OperationOutboxDao,
-    private val catalog: MiCatalogoCatalogRepository
+    private val catalog: MiCatalogoCatalogRepository,
+    private val events: ShopReadModelEvents? = null
 ) {
     private val mutex = Mutex()
     /** True means a durable download remains pending; never changes sales payloads. */
     suspend fun sync(): Boolean = mutex.withLock {
         queue.pendingRefreshes().forEach { row ->
             when (val result = catalog.syncCatalog(row.shopId)) {
-                is MiCatalogoResult.Success -> queue.clearRefresh(row.shopId, row.revision)
+                is MiCatalogoResult.Success -> if (queue.clearRefresh(row.shopId, row.revision) == 1) events?.confirmed(row.shopId)
                 is MiCatalogoResult.Failure -> queue.refreshError(row.shopId, row.revision, result.message)
             }
         }

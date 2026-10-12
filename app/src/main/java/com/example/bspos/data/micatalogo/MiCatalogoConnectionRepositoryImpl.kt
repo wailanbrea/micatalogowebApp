@@ -35,6 +35,7 @@ import dagger.Lazy
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
 import com.example.bspos.data.micatalogo.dto.ShopDto
 import com.example.bspos.data.micatalogo.dto.ShopQuotaDto
 import com.example.bspos.data.micatalogo.dto.AdminShopDto
@@ -56,7 +57,8 @@ class MiCatalogoConnectionRepositoryImpl @Inject constructor(
     private val api: Lazy<MiCatalogoApi>,
     @param:MiCatalogoBaseUrl private val baseUrl: String,
     private val json: Json = Json { ignoreUnknownKeys = true },
-    private val shopLock: ShopSwitchLock = ShopSwitchLock()
+    private val shopLock: ShopSwitchLock = ShopSwitchLock(),
+    private val durable: Lazy<DurableShopMutation>? = null
 ) : MiCatalogoConnectionRepository {
     private class MiCatalogoHttpException(val statusCode: Int, override val message: String) : RuntimeException(message)
 
@@ -80,6 +82,8 @@ class MiCatalogoConnectionRepositoryImpl @Inject constructor(
 
     override suspend fun accessToken(): String? = temporaryAccessToken.value
         ?: dataStore.data.first()[ACCESS_TOKEN]?.takeIf { it.isNotBlank() }
+
+    override suspend fun accountId(): String? = dataStore.data.first()[ACCOUNT_ID]?.takeIf { it.isNotBlank() }
 
     override suspend fun login(email: String, password: String, remember: Boolean): MiCatalogoResult<Unit> {
         if (email.isBlank() || password.isBlank()) return MiCatalogoResult.Failure("Ingresa correo y contrasena.")
@@ -317,9 +321,7 @@ class MiCatalogoConnectionRepositoryImpl @Inject constructor(
         rows: List<MiCatalogoInventoryImportRow>,
         sessionId: String?
     ): MiCatalogoResult<MiCatalogoInventoryImportResult> = runCatching {
-        val response = api.get().importInventory(
-            shopId,
-            InventoryImportRequestDto(rows = if (sessionId == null) rows.map { row ->
+        val request = InventoryImportRequestDto(rows = if (sessionId == null) rows.map { row ->
                 InventoryImportRowDto(
                     line = row.line,
                     name = row.name,
@@ -337,9 +339,8 @@ class MiCatalogoConnectionRepositoryImpl @Inject constructor(
                     valid = row.valid
                 )
             } else emptyList(), sessionId = sessionId, duplicateStrategy = "skip", createMissingCategories = true)
-        )
-        if (!response.isSuccessful) error(response.apiErrorMessage("No se pudo importar el inventario."))
-        val result = response.body() ?: error("MiCatalogo no devolvió el resultado de la importación.")
+        val ack = checkNotNull(durable).get().submit(shopId, "inventory_import_confirm", json.encodeToJsonElement(InventoryImportRequestDto.serializer(), request).jsonObject)
+        val result = json.decodeFromJsonElement(com.example.bspos.data.micatalogo.dto.InventoryImportResponseDto.serializer(), ack)
         MiCatalogoInventoryImportResult(result.message, result.imported, result.quota?.let(::toShopQuota))
     }.fold(
         onSuccess = { MiCatalogoResult.Success(it) },
@@ -356,6 +357,7 @@ class MiCatalogoConnectionRepositoryImpl @Inject constructor(
                 it.remove(ACTIVE_SHOP_ID)
             }
             it[ACCOUNT_EMAIL] = normalizedEmail
+            user?.id?.takeIf(String::isNotBlank)?.let { id -> it[ACCOUNT_ID] = id }
             user?.name?.takeIf(String::isNotBlank)?.let { name -> it[ACCOUNT_NAME] = name }
             it[ACCOUNT_ROLE] = user?.role?.takeIf(String::isNotBlank) ?: "seller"
             if (remember) {
@@ -384,6 +386,7 @@ class MiCatalogoConnectionRepositoryImpl @Inject constructor(
 
     private suspend fun saveAccount(user: MeDto) {
         dataStore.edit {
+            user.id?.takeIf(String::isNotBlank)?.let { id -> it[ACCOUNT_ID] = id }
             user.email?.takeIf(String::isNotBlank)?.let { email -> it[ACCOUNT_EMAIL] = email }
             user.name?.takeIf(String::isNotBlank)?.let { name -> it[ACCOUNT_NAME] = name }
             it[ACCOUNT_ROLE] = user.role?.takeIf(String::isNotBlank) ?: "seller"
@@ -432,6 +435,7 @@ class MiCatalogoConnectionRepositoryImpl @Inject constructor(
             it.remove(REMEMBER_SESSION)
             it.remove(REMEMBERED_EMAIL)
             it.remove(ACCOUNT_EMAIL)
+            it.remove(ACCOUNT_ID)
             it.remove(ACCOUNT_NAME)
             it.remove(ACCOUNT_ROLE)
             it.remove(ACTIVE_SHOP_ID)
@@ -445,6 +449,7 @@ class MiCatalogoConnectionRepositoryImpl @Inject constructor(
         val REMEMBER_SESSION = androidx.datastore.preferences.core.booleanPreferencesKey("micatalogo_remember_session")
         val REMEMBERED_EMAIL = stringPreferencesKey("micatalogo_remembered_email")
         val ACCOUNT_EMAIL = stringPreferencesKey("micatalogo_account_email")
+        val ACCOUNT_ID = stringPreferencesKey("micatalogo_account_id")
         val ACCOUNT_NAME = stringPreferencesKey("micatalogo_account_name")
         val ACCOUNT_ROLE = stringPreferencesKey("micatalogo_account_role")
         val ACTIVE_SHOP_ID = stringPreferencesKey("micatalogo_active_shop_id")

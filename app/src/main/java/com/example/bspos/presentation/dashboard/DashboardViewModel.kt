@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import javax.inject.Inject
 import com.example.bspos.data.local.dao.PaymentDao
@@ -46,7 +47,8 @@ class DashboardViewModel @Inject constructor(
     private val connection: MiCatalogoConnectionRepository,
     private val firstSaleReader: FirstSaleStatusReader,
     private val saleOutbox: com.example.bspos.data.local.dao.PosSaleOutboxDao,
-    private val shops:ShopScope
+    private val shops:ShopScope,
+    private val events: com.example.bspos.data.micatalogo.ShopReadModelEvents
 ) : ViewModel() {
     private val _sellerSummary = MutableStateFlow<SellerSummaryDto?>(null)
     val sellerSummary = _sellerSummary.asStateFlow()
@@ -64,8 +66,20 @@ class DashboardViewModel @Inject constructor(
     private val _ownerSummaryError=MutableStateFlow<String?>(null)
     val ownerSummaryError=_ownerSummaryError.asStateFlow()
     private var ownerSummaryJob:Job?=null
+    private var ownerQuery: Triple<String?, String, String>? = null
+    private var sellerQuery: Pair<String?, String>? = null
+    init {
+        viewModelScope.launch { events.changes.collect { shop ->
+            if (connection.activeShopId() == shop) {
+                ownerQuery?.takeIf { it.first == shop }?.let { loadOwnerSummary(it.first, it.second, it.third) }
+                sellerQuery?.takeIf { it.first == shop }?.let { loadSellerSummary(it.first, it.second) }
+                loadPendingOrders()
+            }
+        } }
+    }
 
     fun loadOwnerSummary(shopId:String?,from:String,to:String) {
+        ownerQuery = Triple(shopId, from, to)
         ownerSummaryJob?.cancel()
         _ownerSummary.value=null
         _ownerSummaryError.value=null
@@ -107,6 +121,7 @@ class DashboardViewModel @Inject constructor(
     }
 
     fun loadSellerSummary(shopId: String?, period: String) {
+        sellerQuery = shopId to period
         summaryJob?.cancel()
         _sellerSummary.value = null
         _sellerSummaryError.value = null
@@ -119,11 +134,12 @@ class DashboardViewModel @Inject constructor(
             try {
                 val response = api.get().sellerSummary(shopId, period)
                 if (!response.isSuccessful) error("No se pudo cargar tu resumen (${response.code()}).")
-                _sellerSummary.value = response.body() ?: error("El resumen está vacío.")
+                val summary = response.body() ?: error("El resumen está vacío.")
+                if (connection.activeShopId() == shopId) _sellerSummary.value = summary
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
-                _sellerSummaryError.value = "No se pudo actualizar tu resumen. Revisa la conexión y reintenta."
+                if (connection.activeShopId() == shopId) _sellerSummaryError.value = "No se pudo actualizar tu resumen. Revisa la conexión y reintenta."
             } finally {
                 _sellerSummaryLoading.value = false
             }

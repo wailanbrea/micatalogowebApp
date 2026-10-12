@@ -307,7 +307,9 @@ data class ReturnEligibleItemDto(
     @SerialName("unit_price") val unitPrice: String = "0.00",
     @SerialName("line_total") val lineTotal: String = "0.00",
     @SerialName("sale_unit") val saleUnit: String? = null,
-    @SerialName("volume_ml") val volumeMl: Int? = null
+    @SerialName("volume_ml") val volumeMl: Int? = null,
+    @SerialName("charged_line_cents") val chargedLineCents: Long? = null,
+    @SerialName("remaining_refund_cents") val remainingRefundCents: Long? = null
 )
 
 @Serializable
@@ -1005,7 +1007,9 @@ data class CatalogSnapshotDto(
     val shop: ShopDto,
     val categories: List<RemoteCategoryDto>,
     val products: List<RemoteProductDto>,
-    @SerialName("generated_at") val generatedAt: String
+    @SerialName("generated_at") val generatedAt: String,
+    @SerialName("store_records") val storeRecords: List<StoreRecordDto> = emptyList(),
+    @SerialName("route_stock") val routeStock: List<RouteStockDto> = emptyList()
 )
 
 @Serializable
@@ -1015,7 +1019,11 @@ data class RemoteCategoryDto(
     val slug: String,
     @SerialName("sort_order") val sortOrder: Int,
     val status: String,
-    @SerialName("updated_at") val updatedAt: String
+    @SerialName("updated_at") val updatedAt: String,
+    @SerialName("client_record_uuid") val clientRecordUuid: String? = null,
+    val description: String? = null,
+    val icon: String = "category_default",
+    @SerialName("is_deleted") val isDeleted: Boolean = false
 )
 
 @Serializable
@@ -1023,6 +1031,7 @@ data class RemoteProductDto(
     val id: String,
     val slug: String? = null,
     @SerialName("category_id") val categoryId: String? = null,
+    @SerialName("unit_uuid") val unitUuid: String? = null,
     @SerialName("source_product_id") val sourceProductId: String? = null,
     val name: String,
     @SerialName("internal_code") val internalCode: String? = null,
@@ -1072,7 +1081,8 @@ data class PosSaleUploadRequestDto(
     val discount: String = "0.00",
     val tax: String = "0.00",
     val payments: List<PosPaymentSplitDto>? = null,
-    @SerialName("due_date") val dueDate: String? = null
+    @SerialName("due_date") val dueDate: String? = null,
+    @SerialName("route_uuid") val routeUuid: String? = null
 )
 
 @Serializable

@@ -71,7 +71,7 @@ class InventoryMigrationTest {
                     DatabaseMigrations.MIGRATION_19_20, DatabaseMigrations.MIGRATION_20_21,
                     DatabaseMigrations.MIGRATION_21_22, DatabaseMigrations.MIGRATION_22_23,
                     DatabaseMigrations.MIGRATION_23_24, DatabaseMigrations.MIGRATION_24_25,
-                    DatabaseMigrations.MIGRATION_25_26)
+                    DatabaseMigrations.MIGRATION_25_26, DatabaseMigrations.MIGRATION_26_27)
                 .addCallback(InventoryIntegrity).build()
             try {
                 val rows = upgraded.posSaleOutboxDao().findDue(Instant.now(), 100)
@@ -79,15 +79,14 @@ class InventoryMigrationTest {
                 assertEquals(bodies, rows.map { it.payloadJson })
                 assertEquals(listOf(1L, 2L), rows.map { it.queueSequence })
                 ids.forEach { id ->
-                    val items = upgraded.saleDao().itemsInInvoiceOrder(id)
-                    assertEquals(33L, items.single().unitCostSnapshot)
-                    assertEquals(null, items.single().saleUnitSnapshot)
+                    upgraded.openHelper.readableDatabase.query("SELECT unit_cost_snapshot,sale_unit_snapshot FROM sale_items WHERE sale_id = ?", arrayOf(id.toString())).use {
+                        assertTrue(it.moveToFirst()); assertEquals(33L, it.getLong(0)); assertTrue(it.isNull(1)); assertFalse(it.moveToNext())
+                    }
                 }
                 assertTrue(upgraded.operationOutboxDao().pendingRefreshes().isEmpty())
                 upgraded.openHelper.writableDatabase.query("PRAGMA foreign_key_check").use { assertFalse(it.moveToFirst()) }
             } finally {
                 upgraded.close()
-                context.deleteDatabase("published-v15-upgrade-" + upgraded.openHelper.writableDatabase.path?.split("/")?.lastOrNull { it.endsWith(".db") } ?: "unknown")
             }
         } finally { oldHelper.close(); context.deleteDatabase(name) }
     }
@@ -129,55 +128,55 @@ class InventoryMigrationTest {
             .addMigrations(DatabaseMigrations.MIGRATION_23_24)
             .addMigrations(DatabaseMigrations.MIGRATION_24_25)
             .addMigrations(DatabaseMigrations.MIGRATION_25_26)
+            .addMigrations(DatabaseMigrations.MIGRATION_26_27)
             .addCallback(InventoryIntegrity)
             .build()
         try {
-            val category = db.categoryDao().findById(categoryId)!!
-            assertEquals("Bebidas", category.name)
-            assertEquals("Archivo", category.description)
-            assertEquals("drink", category.icon)
-            assertEquals(7, category.sortOrder)
-            assertFalse(category.isActive)
-            assertEquals(at, category.deletedAt)
-            assertEquals(at, category.createdAt)
-            assertTrue(db.categoryDao().observeAll().first().isEmpty())
-            assertEquals("ud", db.unitOfMeasureDao().findById(unitId)!!.abbreviation)
-            val product = db.productDao().findById(productId)!!
-            assertEquals(categoryId, product.categoryId)
-            assertEquals(unitId, product.unitId)
-            assertEquals(Long.MAX_VALUE, product.salePrice)
-            assertEquals(2500L, product.wholesalePrice)
-            assertEquals(2000L, product.averageCost)
-            assertEquals(2100L, product.lastPurchaseCost)
-            assertEquals(5L, product.minimumStock)
-            assertEquals("products/water.jpg", product.imagePath)
-            assertEquals("products/water-thumb.jpg", product.thumbnailPath)
-            assertTrue(product.tracksExpiration)
-            assertEquals(at, product.updatedAt)
-            val supplier = db.supplierDao().findById(supplierId)!!
-            assertEquals("Ana", supplier.contactName)
-            assertEquals("123456789", supplier.taxId)
-            assertEquals("Conservar", supplier.notes)
+            // Historical records without a provable owner survive unchanged,
+            // but must not become operational records of an arbitrary shop.
+            assertRow(db, "categories", categoryId, mapOf("name" to "Bebidas", "description" to "Archivo",
+                "icon" to "drink", "sort_order" to 7L, "is_active" to 0L, "deleted_at" to at.toEpochMilli(),
+                "created_at" to at.toEpochMilli(), "remote_shop_id" to null, "tenancy_status" to "legacy_ambiguous"))
+            assertRow(db, "units_of_measure", unitId, mapOf("abbreviation" to "ud"))
+            assertRow(db, "products", productId, mapOf("category_id" to categoryId.toString(), "unit_id" to unitId.toString(),
+                "sale_price" to Long.MAX_VALUE, "wholesale_price" to 2500L, "average_cost" to 2000L,
+                "last_purchase_cost" to 2100L, "minimum_stock" to 5L, "image_path" to "products/water.jpg",
+                "thumbnail_path" to "products/water-thumb.jpg", "tracks_expiration" to 1L, "updated_at" to at.toEpochMilli(),
+                "remote_shop_id" to null, "tenancy_status" to "legacy_ambiguous"))
+            assertRow(db, "suppliers", supplierId, mapOf("contact_name" to "Ana", "tax_id" to "123456789", "notes" to "Conservar"))
+            assertTrue(db.productDao().observeAll("migration-qa").first().isEmpty())
             db.openHelper.writableDatabase.query("PRAGMA foreign_key_check").use { assertFalse(it.moveToFirst()) }
             val inventory = InventoryRepositoryImpl(InventoryLocalDataSource(db.inventoryDao(), db.inventoryAdjustmentReasonDao()),
                 db.productDao(), db.inventoryDao(), com.example.bspos.data.micatalogo.RemoteMutationRecorder(
                     com.example.bspos.core.database.RoomDatabaseTransactor(db), db.categoryDao(), db.operationOutboxDao(),
-                    com.example.bspos.data.micatalogo.PosSaleSyncScheduler(androidx.test.core.app.ApplicationProvider.getApplicationContext<Context>())))
+                    com.example.bspos.data.micatalogo.PosSaleSyncScheduler(androidx.test.core.app.ApplicationProvider.getApplicationContext<Context>())), com.example.bspos.data.local.tenant.tenantTestScope("migration-qa"))
             assertTrue(inventory.observeStock(InventoryLocation.MAIN).first().isEmpty())
             val initial = InventoryMovement(
                 id = UUID.randomUUID(), productId = productId, location = InventoryLocation.MAIN,
                 type = InventoryMovementType.INITIAL, quantity = 5, previousQuantity = 0, newQuantity = 5,
                 unitCost = 2000, totalCost = 10000, createdAt = at
             )
-            inventory.recordMovements(listOf(initial))
-            assertEquals(5L, inventory.findStock(productId, InventoryLocation.MAIN)!!.quantity)
-            expectFailure<SQLiteConstraintException> {
-                db.openHelper.writableDatabase.execSQL("UPDATE inventory_movements SET quantity = 9")
-            }
-            assertEquals(initial, inventory.findMovement(initial.id))
+            expectFailure<IllegalStateException> { inventory.recordMovements(listOf(initial)) }
+            assertTrue(inventory.observeStock(InventoryLocation.MAIN).first().isEmpty())
+            assertRow(db, "products", productId, mapOf("sale_price" to Long.MAX_VALUE, "tenancy_status" to "legacy_ambiguous"))
         } finally {
             db.close()
             context.deleteDatabase(name)
+        }
+    }
+
+    private fun assertRow(db: AppDatabase, table: String, id: UUID, expected: Map<String, Any?>) {
+        db.openHelper.readableDatabase.query("SELECT * FROM $table WHERE id = ?", arrayOf(id.toString())).use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            expected.forEach { (column, value) ->
+                val index = cursor.getColumnIndexOrThrow(column)
+                val actual: Any? = when {
+                    cursor.isNull(index) -> null
+                    cursor.getType(index) == android.database.Cursor.FIELD_TYPE_INTEGER -> cursor.getLong(index)
+                    else -> cursor.getString(index)
+                }
+                assertEquals("$table.$column", value, actual)
+            }
         }
     }
 

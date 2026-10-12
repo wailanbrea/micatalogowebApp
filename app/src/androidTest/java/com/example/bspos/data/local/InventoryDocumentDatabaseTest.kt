@@ -18,6 +18,7 @@ import com.example.bspos.domain.model.PurchaseItem
 import com.example.bspos.domain.model.StockEntry
 import com.example.bspos.domain.model.StockEntryItem
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -41,7 +42,7 @@ class InventoryDocumentDatabaseTest {
     @Before
     fun setUp() = runTest {
         database = Room.inMemoryDatabaseBuilder(ApplicationProvider.getApplicationContext<Context>(), AppDatabase::class.java).build()
-        documents = InventoryDocumentRepositoryImpl(database.inventoryDocumentDao())
+        documents = InventoryDocumentRepositoryImpl(database.inventoryDocumentDao(), com.example.bspos.data.local.tenant.tenantTestScope("documents-qa"))
         val categoryId = UUID.randomUUID()
         val unitId = UUID.randomUUID()
         database.categoryDao().insert(CategoryEntity(categoryId, "Cat", createdAt = at, updatedAt = at))
@@ -62,8 +63,8 @@ class InventoryDocumentDatabaseTest {
         expectFailure<IllegalArgumentException> { documents.insertPurchase(correctPurchase, listOf(correctLine)) }
         val validPurchase = correctPurchase.copy(subtotal = 2300, discount = 0, tax = 0, total = 2300)
         documents.insertPurchase(validPurchase, listOf(correctLine.copy(purchaseId = validPurchase.id)))
-        assertEquals(listOf(correctLine.copy(purchaseId = validPurchase.id)), documents.observePurchaseItems(validPurchase.id).first())
-        assertEquals(listOf(validPurchase), documents.observePurchasesForSupplier(supplierId).first())
+        assertEquals(listOf(correctLine.copy(purchaseId = validPurchase.id)), documents.observePurchaseItems(validPurchase.id).drop(1).first())
+        assertEquals(listOf(validPurchase), documents.observePurchasesForSupplier(supplierId).drop(1).first())
     }
 
     @Test
@@ -88,7 +89,7 @@ class InventoryDocumentDatabaseTest {
         documents.insertStockEntry(entry, listOf(StockEntryItem(UUID.randomUUID(), entry.id, productId, 1, 0, 0)))
         database.openHelper.writableDatabase.execSQL("DELETE FROM purchases")
         database.openHelper.writableDatabase.execSQL("DELETE FROM suppliers")
-        assertEquals(null, database.inventoryDocumentDao().findStockEntry(entry.id)!!.supplierId)
+        assertEquals(null, database.inventoryDocumentDao().findStockEntry(entry.id, "documents-qa")!!.supplierId)
     }
 
     @Test
@@ -99,7 +100,9 @@ class InventoryDocumentDatabaseTest {
         database.openHelper.writableDatabase.execSQL("DELETE FROM stock_entries WHERE id = ?", arrayOf(entry.id.toString()))
         assertNull(database.inventoryDocumentDao().findStockEntry(entry.id))
         assertTrue(documents.observeStockEntryItems(entry.id).first().isEmpty())
-        assertEquals(productId, database.productDao().findById(productId)!!.id)
+        database.openHelper.readableDatabase.query("SELECT id FROM products WHERE id='${productId}'").use {
+            assertTrue(it.moveToFirst()); assertEquals(productId.toString(), it.getString(0))
+        }
     }
 
     @Test
@@ -107,12 +110,12 @@ class InventoryDocumentDatabaseTest {
         val count = InventoryCount(UUID.randomUUID(), at)
         val item = InventoryCountItem(UUID.randomUUID(), count.id, productId, systemQuantity = 10, physicalQuantity = 7, difference = -3)
         documents.insertCount(count, listOf(item))
-        assertEquals(listOf(count), documents.observeCounts().first())
-        assertEquals(listOf(item), documents.observeCountItems(count.id).first())
+        assertEquals(listOf(count), documents.observeCounts().drop(1).first())
+        assertEquals(listOf(item), documents.observeCountItems(count.id).drop(1).first())
         expectFailure<IllegalArgumentException> { documents.updateCountStatus(count.id, InventoryCountStatus.COMPLETED, at) }
         documents.updateCountStatus(count.id, InventoryCountStatus.IN_PROGRESS, null)
         documents.updateCountStatus(count.id, InventoryCountStatus.COMPLETED, at.plusSeconds(1))
-        assertEquals(InventoryCountStatus.COMPLETED, database.inventoryDocumentDao().findCount(count.id)!!.status)
+        assertEquals(InventoryCountStatus.COMPLETED, database.inventoryDocumentDao().findCount(count.id, "documents-qa")!!.status)
         expectFailure<IllegalArgumentException> { documents.updateCountStatus(count.id, InventoryCountStatus.CANCELLED, null) }
         val invalid = count.copy(id = UUID.randomUUID())
         expectFailure<IllegalArgumentException> { documents.insertCount(invalid, listOf(item.copy(countId = invalid.id, difference = 1))) }

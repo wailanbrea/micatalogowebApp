@@ -16,9 +16,25 @@ abstract class RouteLoadDao {
     @Query("SELECT * FROM route_loads WHERE remote_shop_id=:shopId AND tenancy_status='assigned' AND route_id = :routeId ORDER BY date DESC, id DESC") abstract fun observeForRoute(routeId: UUID, shopId: String? = null): Flow<List<RouteLoadEntity>>
     @Query("SELECT * FROM route_loads WHERE id = :id AND remote_shop_id=:shopId AND tenancy_status='assigned'") abstract suspend fun findById(id: UUID, shopId: String? = null): RouteLoadEntity?
     @Query("SELECT * FROM route_load_items WHERE remote_shop_id=:shopId AND tenancy_status='assigned' AND route_load_id = :loadId ORDER BY product_id") abstract fun observeItems(loadId: UUID, shopId: String? = null): Flow<List<RouteLoadItemEntity>>
+    @Query("SELECT * FROM route_load_items WHERE remote_shop_id=:shop AND tenancy_status='assigned' AND route_load_id=:loadId ORDER BY product_id") abstract suspend fun itemsForSync(loadId: UUID, shop: String): List<RouteLoadItemEntity>
     @Insert protected abstract suspend fun insertLoad(load: RouteLoadEntity)
     @Insert protected abstract suspend fun insertItems(items: List<RouteLoadItemEntity>)
     @Update protected abstract suspend fun updateLoad(load: RouteLoadEntity): Int
+
+    @Transaction
+    open suspend fun applyRemote(load: RouteLoadEntity, items: List<RouteLoadItemEntity>) {
+        val shop = checkNotNull(load.tenant.shopId)
+        val previous = findById(load.id, shop)
+        if (previous == null) {
+            insertLoad(load); insertItems(items.map { it.copy(tenant = load.tenant) })
+        } else {
+            // Quantity and cost snapshots are historical, not overwritten by later receipts.
+            val oldItems = itemsForSync(load.id, shop)
+            require(oldItems.map { Triple(it.id, it.productId, it.quantity) }.toSet() == items.map { Triple(it.id, it.productId, it.quantity) }.toSet())
+            require(previous.routeId == load.routeId && previous.createdAt == load.createdAt)
+            check(updateLoad(previous.copy(status = load.status)) == 1)
+        }
+    }
 
     @Transaction
     open suspend fun insertWithItems(load: RouteLoadEntity, items: List<RouteLoadItemEntity>) {

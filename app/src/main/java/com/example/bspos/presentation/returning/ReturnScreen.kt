@@ -31,6 +31,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import com.example.bspos.presentation.common.BSPOSActionTextButton as TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -67,10 +68,18 @@ fun ReturnScreen(viewModel: ReturnViewModel = hiltViewModel()) {
     val message by viewModel.message.collectAsState()
     val returned by viewModel.returnedQuantities.collectAsState()
     val remoteInvoices by viewModel.remoteInvoices.collectAsState()
+    val remoteLoading by viewModel.remoteLoading.collectAsState()
+    val remoteError by viewModel.remoteError.collectAsState()
+    val submitting by viewModel.submitting.collectAsState()
     var selected by remember { mutableStateOf<Sale?>(null) }
     var selectedRemote by remember { mutableStateOf<ReturnEligibleInvoiceDto?>(null) }
     var line by remember { mutableStateOf<SaleItem?>(null) }
     var remoteLine by remember { mutableStateOf<ReturnEligibleItemDto?>(null) }
+    LaunchedEffect(remoteInvoices, remoteLoading) {
+        if (!remoteLoading && remoteError == null && selectedRemote != null) {
+            selectedRemote = remoteInvoices.firstOrNull { it.id == selectedRemote?.id }
+        }
+    }
     val names = products.associate { it.id to it.name }
     val returnedByItem = returned.associate { it.saleItemId to it.quantity }
     val selectedItems = items.filter { it.saleId == selected?.id }
@@ -95,10 +104,16 @@ fun ReturnScreen(viewModel: ReturnViewModel = hiltViewModel()) {
             }
         }
         Spacer(Modifier.size(16.dp))
+        if (submitting) Text("Procesando devolución…", color = BSPOSTheme.colors.primary)
         if (selected == null && selectedRemote == null) {
             Text("Selecciona una factura liquidada", color = BSPOSTheme.colors.textSecondary)
             Spacer(Modifier.size(8.dp))
-            if (eligible.isEmpty() && remoteInvoices.isEmpty()) Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) { Text("No hay ventas elegibles para reembolso", color = BSPOSTheme.colors.textSecondary) }
+            if (eligible.isEmpty() && remoteInvoices.isEmpty()) Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(when { remoteLoading -> "Cargando ventas elegibles…"; remoteError != null -> remoteError!!; else -> "No hay ventas elegibles para reembolso" }, color = BSPOSTheme.colors.textSecondary)
+                    if (remoteError != null) TextButton(viewModel::refreshRemote) { Text("Reintentar") }
+                }
+            }
             else LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
                 items(eligible, key = { "local-${it.id}" }) { sale -> SaleCard(sale) { selected = sale; viewModel.select(sale) } }
                 items(remoteInvoices, key = { "remote-${it.id}" }) { invoice -> RemoteSaleCard(invoice) { selectedRemote = invoice } }
@@ -113,7 +128,7 @@ fun ReturnScreen(viewModel: ReturnViewModel = hiltViewModel()) {
             if (invoice == null || invoice.items.isEmpty()) Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) { Text("La factura no contiene productos", color = BSPOSTheme.colors.textSecondary) }
             else LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
                 items(invoice.items, key = { it.id }) { item ->
-                    RemoteReturnItemCard(item) { if (item.remainingQuantity > 0) remoteLine = item }
+                    RemoteReturnItemCard(item) { if (!submitting && item.remainingQuantity > 0) remoteLine = item }
                 }
             }
         }
@@ -129,7 +144,7 @@ fun ReturnScreen(viewModel: ReturnViewModel = hiltViewModel()) {
             }, { remoteLine = null })
         }
     }
-    message?.let { text -> AlertDialog(onDismissRequest = viewModel::consumeMessage, title = { Text("No se pudo completar") }, text = { Text(text) }, confirmButton = { TextButton(viewModel::consumeMessage) { Text("Cerrar") } }) }
+    message?.let { text -> AlertDialog(onDismissRequest = viewModel::consumeMessage, title = { Text("Devolución") }, text = { Text(text) }, confirmButton = { TextButton(viewModel::consumeMessage) { Text("Cerrar") } }) }
 }
 
 @Composable
@@ -216,7 +231,7 @@ private fun RemoteReturnLineDialog(item: ReturnEligibleItemDto, onSave: (Int, Bo
     var reason by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
     val value = quantity.toIntOrNull()
-    val amount = value?.takeIf { it > 0 }?.let { MoneyUtils.parsePesosStringToCents(item.unitPrice) * it }
+    val amount = value?.takeIf { it in 1..remaining }?.let { remoteRefundCents(item, it) }
     AlertDialog(onDismissRequest = onDismiss, title = { Text("Confirmar devolución") }, text = {
         DialogScrollableColumn {
             Text("Máximo permitido: $remaining unidades", color = BSPOSTheme.colors.textSecondary)

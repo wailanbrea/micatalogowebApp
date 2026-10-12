@@ -391,8 +391,10 @@ private fun QuoteCustomerDialog(customers: List<RemoteCustomerDto>, selectedId: 
             if (!loading && error == null && filtered.isEmpty()) Text(if (customers.isEmpty()) "No hay clientes registrados en esta tienda." else "Sin clientes para esta búsqueda.", fontSize = 12.sp)
             LazyColumn(Modifier.fillMaxWidth().heightIn(max = 280.dp)) {
                 items(filtered, key = { it.id }) { customer ->
-                    Column(Modifier.fillMaxWidth().clickable { onSelect(customer.id) }.padding(vertical = 12.dp)) {
+                    Column(Modifier.fillMaxWidth().clickable(enabled = customer.isActive != false && !customer.localOnly) { onSelect(customer.id) }.padding(vertical = 12.dp)) {
                         Text(customer.displayName(), fontWeight = FontWeight.Bold)
+                        if (customer.isActive == false) Text("Inactivo", fontSize = 12.sp, color = BSPOSTheme.colors.warning)
+                        if (customer.localOnly) Text("Pendiente de sincronización", fontSize = 12.sp, color = BSPOSTheme.colors.warning)
                         customer.phone?.let { Text(it, fontSize = 12.sp, color = BSPOSTheme.colors.textSecondary) }
                     }
                     HorizontalDivider(color = BSPOSTheme.colors.outline)

@@ -43,6 +43,8 @@ import retrofit2.converter.kotlinx.serialization.asConverterFactory
 import java.time.Instant
 import java.util.UUID
 import java.util.concurrent.TimeUnit
+import com.example.bspos.data.local.tenant.LiveQaFixture
+import com.example.bspos.data.local.entity.TenantMetadata
 
 /** Requires the isolated Laravel fixture server and adb reverse tcp:8893 tcp:8893. */
 @RunWith(AndroidJUnit4::class)
@@ -50,10 +52,11 @@ class PosSaleLiveIntegrationTest {
     @Test
     fun offlineQueuedSalesSurviveDatabaseRestartAndSyncExactlyOnce() = runBlocking {
         val arguments = InstrumentationRegistry.getArguments()
-        val shopId = arguments.getString("posSaleShop")
-        val productId = arguments.getString("posSaleProduct")
-        val token = arguments.getString("posSaleToken")
-        if (shopId.isNullOrBlank() || productId.isNullOrBlank() || token.isNullOrBlank()) return@runBlocking
+        val fixture = LiveQaFixture.optional("offlineQueuedSalesSurviveDatabaseRestartAndSyncExactlyOnce")
+        val shopId = fixture?.getString("shop_a") ?: arguments.getString("posSaleShop").orEmpty()
+        val productId = fixture?.getString("product") ?: arguments.getString("posSaleProduct").orEmpty()
+        val token = fixture?.getString("token") ?: arguments.getString("posSaleToken").orEmpty()
+        org.junit.Assume.assumeTrue("Requires an isolated sales fixture", !shopId.isNullOrBlank() && !productId.isNullOrBlank() && !token.isNullOrBlank())
 
         val context = ApplicationProvider.getApplicationContext<Context>()
         val databaseName = "qa-pos-offline-${UUID.randomUUID()}.db"
@@ -66,8 +69,8 @@ class PosSaleLiveIntegrationTest {
             val saleAt = Instant.parse("2026-10-08T00:00:00Z")
 
             db = Room.databaseBuilder(context, AppDatabase::class.java, databaseName).build()
-            db.categoryDao().insert(CategoryEntity(categoryId, "QA", createdAt = saleAt, updatedAt = saleAt))
-            db.unitOfMeasureDao().insert(UnitOfMeasureEntity(unitId, "Unidad", "un", createdAt = saleAt, updatedAt = saleAt))
+            db.categoryDao().insert(CategoryEntity(categoryId, "QA", createdAt = saleAt, updatedAt = saleAt, tenant = TenantMetadata.assigned(shopId)))
+            db.unitOfMeasureDao().insert(UnitOfMeasureEntity(unitId, "Unidad", "un", createdAt = saleAt, updatedAt = saleAt, tenant = TenantMetadata.assigned(shopId)))
             db.productDao().insert(
                 ProductEntity(
                     id = localProductId,
@@ -96,6 +99,7 @@ class PosSaleLiveIntegrationTest {
                     documentType = "cedula",
                     documentNumber = "001-0000000-9",
                     email = "cliente-credito@example.invalid",
+                    miCatalogoCustomerShopId = shopId,
                     createdAt = saleAt,
                     updatedAt = saleAt
                 )
@@ -113,7 +117,7 @@ class PosSaleLiveIntegrationTest {
                         newQuantity = 3,
                         unitCost = 150000,
                         totalCost = 450000,
-                        createdAt = saleAt
+                        createdAt = saleAt, tenant = TenantMetadata.assigned(shopId)
                     )
                 ),
                 allowNegativeStock = false
@@ -128,7 +132,7 @@ class PosSaleLiveIntegrationTest {
                 db.posSaleOutboxDao(),
                 QaSettings,
                 Json { ignoreUnknownKeys = true },
-                PosSaleSyncScheduler(context)
+                PosSaleSyncScheduler(context), com.example.bspos.data.local.tenant.tenantTestScope(shopId)
             )
             val invoicePrefix = "QA-OFFLINE-${UUID.randomUUID()}"
             val firstSale = completeSale(
@@ -166,7 +170,7 @@ class PosSaleLiveIntegrationTest {
             assertEquals("PENDING", db.posSaleOutboxDao().stateForSale(secondSale.id))
             assertEquals("PENDING", db.posSaleOutboxDao().stateForSale(creditSale.id))
             assertEquals(3, db.posSaleOutboxDao().observeOutstanding().first().size)
-            assertEquals(250050L, db.customerRouteDao().findCustomer(localCustomerId)?.balance)
+            assertEquals(250050L, db.customerRouteDao().findCustomer(localCustomerId, shopId)?.balance)
 
             // Simulate a process/device restart while the network is unavailable:
             // the sale and immutable outbox payload must remain on disk.
@@ -190,7 +194,7 @@ class PosSaleLiveIntegrationTest {
                 }
                 .build()
             val retrofit = Retrofit.Builder()
-                .baseUrl("http://127.0.0.1:8893/")
+                .baseUrl(BuildConfig.MICATALOGO_API_BASE_URL.also { check(java.net.URI(it).host in setOf("127.0.0.1", "localhost", "10.0.2.2")) })
                 .client(client)
                 .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
                 .build()
@@ -214,7 +218,7 @@ class PosSaleLiveIntegrationTest {
             assertEquals("SENT", db.posSaleOutboxDao().stateForSale(firstSale.id))
             assertEquals("SENT", db.posSaleOutboxDao().stateForSale(secondSale.id))
             assertEquals("SENT", db.posSaleOutboxDao().stateForSale(creditSale.id))
-            assertEquals(250050L, db.customerRouteDao().findCustomer(localCustomerId)?.balance)
+            assertEquals(250050L, db.customerRouteDao().findCustomer(localCustomerId, shopId)?.balance)
 
             val paymentUseCase = RecordPaymentUseCase(
                 RoomDatabaseTransactor(db),
@@ -225,7 +229,7 @@ class PosSaleLiveIntegrationTest {
                 db.paymentSyncDao(),
                 db.posSaleOutboxDao(),
                 PosSaleSyncScheduler(context),
-                json
+                json, com.example.bspos.data.local.tenant.tenantTestScope(shopId)
             )
             paymentUseCase(
                 RecordPaymentRequest(
@@ -236,7 +240,7 @@ class PosSaleLiveIntegrationTest {
                     allocations = listOf(com.example.bspos.domain.usecase.PaymentAllocationInput(creditSale.id, 250050))
                 )
             )
-            assertEquals(0L, db.customerRouteDao().findCustomer(localCustomerId)?.balance)
+            assertEquals(0L, db.customerRouteDao().findCustomer(localCustomerId, shopId)?.balance)
             assertEquals(1, db.paymentSyncDao().pending().size)
 
             val paymentSync = PaymentSyncRepository(
@@ -264,11 +268,12 @@ class PosSaleLiveIntegrationTest {
     @Test
     fun offlineQueuedDecantConsumesSourceMillilitersAndSyncsExactlyOnce() = runBlocking {
         val arguments = InstrumentationRegistry.getArguments()
-        val shopId = arguments.getString("posSaleShop")
-        val sourceProductId = arguments.getString("posSaleSourceProduct")
-        val decantProductId = arguments.getString("posSaleDecantProduct")
-        val token = arguments.getString("posSaleToken")
-        if (shopId.isNullOrBlank() || sourceProductId.isNullOrBlank() || decantProductId.isNullOrBlank() || token.isNullOrBlank()) return@runBlocking
+        val fixture = LiveQaFixture.optional("offlineQueuedDecantConsumesSourceMillilitersAndSyncsExactlyOnce")
+        val shopId = fixture?.getString("shop_a") ?: arguments.getString("posSaleShop").orEmpty()
+        val sourceProductId = fixture?.getString("source_product") ?: arguments.getString("posSaleSourceProduct").orEmpty()
+        val decantProductId = fixture?.getString("decant_product") ?: arguments.getString("posSaleDecantProduct").orEmpty()
+        val token = fixture?.getString("token") ?: arguments.getString("posSaleToken").orEmpty()
+        org.junit.Assume.assumeTrue("Requires an isolated decants fixture", shopId.isNotBlank() && sourceProductId.isNotBlank() && decantProductId.isNotBlank() && token.isNotBlank())
         val requiredShopId = checkNotNull(shopId)
         val requiredSourceProductId = checkNotNull(sourceProductId)
         val requiredDecantProductId = checkNotNull(decantProductId)
@@ -284,8 +289,8 @@ class PosSaleLiveIntegrationTest {
             val saleAt = Instant.parse("2026-10-08T00:10:00Z")
 
             db = Room.databaseBuilder(context, AppDatabase::class.java, databaseName).build()
-            db.categoryDao().insert(CategoryEntity(categoryId, "Perfumes QA", createdAt = saleAt, updatedAt = saleAt))
-            db.unitOfMeasureDao().insert(UnitOfMeasureEntity(unitId, "Unidad", "un", createdAt = saleAt, updatedAt = saleAt))
+            db.categoryDao().insert(CategoryEntity(categoryId, "Perfumes QA", createdAt = saleAt, updatedAt = saleAt, tenant = TenantMetadata.assigned(shopId)))
+            db.unitOfMeasureDao().insert(UnitOfMeasureEntity(unitId, "Unidad", "un", createdAt = saleAt, updatedAt = saleAt, tenant = TenantMetadata.assigned(shopId)))
             db.productDao().insert(
                 ProductEntity(
                     id = sourceLocalId,
@@ -337,7 +342,7 @@ class PosSaleLiveIntegrationTest {
                         newQuantity = 1,
                         unitCost = 30000,
                         totalCost = 30000,
-                        createdAt = saleAt
+                        createdAt = saleAt, tenant = TenantMetadata.assigned(shopId)
                     ),
                     InventoryMovementEntity(
                         id = UUID.randomUUID(),
@@ -350,7 +355,7 @@ class PosSaleLiveIntegrationTest {
                         newQuantity = 10,
                         unitCost = 3000,
                         totalCost = 30000,
-                        createdAt = saleAt
+                        createdAt = saleAt, tenant = TenantMetadata.assigned(shopId)
                     )
                 ),
                 allowNegativeStock = false
@@ -365,7 +370,7 @@ class PosSaleLiveIntegrationTest {
                 db.posSaleOutboxDao(),
                 QaSettings,
                 Json { ignoreUnknownKeys = true },
-                PosSaleSyncScheduler(context)
+                PosSaleSyncScheduler(context), com.example.bspos.data.local.tenant.tenantTestScope(shopId)
             )
             val sale = completeSale(
                 CompleteSaleRequest(
@@ -377,8 +382,8 @@ class PosSaleLiveIntegrationTest {
                     pendingAmount = 0
                 )
             )
-            assertEquals(0L, db.inventoryDao().findStock(sourceLocalId, InventoryLocation.MAIN.type, InventoryLocation.MAIN.id)?.quantity)
-            assertEquals(9L, db.inventoryDao().findStock(decantLocalId, InventoryLocation.MAIN.type, InventoryLocation.MAIN.id)?.quantity)
+            assertEquals(0L, db.inventoryDao().findStock(sourceLocalId, InventoryLocation.MAIN.type, InventoryLocation.MAIN.id, shopId)?.quantity)
+            assertEquals(9L, db.inventoryDao().findStock(decantLocalId, InventoryLocation.MAIN.type, InventoryLocation.MAIN.id, shopId)?.quantity)
             assertEquals("PENDING", db.posSaleOutboxDao().stateForSale(sale.id))
 
             val json = Json { ignoreUnknownKeys = true }
@@ -395,7 +400,7 @@ class PosSaleLiveIntegrationTest {
                 }
                 .build()
             val retrofit = Retrofit.Builder()
-                .baseUrl("http://127.0.0.1:8893/")
+                .baseUrl(BuildConfig.MICATALOGO_API_BASE_URL.also { check(java.net.URI(it).host in setOf("127.0.0.1", "localhost", "10.0.2.2")) })
                 .client(client)
                 .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
                 .build()

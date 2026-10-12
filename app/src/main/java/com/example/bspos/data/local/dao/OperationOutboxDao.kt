@@ -16,9 +16,13 @@ interface OperationOutboxDao {
     @Query("SELECT * FROM catalog_refresh ORDER BY shopId") fun observeRefreshes(): Flow<List<CatalogRefreshEntity>>
     @Query("DELETE FROM catalog_refresh WHERE shopId=:shop AND revision=:revision") suspend fun clearRefresh(shop: String, revision: String): Int
     @Query("UPDATE catalog_refresh SET error=:error WHERE shopId=:shop AND revision=:revision") suspend fun refreshError(shop: String, revision: String, error: String): Int
-    @Transaction suspend fun confirmSent(id: String, shop: String): Int {
-        val changed = mark(id, "SENT")
-        if (changed == 1) requestRefresh(CatalogRefreshEntity(shop, java.util.UUID.randomUUID().toString()))
+    @Query("UPDATE operation_outbox SET state='SENT',error=NULL,server_response=:receipt WHERE id=:id AND state='PENDING'")
+    suspend fun markConfirmed(id: String, receipt: String): Int
+    @Transaction suspend fun confirmSent(id: String, shop: String, receipt: String = "{}"): Int {
+        val changed = markConfirmed(id, receipt)
+        // Account-scoped operations (support/profile) do not mutate a shop
+        // catalog. Avoid creating a phantom refresh for the sentinel tenant.
+        if (changed == 1 && shop != "__account__") requestRefresh(CatalogRefreshEntity(shop, java.util.UUID.randomUUID().toString()))
         return changed
     }
     @Insert suspend fun insertSequenced(value: OperationOutboxEntity)

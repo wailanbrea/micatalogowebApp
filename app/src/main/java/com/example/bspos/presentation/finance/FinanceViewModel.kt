@@ -33,6 +33,8 @@ data class FinanceUiState(
     val isLoading: Boolean = false,
     val summary: FinanceSummaryDto? = null,
     val expenses: List<ExpenseDto> = emptyList(),
+    val expensesLoading: Boolean = true,
+    val expensesError: String? = null,
     val expenseCategories: List<ExpenseCategoryDto> = emptyList(),
     val periodFilter: FinancePeriodFilter = FinancePeriodFilter.THIS_MONTH,
     val fromDate: String = "",
@@ -50,7 +52,8 @@ data class FinanceUiState(
 @HiltViewModel
 class FinanceViewModel @Inject constructor(
     private val financeRepository: FinanceRepository,
-    private val connectionRepository: MiCatalogoConnectionRepository
+    private val connectionRepository: MiCatalogoConnectionRepository,
+    private val readModelEvents: com.example.bspos.data.micatalogo.ShopReadModelEvents
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(FinanceUiState())
@@ -59,19 +62,27 @@ class FinanceViewModel @Inject constructor(
     private var currentShopId: String? = null
     private val pendingCashOperationIds = mutableMapOf<String, String>()
     private var pendingExpenseOperation: Pair<String, String>? = null
+    private val readJobs = mutableMapOf<String, kotlinx.coroutines.Job>()
+    private var initialJob: kotlinx.coroutines.Job? = null
 
     init {
         val (from, to) = computeDates(FinancePeriodFilter.THIS_MONTH)
         _uiState.value = _uiState.value.copy(fromDate = from, toDate = to)
-        loadInitialData()
         viewModelScope.launch {
             connectionRepository.observeConnection().collectLatest { state ->
                 val selected = state.activeShopId
-                if (state.isConfigured && selected != null && selected != currentShopId) {
+                if (selected != currentShopId) {
+                    initialJob?.cancel(); readJobs.values.forEach { it.cancel() }; readJobs.clear()
+                    currentShopId = selected
+                    _uiState.value = FinanceUiState(fromDate = _uiState.value.fromDate, toDate = _uiState.value.toDate, periodFilter = _uiState.value.periodFilter)
+                    pendingCashOperationIds.clear(); pendingExpenseOperation = null
+                }
+                if (state.isConfigured && selected != null && _uiState.value.shopName.isBlank()) {
                     loadInitialData()
                 }
             }
         }
+        viewModelScope.launch { readModelEvents.changes.collectLatest { shop -> if (shop == currentShopId) refresh() } }
     }
 
     fun selectPeriod(filter: FinancePeriodFilter) {
@@ -96,9 +107,11 @@ class FinanceViewModel @Inject constructor(
         val shopId = currentShopId ?: return
         val date = _uiState.value.fromDate
         if (date.isBlank() || _uiState.value.isDailyCloseBusy) return
+        _uiState.value = _uiState.value.copy(isDailyCloseBusy = true, errorMessage = null)
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isDailyCloseBusy = true, errorMessage = null)
-            when (val result = financeRepository.closeDay(shopId, date, countedCash?.trim()?.ifBlank { null }, notes?.trim()?.ifBlank { null })) {
+            val result = financeRepository.closeDay(shopId, date, countedCash?.trim()?.ifBlank { null }, notes?.trim()?.ifBlank { null })
+            if (currentShopId != shopId || connectionRepository.activeShopId() != shopId) return@launch
+            when (result) {
                 is MiCatalogoResult.Success -> _uiState.value = _uiState.value.copy(
                     isDailyCloseBusy = false,
                     dailyClose = result.value,
@@ -121,13 +134,15 @@ class FinanceViewModel @Inject constructor(
     }
 
     fun loadInitialData() {
-        viewModelScope.launch {
+        initialJob?.cancel()
+        initialJob = viewModelScope.launch {
+            val selectedShopId = connectionRepository.activeShopId() ?: return@launch
             _uiState.value = _uiState.value.copy(isLoading = true, errorMessage = null)
-            when (val shopsResult = connectionRepository.shops()) {
+            val shopsResult = connectionRepository.shops()
+            if (connectionRepository.activeShopId() != selectedShopId) return@launch
+            when (shopsResult) {
                 is MiCatalogoResult.Success -> {
-                    val selectedShopId = connectionRepository.activeShopId()
                     val firstShop = shopsResult.value.firstOrNull { it.id == selectedShopId }
-                        ?: shopsResult.value.firstOrNull()
                     if (firstShop != null) {
                         currentShopId = firstShop.id
                         _uiState.value = _uiState.value.copy(shopName = firstShop.name)
@@ -154,8 +169,11 @@ class FinanceViewModel @Inject constructor(
     }
 
     private fun fetchCashSession(shopId: String) {
-        viewModelScope.launch {
-            when (val result = financeRepository.getCurrentCashSession(shopId)) {
+        readJobs.remove("cash")?.cancel()
+        readJobs["cash"] = viewModelScope.launch {
+            val result = financeRepository.getCurrentCashSession(shopId)
+            if (currentShopId != shopId || connectionRepository.activeShopId() != shopId) return@launch
+            when (result) {
                 is MiCatalogoResult.Success -> _uiState.value = _uiState.value.copy(cashSession = result.value)
                 is MiCatalogoResult.Failure -> _uiState.value = _uiState.value.copy(errorMessage = result.message)
             }
@@ -164,9 +182,12 @@ class FinanceViewModel @Inject constructor(
 
     private fun fetchDailyClose(shopId: String) {
         val date = _uiState.value.fromDate
-        if (date.isBlank() || date != _uiState.value.toDate) return
-        viewModelScope.launch {
-            when (val result = financeRepository.getDailyClose(shopId, date)) {
+        readJobs.remove("day")?.cancel()
+        if (date.isBlank() || date != _uiState.value.toDate) { _uiState.value = _uiState.value.copy(dailyClose = null); return }
+        readJobs["day"] = viewModelScope.launch {
+            val result = financeRepository.getDailyClose(shopId, date)
+            if (currentShopId != shopId || _uiState.value.fromDate != date || _uiState.value.toDate != date) return@launch
+            when (result) {
                 is MiCatalogoResult.Success -> _uiState.value = _uiState.value.copy(dailyClose = result.value)
                 is MiCatalogoResult.Failure -> _uiState.value = _uiState.value.copy(errorMessage = result.message)
             }
@@ -174,35 +195,42 @@ class FinanceViewModel @Inject constructor(
     }
 
     fun openRemoteCash(amount: String, notes: String?) {
+        val shopId = currentShopId ?: return
         val normalizedNotes = notes?.trim()?.ifBlank { null }
         runCashOperation("open|${amount.trim()}|$normalizedNotes") { operationId ->
-            financeRepository.openCashSession(checkNotNull(currentShopId), amount.trim(), normalizedNotes, operationId)
+            financeRepository.openCashSession(shopId, amount.trim(), normalizedNotes, operationId)
         }
     }
 
     fun closeRemoteCash(amount: String?, notes: String?) {
-        val sessionId = checkNotNull(_uiState.value.cashSession?.session?.id)
+        val shopId = currentShopId ?: return
+        val sessionId = _uiState.value.cashSession?.session?.id ?: return
         val normalizedNotes = notes?.trim()?.ifBlank { null }
         runCashOperation("close|$sessionId|${amount?.trim().orEmpty()}|$normalizedNotes") { operationId ->
-            financeRepository.closeCashSession(checkNotNull(currentShopId), sessionId, amount?.trim()?.ifBlank { null }, normalizedNotes, operationId)
+            financeRepository.closeCashSession(shopId, sessionId, amount?.trim()?.ifBlank { null }, normalizedNotes, operationId)
         }
     }
 
     fun recordRemoteCashMovement(type: String, amount: String, notes: String) {
-        val sessionId = checkNotNull(_uiState.value.cashSession?.session?.id)
+        val shopId = currentShopId ?: return
+        val sessionId = _uiState.value.cashSession?.session?.id ?: return
         runCashOperation("movement|$sessionId|$type|${amount.trim()}|${notes.trim()}") { operationId ->
-            financeRepository.recordCashMovement(checkNotNull(currentShopId), sessionId, type, amount.trim(), notes.trim(), operationId)
+            financeRepository.recordCashMovement(shopId, sessionId, type, amount.trim(), notes.trim(), operationId)
         }
     }
 
     private fun runCashOperation(key: String, action: suspend (String) -> MiCatalogoResult<*>) {
+        val shopId = currentShopId ?: return
         if (_uiState.value.isCashOperationBusy) return
         val operationId = pendingCashOperationIds.getOrPut(key) { UUID.randomUUID().toString() }
+        _uiState.value = _uiState.value.copy(isCashOperationBusy = true, errorMessage = null)
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isCashOperationBusy = true, errorMessage = null)
-            when (val result = runCatching { action(operationId) }.getOrElse {
+            val result = runCatching { action(operationId) }.getOrElse {
+                if (it is kotlinx.coroutines.CancellationException) throw it
                 MiCatalogoResult.Failure(it.message ?: "No se pudo completar la operación de caja.")
-            }) {
+            }
+            if (currentShopId != shopId || connectionRepository.activeShopId() != shopId) return@launch
+            when (result) {
                 is MiCatalogoResult.Success<*> -> {
                     pendingCashOperationIds.remove(key)
                     _uiState.value = _uiState.value.copy(isCashOperationBusy = false, successMessage = "Operación de caja registrada.")
@@ -214,13 +242,17 @@ class FinanceViewModel @Inject constructor(
     }
 
     private fun fetchSummary(shopId: String) {
-        viewModelScope.launch {
+        val from = _uiState.value.fromDate; val to = _uiState.value.toDate
+        readJobs.remove("summary")?.cancel()
+        readJobs["summary"] = viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, errorMessage = null)
-            when (val result = financeRepository.getFinanceSummary(
+            val result = financeRepository.getFinanceSummary(
                 shopId = shopId,
-                from = _uiState.value.fromDate.ifBlank { null },
-                to = _uiState.value.toDate.ifBlank { null }
-            )) {
+                from = from.ifBlank { null },
+                to = to.ifBlank { null }
+            )
+            if (currentShopId != shopId || _uiState.value.fromDate != from || _uiState.value.toDate != to) return@launch
+            when (result) {
                 is MiCatalogoResult.Success -> {
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
@@ -238,21 +270,28 @@ class FinanceViewModel @Inject constructor(
     }
 
     private fun fetchExpenses(shopId: String) {
-        viewModelScope.launch {
-            when (val result = financeRepository.getExpenses(shopId, page = 1)) {
+        _uiState.value = _uiState.value.copy(expensesLoading = true, expensesError = null)
+        readJobs.remove("expenses")?.cancel()
+        readJobs["expenses"] = viewModelScope.launch {
+            val result = financeRepository.getExpenses(shopId, page = 1)
+            if (currentShopId != shopId || connectionRepository.activeShopId() != shopId) return@launch
+            when (result) {
                 is MiCatalogoResult.Success -> {
-                    _uiState.value = _uiState.value.copy(expenses = result.value.data)
+                    _uiState.value = _uiState.value.copy(expenses = result.value.data, expensesLoading = false)
                 }
                 is MiCatalogoResult.Failure -> {
-                    // Non-blocking
+                    _uiState.value = _uiState.value.copy(expensesLoading = false, expensesError = result.message)
                 }
             }
         }
     }
 
     private fun fetchCategories(shopId: String) {
-        viewModelScope.launch {
-            when (val result = financeRepository.getExpenseCategories(shopId)) {
+        readJobs.remove("categories")?.cancel()
+        readJobs["categories"] = viewModelScope.launch {
+            val result = financeRepository.getExpenseCategories(shopId)
+            if (currentShopId != shopId || connectionRepository.activeShopId() != shopId) return@launch
+            when (result) {
                 is MiCatalogoResult.Success -> {
                     _uiState.value = _uiState.value.copy(expenseCategories = result.value)
                 }
@@ -282,8 +321,8 @@ class FinanceViewModel @Inject constructor(
             ?.takeIf { it.first == operationKey }
             ?.second
             ?: UUID.randomUUID().toString().also { pendingExpenseOperation = operationKey to it }
+        _uiState.value = _uiState.value.copy(isRegisteringExpense = true, errorMessage = null)
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isRegisteringExpense = true, errorMessage = null)
             val request = ExpenseCreateRequestDto(
                 expenseCategoryId = categoryId,
                 description = normalizedDescription,
@@ -293,7 +332,9 @@ class FinanceViewModel @Inject constructor(
                 notes = normalizedNotes,
                 clientOperationUuid = operationId
             )
-            when (val result = financeRepository.createExpense(shopId, request)) {
+            val result = financeRepository.createExpense(shopId, request)
+            if (currentShopId != shopId || connectionRepository.activeShopId() != shopId) return@launch
+            when (result) {
                 is MiCatalogoResult.Success -> {
                     if (pendingExpenseOperation?.second == operationId) pendingExpenseOperation = null
                     _uiState.value = _uiState.value.copy(

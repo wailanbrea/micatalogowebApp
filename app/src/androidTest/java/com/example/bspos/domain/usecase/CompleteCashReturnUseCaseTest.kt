@@ -38,7 +38,7 @@ class CompleteCashReturnUseCaseTest {
         db.productDao().insert(product)
         val recorder = RemoteMutationRecorder(RoomDatabaseTransactor(db),db.categoryDao(),db.operationOutboxDao(),PosSaleSyncScheduler(context))
         useCase = CompleteCashReturnUseCase(RoomDatabaseTransactor(db),db.returnDao(),db.saleDao(),db.inventoryDao(),
-            db.cashSessionDao(),SafeSettings,db.productDao(),db.posSaleOutboxDao(),recorder)
+            db.cashSessionDao(),SafeSettings,db.productDao(),db.posSaleOutboxDao(),recorder,com.example.bspos.data.local.tenant.tenantTestScope("shop"))
     }
     @After fun close() = db.close()
 
@@ -46,27 +46,27 @@ class CompleteCashReturnUseCaseTest {
         stock(product.id,7)
         val (sale,item) = sale(3,discount=1)
         val session = UUID.randomUUID()
-        db.cashSessionDao().open(CashSessionEntity(session,at,openingAmount=1000))
+        db.cashSessionDao().open(CashSessionEntity(session,at,openingAmount=1000,remoteSessionId="qa-cash",tenant=TenantMetadata.assigned("shop")))
         val first = useCase(request(sale,item,1,"R-1"))
         val second = useCase(request(sale,item,2,"R-2"))
         Assert.assertEquals(99L,first.totalAmount); Assert.assertEquals(200L,second.totalAmount)
-        Assert.assertEquals(299L,db.cashSessionDao().observeMovements(session).first().sumOf { it.amount })
-        Assert.assertEquals(10L,db.inventoryDao().findStock(product.id,InventoryLocationType.MAIN_WAREHOUSE,"MAIN")!!.quantity)
-        Assert.assertEquals(50L,db.returnDao().observeItems(first.id).first().single().unitCostSnapshot)
-        Assert.assertEquals(999L,db.productDao().findById(product.id)!!.lastPurchaseCost)
+        Assert.assertEquals(299L,db.cashSessionDao().observeMovements(session,"shop").first().sumOf { it.amount })
+        Assert.assertEquals(10L,db.inventoryDao().findStock(product.id,InventoryLocationType.MAIN_WAREHOUSE,"MAIN","shop")!!.quantity)
+        Assert.assertEquals(50L,db.returnDao().observeItems(first.id,"shop").first().single().unitCostSnapshot)
+        Assert.assertEquals(999L,db.productDao().findById(product.id,"shop")!!.lastPurchaseCost)
         Assert.assertTrue(db.operationOutboxDao().oldestActive("shop")!!.payload.contains("0.99"))
         Assert.assertTrue(runCatching { useCase(request(sale,item,1,"R-3")) }.isFailure)
         Assert.assertEquals(2,db.operationOutboxDao().activeForShop("shop").size)
-        Assert.assertEquals(2,db.returnDao().observeForSale(sale.id).first().size)
+        Assert.assertEquals(2,db.returnDao().observeForSale(sale.id,"shop").first().size)
     }
 
     @Test fun absentCashSessionRollsBackRefundStockAndQueue() = runTest {
         stock(product.id,7)
         val (sale,item) = sale(3)
         Assert.assertTrue(runCatching { useCase(request(sale,item,1,"R-NOCASH")) }.isFailure)
-        Assert.assertTrue(db.returnDao().observeForSale(sale.id).first().isEmpty())
+        Assert.assertTrue(db.returnDao().observeForSale(sale.id,"shop").first().isEmpty())
         Assert.assertTrue(db.operationOutboxDao().activeForShop("shop").isEmpty())
-        Assert.assertEquals(7L,db.inventoryDao().findStock(product.id,InventoryLocationType.MAIN_WAREHOUSE,"MAIN")!!.quantity)
+        Assert.assertEquals(7L,db.inventoryDao().findStock(product.id,InventoryLocationType.MAIN_WAREHOUSE,"MAIN","shop")!!.quantity)
     }
 
     @Test fun decantReturnRestoresSourceAndSiblingsWithCapturedCost() = runTest {
@@ -78,13 +78,13 @@ class CompleteCashReturnUseCaseTest {
         val sibling = product.copy(id=UUID.randomUUID(),internalCode="SIBLING",miCatalogoProductId="sibling",miCatalogoVolumeMl=10)
         db.productDao().insert(sibling); stock(sibling.id,9)
         val (sale,item) = sale(2)
-        db.cashSessionDao().open(CashSessionEntity(UUID.randomUUID(),at,openingAmount=1000))
+        db.cashSessionDao().open(CashSessionEntity(UUID.randomUUID(),at,openingAmount=1000,remoteSessionId="qa-cash",tenant=TenantMetadata.assigned("shop")))
         useCase(request(sale,item,2,"R-DECANT"))
-        Assert.assertEquals(100,db.productDao().findById(source.id)!!.miCatalogoAvailableMl)
-        Assert.assertEquals(1L,db.inventoryDao().findStock(source.id,InventoryLocationType.MAIN_WAREHOUSE,"MAIN")!!.quantity)
-        Assert.assertEquals(20L,db.inventoryDao().findStock(product.id,InventoryLocationType.MAIN_WAREHOUSE,"MAIN")!!.quantity)
-        Assert.assertEquals(10L,db.inventoryDao().findStock(sibling.id,InventoryLocationType.MAIN_WAREHOUSE,"MAIN")!!.quantity)
-        Assert.assertEquals(50L,db.inventoryDao().observeMovements(product.id,InventoryLocationType.MAIN_WAREHOUSE,"MAIN",null,null).first().first().unitCost)
+        Assert.assertEquals(100,db.productDao().findById(source.id,"shop")!!.miCatalogoAvailableMl)
+        Assert.assertEquals(1L,db.inventoryDao().findStock(source.id,InventoryLocationType.MAIN_WAREHOUSE,"MAIN","shop")!!.quantity)
+        Assert.assertEquals(20L,db.inventoryDao().findStock(product.id,InventoryLocationType.MAIN_WAREHOUSE,"MAIN","shop")!!.quantity)
+        Assert.assertEquals(10L,db.inventoryDao().findStock(sibling.id,InventoryLocationType.MAIN_WAREHOUSE,"MAIN","shop")!!.quantity)
+        Assert.assertEquals(50L,db.inventoryDao().observeMovements(product.id,InventoryLocationType.MAIN_WAREHOUSE,"MAIN",null,null,"shop").first().first().unitCost)
         Assert.assertEquals(1,db.operationOutboxDao().activeForShop("shop").size)
     }
 
@@ -93,9 +93,9 @@ class CompleteCashReturnUseCaseTest {
         db.productDao().update(product)
         val (sale,item) = sale(1)
         db.productDao().update(product.copy(miCatalogoVolumeMl=6))
-        db.cashSessionDao().open(CashSessionEntity(UUID.randomUUID(),at,openingAmount=1000))
+        db.cashSessionDao().open(CashSessionEntity(UUID.randomUUID(),at,openingAmount=1000,remoteSessionId="qa-cash",tenant=TenantMetadata.assigned("shop")))
         Assert.assertTrue(runCatching { useCase(request(sale,item,1,"R-CHANGED")) }.isFailure)
-        Assert.assertTrue(db.returnDao().observeForSale(sale.id).first().isEmpty())
+        Assert.assertTrue(db.returnDao().observeForSale(sale.id,"shop").first().isEmpty())
         Assert.assertTrue(db.operationOutboxDao().activeForShop("shop").isEmpty())
         val refund = useCase(request(sale,item,1,"R-NORESTOCK").copy(lines=listOf(CashReturnLineInput(item.id,product.id,1,100,50,false))))
         Assert.assertEquals(100L,refund.totalAmount)
@@ -105,11 +105,11 @@ class CompleteCashReturnUseCaseTest {
         // Zero stocks need no ledger row; the recorder starts from zero.
         if (quantity == 0L) return
         db.inventoryDao().recordMovements(listOf(InventoryMovementEntity(UUID.randomUUID(),id,InventoryLocationType.MAIN_WAREHOUSE,"MAIN",
-            InventoryMovementType.INITIAL,quantity,0,quantity,50,quantity*50,createdAt=at)),false)
+            InventoryMovementType.INITIAL,quantity,0,quantity,50,quantity*50,createdAt=at,tenant=TenantMetadata.assigned("shop"))),false)
     }
     private suspend fun sale(quantity:Long,discount:Long=0):Pair<SaleEntity,SaleItemEntity> {
         val sale=SaleEntity(UUID.randomUUID(),"F-${UUID.randomUUID()}",date=at,subtotal=quantity*100,discount=discount,
-            total=quantity*100-discount,paymentType=SalePaymentType.CASH,paidAmount=quantity*100-discount,createdAt=at,updatedAt=at)
+            total=quantity*100-discount,paymentType=SalePaymentType.CASH,paidAmount=quantity*100-discount,createdAt=at,updatedAt=at,tenant=TenantMetadata.assigned("shop"))
         val item=SaleItemEntity(UUID.randomUUID(),sale.id,product.id,quantity,100,50,subtotal=quantity*100,
             saleUnitSnapshot=product.miCatalogoSaleUnit,volumeMlSnapshot=product.miCatalogoVolumeMl,remoteSourceSnapshot=product.miCatalogoSourceProductId)
         db.saleDao().insertWithItems(sale,listOf(item))

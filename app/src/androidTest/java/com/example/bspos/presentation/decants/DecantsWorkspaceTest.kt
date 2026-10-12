@@ -44,7 +44,9 @@ class DecantsWorkspaceTest {
     }
 
     @Test fun cardsShowPreparedUnitsRatherThanSummingCompetingCapacities() {
-        compose.setContent { BSPOSTheme { DecantsContent(workspace, null, null, false, {}, {}, {}, { _, _ -> }, {}, { _, _ -> }, {}) } }
+        compose.setContent { BSPOSTheme { DecantsContent(workspace, null, null, false,
+            onRefresh = {}, onAction = {}, onPrepare = {}, onDiscard = { _, _ -> },
+            onUndo = {}, onMode = { _, _ -> }, onNewSize = {}) } }
         compose.onNodeWithText("Perfume Demo 100ml").performScrollTo().assertExists()
         compose.onNodeWithText("1 tamaños · 5 listos").assertExists()
         capture("style-decant-workspace")
@@ -55,7 +57,7 @@ class DecantsWorkspaceTest {
         compose.setContent { BSPOSTheme {
             DecantPrepareSheet(workspace.copy(groups = listOf(group, mlSource)), null, true, {}, {}) { _, _, _, _, _ -> }
         } }
-        compose.onNodeWithText("Perfume Demo 100ml").assertExists()
+        compose.onNode(hasText("Perfume Demo 100ml") and hasText("10 en inventario · 100 ml")).assertExists()
         compose.onNodeWithText("Fuente medida histórica").assertDoesNotExist()
     }
 

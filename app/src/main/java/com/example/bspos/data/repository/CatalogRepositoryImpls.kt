@@ -20,25 +20,52 @@ import javax.inject.Inject
 
 class CategoryRepositoryImpl @Inject constructor(
     private val local: CatalogLocalDataSource,
-    private val shops: ShopScope
+    private val shops: ShopScope,
+    private val sync: com.example.bspos.data.micatalogo.RemoteMutationRecorder
 ) : CategoryRepository {
     override fun observeAll() = shops.observe(local::observeCategories).map { rows -> rows.map { it.toDomain() } }
     override suspend fun findById(id: UUID) = local.findCategory(id, shops.current())?.toDomain()
-    override suspend fun insert(record: Category) = shops.mutate { local.insert(record.toEntity().copy(tenant=TenantMetadata.assigned(it))) }
-    override suspend fun update(record: Category) = shops.mutate { local.update(record.toEntity().copy(tenant=TenantMetadata.assigned(it))) }
-    override suspend fun softDelete(id: UUID, at: Instant) = shops.mutate { local.deleteCategory(id, at, it) }
-    override suspend fun reorder(ids: List<UUID>, at: Instant) = shops.mutate { local.reorderCategories(ids, at, it) }
+    override suspend fun insert(record: Category) {
+        shops.mutate { shop -> sync.transaction {
+            val row = record.toEntity().copy(tenant = TenantMetadata.assigned(shop))
+            local.insert(row); sync.category(row)
+        } }; sync.wake()
+    }
+    override suspend fun update(record: Category): Boolean = shops.mutate { shop -> sync.transaction {
+        val row = record.toEntity().copy(tenant = TenantMetadata.assigned(shop))
+        local.update(row).also { if (it) sync.category(row) }
+    } }.also { if (it) sync.wake() }
+    override suspend fun softDelete(id: UUID, at: Instant): Boolean = shops.mutate { shop -> sync.transaction {
+        local.deleteCategory(id, at, shop).also { if (it) sync.category(checkNotNull(local.findCategory(id, shop))) }
+    } }.also { if (it) sync.wake() }
+    override suspend fun reorder(ids: List<UUID>, at: Instant) {
+        shops.mutate { shop -> sync.transaction {
+            local.reorderCategories(ids, at, shop)
+            ids.forEach { sync.category(checkNotNull(local.findCategory(it, shop))) }
+        } }; sync.wake()
+    }
 }
 
 class UnitOfMeasureRepositoryImpl @Inject constructor(
     private val local: CatalogLocalDataSource,
-    private val shops: ShopScope
+    private val shops: ShopScope,
+    private val sync: com.example.bspos.data.micatalogo.RemoteMutationRecorder
 ) : UnitOfMeasureRepository {
     override fun observeAll() = shops.observe(local::observeUnits).map { rows -> rows.map { it.toDomain() } }
     override suspend fun findById(id: UUID) = local.findUnit(id, shops.current())?.toDomain()
-    override suspend fun insert(record: UnitOfMeasure) = shops.mutate { local.insert(record.toEntity().copy(tenant=TenantMetadata.assigned(it))) }
-    override suspend fun update(record: UnitOfMeasure) = shops.mutate { local.update(record.toEntity().copy(tenant=TenantMetadata.assigned(it))) }
-    override suspend fun softDelete(id: UUID, at: Instant) = shops.mutate { local.deleteUnit(id, at, it) }
+    override suspend fun insert(record: UnitOfMeasure) {
+        shops.mutate { shop -> sync.transaction {
+            val row = record.toEntity().copy(tenant = TenantMetadata.assigned(shop))
+            local.insert(row); sync.unit(row)
+        } }; sync.wake()
+    }
+    override suspend fun update(record: UnitOfMeasure): Boolean = shops.mutate { shop -> sync.transaction {
+        val row = record.toEntity().copy(tenant = TenantMetadata.assigned(shop))
+        local.update(row).also { if (it) sync.unit(row) }
+    } }.also { if (it) sync.wake() }
+    override suspend fun softDelete(id: UUID, at: Instant): Boolean = shops.mutate { shop -> sync.transaction {
+        local.deleteUnit(id, at, shop).also { if (it) sync.unit(checkNotNull(local.findUnit(id, shop))) }
+    } }.also { if (it) sync.wake() }
 }
 
 class ProductRepositoryImpl @Inject constructor(

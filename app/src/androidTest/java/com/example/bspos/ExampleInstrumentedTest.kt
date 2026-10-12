@@ -22,7 +22,8 @@ class ExampleInstrumentedTest {
         assertTrue(
             "Unexpected application id: ${appContext.packageName}",
             appContext.packageName == "com.bsolutions.micatalogo" ||
-                appContext.packageName == "com.bsolutions.micatalogo.offlinecheck",
+                appContext.packageName == "com.bsolutions.micatalogo.offlinecheck" ||
+                appContext.packageName.startsWith("com.bsolutions.micatalogo.offlinecheck."),
         )
     }
 }

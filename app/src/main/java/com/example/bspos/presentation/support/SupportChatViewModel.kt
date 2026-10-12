@@ -3,10 +3,13 @@ package com.example.bspos.presentation.support
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.bspos.data.micatalogo.api.MiCatalogoApi
+import com.example.bspos.data.micatalogo.DurableAccountMutation
 import com.example.bspos.data.micatalogo.dto.SupportChatCreateRequestDto
 import com.example.bspos.data.micatalogo.dto.SupportChatMessageRequestDto
 import com.example.bspos.data.micatalogo.dto.SupportConversationDto
+import com.example.bspos.data.micatalogo.dto.SupportConversationDetailDto
 import com.example.bspos.data.micatalogo.dto.SupportMessageDto
+import com.example.bspos.data.micatalogo.dto.SupportChatMessageResponseDto
 import com.example.bspos.domain.repository.MiCatalogoConnectionRepository
 import dagger.Lazy
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -15,6 +18,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import org.json.JSONObject
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.encodeToJsonElement
 import retrofit2.Response
 import javax.inject.Inject
 
@@ -32,7 +39,9 @@ data class SupportChatUiState(
 @HiltViewModel
 class SupportChatViewModel @Inject constructor(
     private val api: Lazy<MiCatalogoApi>,
-    private val connection: MiCatalogoConnectionRepository
+    private val connection: MiCatalogoConnectionRepository,
+    private val durable: DurableAccountMutation,
+    private val json: Json
 ) : ViewModel() {
     private val _state = MutableStateFlow(SupportChatUiState())
     val state: StateFlow<SupportChatUiState> = _state.asStateFlow()
@@ -90,12 +99,13 @@ class SupportChatViewModel @Inject constructor(
             runCatching {
                 val shopId = connection.activeShopId().orEmpty()
                 check(shopId.isNotBlank()) { "Selecciona una tienda activa para iniciar el chat." }
-                val response = api.get().createSupportConversation(
-                    shopId,
-                    SupportChatCreateRequestDto(subject.trim().ifBlank { null }, text)
+                val request = SupportChatCreateRequestDto(subject.trim().ifBlank { null }, text)
+                val result = durable.submit(
+                    type = "support_create",
+                    request = json.encodeToJsonElement(SupportChatCreateRequestDto.serializer(), request).jsonObject,
+                    shopId = shopId
                 )
-                check(response.isSuccessful) { responseError(response, "No se pudo iniciar el chat.") }
-                response.body() ?: error("La conversación no fue creada.")
+                json.decodeFromJsonElement(SupportConversationDetailDto.serializer(), result)
             }.onSuccess { detail ->
                 _state.value = _state.value.copy(
                     loading = false,
@@ -122,9 +132,14 @@ class SupportChatViewModel @Inject constructor(
         viewModelScope.launch {
             _state.value = _state.value.copy(sending = true, error = null)
             runCatching {
-                val response = api.get().sendSupportMessage(conversation.id, SupportChatMessageRequestDto(text))
-                check(response.isSuccessful) { responseError(response, "No se pudo enviar el mensaje.") }
-                response.body()?.chatMessage ?: error("El servidor no devolvió el mensaje.")
+                val request = SupportChatMessageRequestDto(text)
+                val result = durable.submit(
+                    type = "support_message",
+                    request = json.encodeToJsonElement(SupportChatMessageRequestDto.serializer(), request).jsonObject,
+                    resourceId = conversation.id
+                )
+                json.decodeFromJsonElement(SupportChatMessageResponseDto.serializer(), result).chatMessage
+                    ?: error("El servidor no devolvió el mensaje.")
             }.onSuccess { sent ->
                 _state.value = _state.value.copy(
                     sending = false,
@@ -145,9 +160,12 @@ class SupportChatViewModel @Inject constructor(
         viewModelScope.launch {
             _state.value = _state.value.copy(closing = true, error = null)
             runCatching {
-                val response = api.get().closeSupportConversation(conversation.id)
-                check(response.isSuccessful) { responseError(response, "No se pudo concluir el chat.") }
-                response.body() ?: error("El servidor no devolvió el chat concluido.")
+                val result = durable.submit(
+                    type = "support_close",
+                    request = kotlinx.serialization.json.buildJsonObject { },
+                    resourceId = conversation.id
+                )
+                json.decodeFromJsonElement(SupportConversationDetailDto.serializer(), result)
             }.onSuccess { detail ->
                 _state.value = _state.value.copy(
                     closing = false,
