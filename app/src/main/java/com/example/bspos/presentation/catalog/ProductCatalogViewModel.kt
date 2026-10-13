@@ -107,15 +107,61 @@ class ProductCatalogViewModel @Inject constructor(
         }
     }
 
-    fun update(current: com.example.bspos.domain.model.Product, input: ProductInput) {
+    fun update(current: com.example.bspos.domain.model.Product, input: ProductInput, onSaved: () -> Unit = {}) {
         if (!canEdit(current)) { reportReadOnly(); return }
         viewModelScope.launch {
             runCatching { productUseCases.update(current, input) }.onFailure {
                 val message = it.toUiMessage("No se pudo actualizar el producto")
                 _message.value = message
                 UiErrorBus.show(message)
+            }.onSuccess {
+                onSaved()
             }
         }
+    }
+
+    fun configureAsBottle(current: com.example.bspos.domain.model.Product, volumeMl: Int, onSaved: () -> Unit = {}) {
+        if (!canEdit(current)) { reportReadOnly(); return }
+        if (current.remoteShopId.isNullOrBlank() || current.remoteProductId.isNullOrBlank()) {
+            val message = "Este producto todavía no está vinculado a una tienda sincronizada."
+            _message.value = message
+            UiErrorBus.show(message)
+            return
+        }
+        if (volumeMl !in 1..100_000) {
+            val message = "Indica un volumen válido entre 1 y 100,000 ml."
+            _message.value = message
+            UiErrorBus.show(message)
+            return
+        }
+        if (current.lastPurchaseCost <= 0L) {
+            val message = "Registra primero el costo de compra del producto en Inventario."
+            _message.value = message
+            UiErrorBus.show(message)
+            return
+        }
+
+        update(current, ProductInput(
+            name = current.name,
+            internalCode = current.internalCode,
+            categoryId = current.categoryId,
+            unitId = current.unitId,
+            salePrice = current.salePrice,
+            purchasePrice = current.lastPurchaseCost,
+            wholesalePrice = current.wholesalePrice,
+            description = current.description,
+            minimumStock = current.minimumStock,
+            tracksExpiration = current.tracksExpiration,
+            imagePath = current.imagePath,
+            thumbnailPath = current.thumbnailPath,
+            remoteShopId = current.remoteShopId,
+            remoteSaleUnit = "bottle",
+            remoteVolumeMl = volumeMl,
+            remoteSourceProductId = null,
+            isCombo = false,
+            comboItems = emptyList(),
+            isActive = current.isActive,
+        ), onSaved)
     }
 
     fun delete(product: com.example.bspos.domain.model.Product) {
