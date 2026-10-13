@@ -92,7 +92,7 @@ fun DecantsScreen(presentation: MiCatalogoBusinessPresentation, showCost: Boolea
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
-    LaunchedEffect(state.enqueued) { if (state.enqueued > 0) sheet = null }
+    LaunchedEffect(state.completed) { if (state.completed > 0) sheet = null }
     val workspace = state.workspace
     if (state.loading) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
     else if (workspace == null) Column(Modifier.padding(20.dp)) {
@@ -133,7 +133,7 @@ fun DecantsScreen(presentation: MiCatalogoBusinessPresentation, showCost: Boolea
             }
             sheet == "advanced" -> DecantAdvancedSheet(enabled, { sheet = null }) { next -> sheet = next }
             sheet == "report" -> DecantReportSheet(workspace) { sheet = null }
-            sheet == "vials" -> DecantVialsSheet(workspace, enabled, { sheet = null }, { size, qty, cost, salePrice ->
+            sheet == "vials" -> DecantVialsSheet(workspace, enabled, state.busy, state.error, state.message, { sheet = null }, { size, qty, cost, salePrice ->
                 viewModel.command(operation("decant_vial_receive") { put("volume_ml", size); put("quantity", qty); put("unit_cost", cost); if (salePrice.isNotBlank()) put("sale_price", salePrice) })
             }, { vial -> viewModel.command(operation("decant_vial_update") { put("vial_id", vial.id); put("active", !vial.active) }) })
             sheet == "open" -> DecantOpenSheet(workspace.groups, enabled, { sheet = null }, onCreateBottle = {
@@ -706,17 +706,28 @@ private fun DecantQuickSetupSheet(
     }
 }
 
-@Composable private fun DecantVialsSheet(workspace: DecantWorkspaceDto, enabled: Boolean, onDismiss: () -> Unit, onReceive: (Int, Int, String, String) -> Unit, onActive: (DecantVialDto) -> Unit) {
+@Composable private fun DecantVialsSheet(workspace: DecantWorkspaceDto, enabled: Boolean, busy: Boolean, error: String?, message: String?, onDismiss: () -> Unit, onReceive: (Int, Int, String, String) -> Unit, onActive: (DecantVialDto) -> Unit) {
     val standardSizes = remember(workspace.vials) { (listOf(5, 10, 30) + workspace.vials.map { it.volumeMl }).distinct().sorted() }
     var size by remember { mutableStateOf(standardSizes.firstOrNull()?.toString().orEmpty()) }
     var qty by remember { mutableStateOf("") }; var cost by remember { mutableStateOf("") }; var salePrice by remember { mutableStateOf("") }
     val selectedSize = size.toIntOrNull()
+    val costCents = MoneyUtils.parseDecimalToCents(cost)
     val saleCents = MoneyUtils.parseDecimalToCents(salePrice)
-    CheckoutStyleBottomSheet("Frascos vacíos", onDismiss, footer = {
-        CheckoutStylePrimaryButton("Recibir frascos", { onReceive(size.toInt(), qty.toInt(), decimal(MoneyUtils.parseDecimalToCents(cost)!!), decimal(saleCents!!)) },
-            enabled = enabled && (selectedSize ?: 0) in 1..1000 && (qty.toIntOrNull() ?: 0) in 1..100000 && MoneyUtils.parseDecimalToCents(cost)?.let { it >= 0 } == true && saleCents != null && saleCents >= 0)
+    val valid = enabled && !busy && (selectedSize ?: 0) in 1..1000 && (qty.toIntOrNull() ?: 0) in 1..100000 && costCents?.let { it >= 0 } == true && saleCents?.let { it >= 0 } == true
+    CheckoutStyleBottomSheet("Frascos vacíos", onDismiss, dismissEnabled = !busy, footer = {
+        CheckoutStylePrimaryButton("Recibir frascos", {
+            val parsedSize = selectedSize
+            val parsedQuantity = qty.toIntOrNull()
+            val parsedCost = costCents
+            val parsedSalePrice = saleCents
+            if (parsedSize != null && parsedQuantity != null && parsedCost != null && parsedSalePrice != null) {
+                onReceive(parsedSize, parsedQuantity, decimal(parsedCost), decimal(parsedSalePrice))
+            }
+        }, enabled = valid, busy = busy)
     }) {
         Text("Administra tus envases por tamaño. La existencia se descuenta automáticamente cuando preparas un decant.")
+        error?.let { Text(it, color = BSPOSTheme.colors.error, style = MaterialTheme.typography.bodySmall) }
+        message?.let { Text(it, color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodySmall) }
         Text("${workspace.emptyVials} vacíos · ${workspace.prepared} llenos"); workspace.vialInvestmentCents?.let { SummaryLine("Invertido en envases", money(it)) }
         BSPOSSectionLabel("Tamaños rápidos")
         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -745,8 +756,8 @@ private fun DecantQuickSetupSheet(
         BSPOSSectionLabel("Recibir / nuevo tamaño")
         if (standardSizes.none { it.toString() == size }) OutlinedTextField(size, { size = it.filter(Char::isDigit) }, label = { Text("Otro tamaño en ml") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(qty, { qty = it.filter(Char::isDigit) }, label = { Text("Cantidad de envases") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(cost, { cost = it }, label = { Text("Precio de compra por envase") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(salePrice, { salePrice = it }, label = { Text("Precio de venta por envase") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(cost, { cost = it.filter { character -> character.isDigit() || character == '.' || character == ',' } }, label = { Text("Precio de compra por envase") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(salePrice, { salePrice = it.filter { character -> character.isDigit() || character == '.' || character == ',' } }, label = { Text("Precio de venta por envase") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true, modifier = Modifier.fillMaxWidth())
     }
 }
 

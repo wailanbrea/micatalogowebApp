@@ -29,7 +29,7 @@ data class DecantsState(
     val error: String? = null,
     val busy: Boolean = false,
     val message: String? = null,
-    val enqueued: Int = 0
+    val completed: Int = 0
 )
 
 @HiltViewModel
@@ -98,21 +98,26 @@ class DecantsViewModel @Inject constructor(
                     return@launch
                 }
                 remote.transaction { remote.enqueue(shop, productIds, payload, Instant.now(), id) }
-                _state.update { it.copy(enqueued = it.enqueued + 1, message = "Operación guardada; pendiente de sincronización.") }
+                _state.update { it.copy(message = "Operación guardada; confirmando con el servidor…") }
                 remote.wake()
-                while (true) {
-                    delay(700)
-                    val operation = outbox.find(id) ?: break
+                repeat(40) {
+                    delay(500)
+                    val operation = outbox.find(id)
+                    if (operation == null) {
+                        _state.update { it.copy(busy = false, error = "No se pudo confirmar la recepción. Revisa Sincronización para reintentar sin duplicar.", message = null) }
+                        return@launch
+                    }
                     if (operation.state == "SENT") {
-                        _state.update { it.copy(busy = false, message = "Operación sincronizada.") }
+                        _state.update { it.copy(busy = false, completed = it.completed + 1, message = "Operación sincronizada.") }
                         load()
-                        break
+                        return@launch
                     }
                     if (operation.state == "BLOCKED") {
                         _state.update { it.copy(busy = false, error = operation.error ?: "La operación requiere conciliación.", message = null) }
-                        break
+                        return@launch
                     }
                 }
+                _state.update { it.copy(busy = false, message = "La recepción quedó pendiente de sincronización. Puedes seguir trabajando; no se duplicará.") }
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (error: Exception) { _state.update { it.copy(busy = false, error = error.message ?: "No se pudo guardar la operación.") } }
         }
