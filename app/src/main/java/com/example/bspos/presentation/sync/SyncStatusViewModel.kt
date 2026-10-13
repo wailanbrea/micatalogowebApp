@@ -37,18 +37,34 @@ class SyncStatusViewModel @Inject constructor(
     private val scheduler: PosSaleSyncScheduler,
     private val json: Json
 ) : ViewModel() {
+    private val attemptedRecoveries = mutableSetOf<String>()
+
     init {
         // A previous production build could leave a valid decant operation in
         // BLOCKED when the API had not yet whitelisted its operation type. Once
         // the backend is corrected, retry that narrow, known-safe case with
         // the original UUID. Never auto-retry inventory conflicts, payments,
-        // sales, or arbitrary validation errors.
+        // sales, or arbitrary validation errors. Observe the outbox as well as
+        // the active shop: a stale row may be restored after the shop has
+        // already been selected, and in that case a shop-only collector would
+        // never see it.
         viewModelScope.launch {
-            shops.changes.filterNotNull().distinctUntilChanged().collectLatest { shop ->
-                val recoverable = operations.activeForShop(shop)
-                    .filter { it.state == "BLOCKED" && isRecoverableDecantTypeRejection(it) }
-                if (recoverable.isNotEmpty()) {
-                    recoverable.forEach { operations.retryBlocked(it.id) }
+            combine(
+                shops.changes.filterNotNull().distinctUntilChanged(),
+                operations.observeOutstanding()
+            ) { shop, rows ->
+                shop to rows.filter { it.shopId == shop }
+            }.collect { (shop, rows) ->
+                val recoverable = rows.filter {
+                    it.state == "BLOCKED" &&
+                        isRecoverableDecantTypeRejection(it) &&
+                        attemptedRecoveries.add("$shop:${it.id}")
+                }
+                var retried = false
+                recoverable.forEach { row ->
+                    if (operations.retryBlocked(row.id) == 1) retried = true
+                }
+                if (retried) {
                     scheduler.enqueue()
                 }
             }
