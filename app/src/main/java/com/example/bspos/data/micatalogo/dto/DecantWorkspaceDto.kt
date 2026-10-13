@@ -44,6 +44,7 @@ data class DecantSizeDto(
     val id: String,
     val name: String,
     @SerialName("volume_ml") val volumeMl: Int,
+    @SerialName("image_url") val imageUrl: String? = null,
     @SerialName("price_cents") val priceCents: Long = 0,
     val prepared: Int = 0,
     val capacity: Int = 0,
@@ -81,6 +82,7 @@ data class DecantVialDto(
     @SerialName("volume_ml") val volumeMl: Int,
     val active: Boolean = true,
     val empty: Int = 0,
+    @SerialName("sale_price_cents") val salePriceCents: Long? = null,
     @SerialName("investment_cents") val investmentCents: Long? = null,
     @SerialName("next_cost_cents") val nextCostCents: Long? = null,
     val lots: List<DecantVialLotDto> = emptyList()

@@ -62,8 +62,14 @@ class DecantsViewModel @Inject constructor(
                             source.inventory.stockQuantity ?: 0, legacyMl = source.inventory.reservedDecantMl ?: source.inventory.availableMl,
                             sourceCostCents = source.inventory.costPrice?.let(MoneyUtils::parseDecimalToCents),
                             sizes = products.filter { it.saleUnit == "decant" && it.sourceProductId == source.id }.map {
-                                DecantSizeDto(it.id, it.name, it.volumeMl ?: 0, it.price?.let(MoneyUtils::parseDecimalToCents) ?: 0,
-                                    legacyCapacity = it.inventory.stockQuantity ?: 0)
+                                DecantSizeDto(
+                                    id = it.id,
+                                    name = it.name,
+                                    volumeMl = it.volumeMl ?: 0,
+                                    priceCents = it.price?.let(MoneyUtils::parseDecimalToCents) ?: 0,
+                                    legacyCapacity = it.inventory.stockQuantity ?: 0,
+                                    imageUrl = it.imageUrl,
+                                )
                             }, sourceSaleUnit = source.saleUnit ?: "unknown")
                     }
                     _state.update { it.copy(loading = false, workspace = DecantWorkspaceDto(groups = groups),

@@ -50,9 +50,7 @@ private data class QuickDecantLine(
     val volumeMl: Int,
     val selected: Boolean = true,
     val price: String = "",
-    val quantity: String = "0",
-    val vialQuantity: String = "0",
-    val vialUnitCost: String = ""
+    val quantity: String = "0"
 )
 
 @Composable
@@ -117,8 +115,6 @@ fun DecantsScreen(presentation: MiCatalogoBusinessPresentation, showCost: Boolea
                                 put("volume_ml", line.volumeMl)
                                 put("price", line.price)
                                 put("quantity", line.quantity.toIntOrNull() ?: 0)
-                                put("vial_quantity", line.vialQuantity.toIntOrNull() ?: 0)
-                                if (line.vialUnitCost.isNotBlank()) put("vial_unit_cost", line.vialUnitCost)
                             })
                         }
                     })
@@ -126,8 +122,8 @@ fun DecantsScreen(presentation: MiCatalogoBusinessPresentation, showCost: Boolea
             }
             sheet == "advanced" -> DecantAdvancedSheet(enabled, { sheet = null }) { next -> sheet = next }
             sheet == "report" -> DecantReportSheet(workspace) { sheet = null }
-            sheet == "vials" -> DecantVialsSheet(workspace, enabled, { sheet = null }, { size, qty, cost ->
-                viewModel.command(operation("decant_vial_receive") { put("volume_ml", size); put("quantity", qty); put("unit_cost", cost) })
+            sheet == "vials" -> DecantVialsSheet(workspace, enabled, { sheet = null }, { size, qty, cost, salePrice ->
+                viewModel.command(operation("decant_vial_receive") { put("volume_ml", size); put("quantity", qty); put("unit_cost", cost); if (salePrice.isNotBlank()) put("sale_price", salePrice) })
             }, { vial -> viewModel.command(operation("decant_vial_update") { put("vial_id", vial.id); put("active", !vial.active) }) })
             sheet == "open" -> DecantOpenSheet(workspace.groups, enabled, { sheet = null }, onCreateBottle = {
                 createBottleSource = true
@@ -427,6 +423,7 @@ private fun DecantQuickSetupSheet(
     var customSize by remember { mutableStateOf("") }
     var lines by remember { mutableStateOf(listOf(QuickDecantLine(5), QuickDecantLine(10), QuickDecantLine(30))) }
     val source = sources.firstOrNull { it.id == sourceId }
+    fun availableVials(volume: Int): Int = workspace.vials.firstOrNull { it.active && it.volumeMl == volume }?.empty ?: 0
 
     fun suggestedPrice(source: DecantFragranceDto, volume: Int): String {
         val cost = source.sourceCostCents ?: return ""
@@ -454,8 +451,8 @@ private fun DecantQuickSetupSheet(
     val selectedLines = lines.filter { it.selected && it.volumeMl > 0 }
     val validLines = selectedLines.isNotEmpty() && selectedLines.all { line ->
         line.volumeMl <= (source?.volumeMl ?: 0) && MoneyUtils.parseDecimalToCents(line.price)?.let { it >= 0 } == true &&
-            (line.quantity.toIntOrNull() ?: 0) >= 0 && (line.vialQuantity.toIntOrNull() ?: 0) >= 0 &&
-            ((line.vialQuantity.toIntOrNull() ?: 0) == 0 || MoneyUtils.parseDecimalToCents(line.vialUnitCost)?.let { it >= 0 } == true)
+            (line.quantity.toIntOrNull() ?: 0) >= 0 &&
+            (mode != "ready" || (line.quantity.toIntOrNull() ?: 0) <= availableVials(line.volumeMl))
     }
     val stepTitle = when (step) { 0 -> "Elige el perfume"; 1 -> "Tamaños y precios"; else -> "Revisa y activa" }
     CheckoutStyleBottomSheet(
@@ -498,25 +495,25 @@ private fun DecantQuickSetupSheet(
                 }
             }
             1 -> {
-                Text("Puedes activar varios tamaños a la vez. El precio sugerido usa el costo de la botella y un margen inicial del 100%; puedes cambiarlo.", color = BSPOSTheme.colors.textSecondary)
+                Text("Elige los tamaños y la cantidad de frascos que quieres preparar. Aquí solo defines el precio de venta; los envases se reciben desde Frascos vacíos.", color = BSPOSTheme.colors.textSecondary)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     FilterChip(selected = mode == "ready", onClick = { mode = "ready" }, label = { Text("Listos para vender") })
                     FilterChip(selected = mode == "on_demand", onClick = { mode = "on_demand" }, label = { Text("Bajo pedido") })
                 }
-                Text(if (mode == "ready") "Indica cuántos quieres preparar ahora. Los envases nuevos son opcionales si ya tienes existencias." else "No se preparan frascos ahora. Necesitarás envases del tamaño elegido para vender bajo pedido.", fontSize = 12.sp, color = BSPOSTheme.colors.textSecondary)
+                Text(if (mode == "ready") "La cantidad no puede superar los envases disponibles de cada tamaño." else "Bajo pedido no se preparan frascos ahora; se usarán los envases disponibles al vender.", fontSize = 12.sp, color = BSPOSTheme.colors.textSecondary)
                 lines.forEachIndexed { index, line ->
                     Surface(shape = BSPOSDesign.cardRadius, border = BorderStroke(1.dp, if (line.selected) BSPOSTheme.colors.primary else BSPOSTheme.colors.outline)) {
                         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Checkbox(checked = line.selected, onCheckedChange = { checked -> updateLine(index) { it.copy(selected = checked) } })
+                                DecantMiniature(source?.imageUrl, line.volumeMl)
                                 Text("${line.volumeMl} ml", fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                                 Text("Sugerido: ${source?.let { suggestedPrice(it, line.volumeMl) }.orEmpty().ifBlank { "—" }}", fontSize = 11.sp, color = BSPOSTheme.colors.textSecondary)
                             }
                             if (line.selected) {
                                 OutlinedTextField(line.price, { value -> updateLine(index) { it.copy(price = value) } }, label = { Text("Precio de venta") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true, modifier = Modifier.fillMaxWidth())
-                                if (mode == "ready") OutlinedTextField(line.quantity, { value -> updateLine(index) { it.copy(quantity = value.filter(Char::isDigit)) } }, label = { Text("Preparar ahora (opcional)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true, modifier = Modifier.fillMaxWidth())
-                                OutlinedTextField(line.vialQuantity, { value -> updateLine(index) { it.copy(vialQuantity = value.filter(Char::isDigit)) } }, label = { Text("Envases nuevos (opcional)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true, modifier = Modifier.fillMaxWidth())
-                                if ((line.vialQuantity.toIntOrNull() ?: 0) > 0) OutlinedTextField(line.vialUnitCost, { value -> updateLine(index) { it.copy(vialUnitCost = value) } }, label = { Text("Costo por envase") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true, modifier = Modifier.fillMaxWidth())
+                                Text("Frascos ${line.volumeMl} ml disponibles: ${availableVials(line.volumeMl)}", fontSize = 12.sp, color = if (availableVials(line.volumeMl) > 0) BSPOSTheme.colors.textSecondary else BSPOSTheme.colors.warning)
+                                if (mode == "ready") OutlinedTextField(line.quantity, { value -> updateLine(index) { it.copy(quantity = value.filter(Char::isDigit)) } }, label = { Text("Cantidad a preparar") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true, modifier = Modifier.fillMaxWidth())
                             }
                         }
                     }
@@ -537,7 +534,6 @@ private fun DecantQuickSetupSheet(
                 source?.let { SummaryLine("Perfume fuente", it.name); SummaryLine("Volumen", "${it.volumeMl} ml"); SummaryLine("Modalidad", if (mode == "ready") "Listos para vender" else "Bajo pedido") }
                 selectedLines.forEach { line ->
                     SummaryLine("Decant ${line.volumeMl} ml", "${line.quantity.toIntOrNull() ?: 0} listos · ${line.price}")
-                    if ((line.vialQuantity.toIntOrNull() ?: 0) > 0) SummaryLine("Envases", "${line.vialQuantity} · ${line.vialUnitCost} c/u")
                 }
                 Text("El sistema conservará el costo del lote, consumirá primero el lote más antiguo y actualizará Terminal al sincronizar.", fontSize = 12.sp, color = BSPOSTheme.colors.textSecondary)
             }
@@ -593,7 +589,7 @@ private fun DecantQuickSetupSheet(
             if (eligibleGroups.none { it.sealed > 0 || it.openings.any { b -> b.remainingMl > 0 } }) Text("No hay perfumes completos configurados como botella disponibles. Registra o recibe una botella completa para continuar.")
         } else if (group != null) {
             BSPOSSectionLabel("Tamaño")
-            group.sizes.forEach { item -> SelectionRow("${item.volumeMl} ml", "${item.emptyVials} vacíos", sizeId == item.id, trailing = money(item.priceCents)) { sizeId = item.id; quantity = 1; price = decimal(item.priceCents) } }
+            group.sizes.forEach { item -> SelectionRow("${item.volumeMl} ml", "${item.emptyVials} disponibles", sizeId == item.id, imageUrl = item.imageUrl, trailing = money(item.priceCents)) { sizeId = item.id; quantity = 1; price = decimal(item.priceCents) } }
             BSPOSOutlinedButton({ onNewSize(group) }) { Text("Nueva presentación") }
             if (size != null) {
                 BSPOSSectionLabel("Cuántos")
@@ -660,26 +656,54 @@ private fun DecantQuickSetupSheet(
     }
 }
 
-@Composable private fun DecantVialsSheet(workspace: DecantWorkspaceDto, enabled: Boolean, onDismiss: () -> Unit, onReceive: (Int, Int, String) -> Unit, onActive: (DecantVialDto) -> Unit) {
-    var size by remember { mutableStateOf("") }; var qty by remember { mutableStateOf("") }; var cost by remember { mutableStateOf("") }
+@Composable private fun DecantVialsSheet(workspace: DecantWorkspaceDto, enabled: Boolean, onDismiss: () -> Unit, onReceive: (Int, Int, String, String) -> Unit, onActive: (DecantVialDto) -> Unit) {
+    val standardSizes = remember(workspace.vials) { (listOf(5, 10, 30) + workspace.vials.map { it.volumeMl }).distinct().sorted() }
+    var size by remember { mutableStateOf(standardSizes.firstOrNull()?.toString().orEmpty()) }
+    var qty by remember { mutableStateOf("") }; var cost by remember { mutableStateOf("") }; var salePrice by remember { mutableStateOf("") }
+    val selectedSize = size.toIntOrNull()
+    val saleCents = MoneyUtils.parseDecimalToCents(salePrice)
     CheckoutStyleBottomSheet("Frascos vacíos", onDismiss, footer = {
-        CheckoutStylePrimaryButton("Recibir envases", { onReceive(size.toInt(), qty.toInt(), decimal(MoneyUtils.parseDecimalToCents(cost)!!)) },
-            enabled = enabled && (size.toIntOrNull() ?: 0) in 1..1000 && (qty.toIntOrNull() ?: 0) in 1..100000 && MoneyUtils.parseDecimalToCents(cost)?.let { it >= 0 } == true)
+        CheckoutStylePrimaryButton("Recibir frascos", { onReceive(size.toInt(), qty.toInt(), decimal(MoneyUtils.parseDecimalToCents(cost)!!), decimal(saleCents!!)) },
+            enabled = enabled && (selectedSize ?: 0) in 1..1000 && (qty.toIntOrNull() ?: 0) in 1..100000 && MoneyUtils.parseDecimalToCents(cost)?.let { it >= 0 } == true && saleCents != null && saleCents >= 0)
     }) {
+        Text("Administra tus envases por tamaño. La existencia se descuenta automáticamente cuando preparas un decant.")
         Text("${workspace.emptyVials} vacíos · ${workspace.prepared} llenos"); workspace.vialInvestmentCents?.let { SummaryLine("Invertido en envases", money(it)) }
-        workspace.vials.forEach { vial ->
-            Surface(shape = BSPOSDesign.cardRadius, border = BorderStroke(1.dp, BSPOSTheme.colors.outline)) {
-                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    SummaryLine("${vial.name} · ${vial.volumeMl} ml", "${vial.empty} vacíos"); vial.nextCostCents?.let { SummaryLine("Próximo costo FIFO", money(it)) }
-                    vial.lots.forEach { lot -> Text("${lot.receivedAt.take(10)} · ${lot.remaining}/${lot.received} · ${lot.costCents?.let(::money) ?: "Costo reservado"}", fontFamily = FontFamily.Monospace, fontSize = 11.sp) }
-                    TextButton({ onActive(vial) }, enabled = enabled) { Text(if (vial.active) "Archivar tamaño" else "Activar tamaño") }
+        BSPOSSectionLabel("Tamaños rápidos")
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            standardSizes.forEach { option ->
+                FilterChip(selected = size == option.toString(), onClick = { size = option.toString() }, label = { Text("$option ml") })
+            }
+            FilterChip(selected = standardSizes.none { it.toString() == size }, onClick = { size = "" }, label = { Text("Otro tamaño") })
+        }
+        standardSizes.forEach { option ->
+            val vial = workspace.vials.firstOrNull { it.volumeMl == option }
+            Surface(shape = BSPOSDesign.cardRadius, border = BorderStroke(1.dp, if (size == option.toString()) BSPOSTheme.colors.primary else BSPOSTheme.colors.outline)) {
+                Row(Modifier.fillMaxWidth().clickable { size = option.toString() }.padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    DecantMiniature(null, option)
+                    Column(Modifier.weight(1f)) {
+                        Text("Frasco decant $option ml", fontWeight = FontWeight.SemiBold)
+                        Text(if (vial == null) "Aún no recibido" else "${vial.empty} disponibles", fontSize = 12.sp, color = BSPOSTheme.colors.textSecondary)
+                        vial?.nextCostCents?.let { Text("Compra FIFO ${money(it)}", fontSize = 11.sp, color = BSPOSTheme.colors.textSecondary) }
+                    }
+                    Column(horizontalAlignment = Alignment.End) {
+                        vial?.salePriceCents?.let { Text("Venta ${money(it)}", fontSize = 11.sp, color = BSPOSTheme.colors.textSecondary) }
+                        if (vial != null) TextButton({ onActive(vial) }, enabled = enabled) { Text(if (vial.active) "Archivar" else "Activar") }
+                    }
                 }
             }
         }
         BSPOSSectionLabel("Recibir / nuevo tamaño")
-        OutlinedTextField(size, { size = it.filter(Char::isDigit) }, label = { Text("Tamaño en ml") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        if (standardSizes.none { it.toString() == size }) OutlinedTextField(size, { size = it.filter(Char::isDigit) }, label = { Text("Otro tamaño en ml") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(qty, { qty = it.filter(Char::isDigit) }, label = { Text("Cantidad de envases") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(cost, { cost = it }, label = { Text("Costo por envase") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(cost, { cost = it }, label = { Text("Precio de compra por envase") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(salePrice, { salePrice = it }, label = { Text("Precio de venta por envase") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true, modifier = Modifier.fillMaxWidth())
+    }
+}
+
+@Composable private fun DecantMiniature(imageUrl: String?, volumeMl: Int) {
+    Surface(Modifier.size(46.dp), shape = RoundedCornerShape(10.dp), color = BSPOSTheme.colors.primaryLight) {
+        if (!imageUrl.isNullOrBlank()) AsyncImage(model = imageUrl, contentDescription = "Decant $volumeMl ml", modifier = Modifier.fillMaxSize())
+        else Box(contentAlignment = Alignment.Center) { Icon(Icons.Outlined.Science, "Decant $volumeMl ml", tint = BSPOSTheme.colors.primary, modifier = Modifier.size(25.dp)) }
     }
 }
 
