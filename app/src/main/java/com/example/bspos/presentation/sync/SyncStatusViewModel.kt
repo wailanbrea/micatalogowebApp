@@ -10,11 +10,22 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 import java.time.Instant
 import javax.inject.Inject
 
 enum class SyncPhase { CHECKING, SYNCED, PENDING, RETRY, BLOCKED }
-data class SyncStatus(val phase: SyncPhase = SyncPhase.CHECKING, val count: Int = 0, val error: String? = null)
+enum class SyncResolutionTarget { NONE, DECANTS, SYNC_SETTINGS }
+data class SyncStatus(
+    val phase: SyncPhase = SyncPhase.CHECKING,
+    val count: Int = 0,
+    val error: String? = null,
+    val resolutionTarget: SyncResolutionTarget = SyncResolutionTarget.NONE,
+    val resolutionLabel: String? = null
+)
 
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
@@ -23,7 +34,8 @@ class SyncStatusViewModel @Inject constructor(
     private val operations: OperationOutboxDao,
     private val sales: PosSaleOutboxDao,
     private val payments: PaymentSyncDao,
-    private val scheduler: PosSaleSyncScheduler
+    private val scheduler: PosSaleSyncScheduler,
+    private val json: Json
 ) : ViewModel() {
     val status = shops.changes.flatMapLatest { shop ->
         if (shop == null) flowOf(SyncStatus()) else combine(
@@ -33,13 +45,33 @@ class SyncStatusViewModel @Inject constructor(
             val bills = allSales.filter { it.remoteShopId == shop }
             val collections = allPayments.filter { it.shopId == shop }
             val refreshes = allRefreshes.filter { it.shopId == shop }
-            val blocked = ops.firstOrNull { it.state == "BLOCKED" }?.error
-                ?: bills.firstOrNull { it.state == PosSaleOutboxState.BLOCKED }?.lastError
-                ?: collections.firstOrNull { it.state == "BLOCKED" }?.error
+            val blockedOperation = ops.firstOrNull { it.state == "BLOCKED" }
+            val blockedSale = bills.firstOrNull { it.state == PosSaleOutboxState.BLOCKED }
+            val blockedPayment = collections.firstOrNull { it.state == "BLOCKED" }
+            val blocked = blockedOperation?.error
+                ?: blockedSale?.lastError
+                ?: blockedPayment?.error
             val blockedCount = ops.count { it.state == "BLOCKED" } + bills.count { it.state == PosSaleOutboxState.BLOCKED } + collections.count { it.state == "BLOCKED" }
             val count = ops.size + bills.size + collections.size + refreshes.size
             val retry = ops.any { it.error != null } || bills.any { it.lastError != null } || collections.any { it.error != null } || refreshes.any { it.error != null }
-            SyncStatus(when { blockedCount > 0 -> SyncPhase.BLOCKED; retry -> SyncPhase.RETRY; count > 0 -> SyncPhase.PENDING; else -> SyncPhase.SYNCED }, count, blocked)
+            val blockedType = blockedOperation?.let { operationType(it.payload) }
+            val resolutionTarget = when {
+                blockedType?.startsWith("decant", ignoreCase = true) == true -> SyncResolutionTarget.DECANTS
+                blockedCount > 0 -> SyncResolutionTarget.SYNC_SETTINGS
+                else -> SyncResolutionTarget.NONE
+            }
+            val resolutionLabel = when (resolutionTarget) {
+                SyncResolutionTarget.DECANTS -> "Decants"
+                SyncResolutionTarget.SYNC_SETTINGS -> "Sincronización"
+                SyncResolutionTarget.NONE -> null
+            }
+            SyncStatus(
+                phase = when { blockedCount > 0 -> SyncPhase.BLOCKED; retry -> SyncPhase.RETRY; count > 0 -> SyncPhase.PENDING; else -> SyncPhase.SYNCED },
+                count = count,
+                error = blocked,
+                resolutionTarget = resolutionTarget,
+                resolutionLabel = resolutionLabel
+            )
         }.onStart { emit(SyncStatus()) }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SyncStatus())
 
@@ -51,4 +83,8 @@ class SyncStatusViewModel @Inject constructor(
             scheduler.enqueue()
         } }
     }
+
+    private fun operationType(payload: String): String? = runCatching {
+        json.parseToJsonElement(payload).jsonObject["type"]?.jsonPrimitive?.contentOrNull
+    }.getOrNull()
 }

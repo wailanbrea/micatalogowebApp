@@ -755,7 +755,37 @@ private fun ShopScopedMainScreen(
                         navigationIconContentColor = BSPOSTheme.colors.textPrimary
                     )
                 )
-                com.example.bspos.presentation.sync.SyncStatusBanner(syncStatus, syncViewModel::retry)
+                com.example.bspos.presentation.sync.SyncStatusBanner(
+                    status = syncStatus,
+                    onRetry = syncViewModel::retry,
+                    onResolve = {
+                        when (syncStatus.resolutionTarget) {
+                            com.example.bspos.presentation.sync.SyncResolutionTarget.DECANTS -> {
+                                if (canSeeMenu("decants")) {
+                                    navController.navigate(Screen.Decants.route) { launchSingleTop = true }
+                                } else if (canSeeMenu("settings")) {
+                                    navController.navigate(Screen.Settings.route) { launchSingleTop = true }
+                                } else {
+                                    UiErrorBus.show("La operación de Decants requiere revisión del administrador.")
+                                }
+                            }
+                            com.example.bspos.presentation.sync.SyncResolutionTarget.SYNC_SETTINGS -> {
+                                if (canSeeMenu("settings")) {
+                                    navController.navigate(Screen.Settings.route) { launchSingleTop = true }
+                                } else {
+                                    UiErrorBus.show("La operación requiere revisión. Solicita al administrador abrir Ajustes > Sincronización.")
+                                }
+                            }
+                            com.example.bspos.presentation.sync.SyncResolutionTarget.NONE -> {
+                                if (canSeeMenu("settings")) {
+                                    navController.navigate(Screen.Settings.route) { launchSingleTop = true }
+                                } else {
+                                    UiErrorBus.show("La operación requiere revisión del administrador.")
+                                }
+                            }
+                        }
+                    }
+                )
                 }
             }
         ) { paddingValues ->
