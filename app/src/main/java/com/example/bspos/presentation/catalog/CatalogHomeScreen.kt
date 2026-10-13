@@ -523,6 +523,9 @@ internal fun ProductForm(current: Product?, currentQuantity: Long, categories: L
     var name by remember(current?.id) { mutableStateOf(current?.name.orEmpty()) }
     var description by remember(current?.id) { mutableStateOf(current?.description.orEmpty()) }
     var code by remember(current?.id) { mutableStateOf(current?.internalCode.orEmpty()) }
+    val generatedCode = remember(current?.id) {
+        "AUTO-" + UUID.randomUUID().toString().replace("-", "").take(12).uppercase(Locale.ROOT)
+    }
     var price by remember(current?.id) { mutableStateOf(current?.salePrice?.let { java.math.BigDecimal(it).movePointLeft(2).toPlainString() }.orEmpty()) }
     var priceChanged by remember(current?.id) { mutableStateOf(false) }
     var wholesalePrice by remember(current?.id) { mutableStateOf(current?.wholesalePrice?.let { java.math.BigDecimal(it).movePointLeft(2).toPlainString() }.orEmpty()) }
@@ -821,7 +824,12 @@ internal fun ProductForm(current: Product?, currentQuantity: Long, categories: L
                     )
                 }
             }
-            if (showProductCode) OutlinedTextField(code, { code = it }, label = { Text("Código interno") })
+            if (showProductCode) OutlinedTextField(
+                code,
+                { code = it },
+                label = { Text("Código interno") },
+                supportingText = { if (code.isBlank()) Text("Se generará un código único automáticamente") }
+            )
             if (showCost && !effectiveDecantMode && !comboMode) OutlinedTextField(purchasePrice, { value -> if (current == null) purchasePrice = value; purchaseChanged = true; priceError = false }, label = { Text(when (saleUnit) { "bottle" -> "Costo de compra por botella (${LocalCurrency.current.symbol})"; "service" -> "Costo de insumos (${LocalCurrency.current.symbol})"; else -> "Precio de compra (${LocalCurrency.current.symbol})" }) }, enabled = current == null, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), isError = priceError, supportingText = { if (saleUnit == "bottle") Text("Obligatorio para calcular la ganancia y el costo recuperado por decants") else if (saleUnit == "service") Text("Opcional; se usa para calcular la ganancia del servicio") else if (current != null) Text("Se actualiza desde una entrada de inventario") })
             OutlinedTextField(price, { value -> price = value; priceChanged = true; priceError = false }, label = { Text(if (saleUnit == "service") "Precio del servicio (${LocalCurrency.current.symbol})" else "Precio de venta (${LocalCurrency.current.symbol})") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), isError = priceError, supportingText = { if (priceError) Text("Indica un precio válido, con hasta dos decimales") })
             if (!serviceMode && current?.remoteSaleUnit != "service") OutlinedTextField(wholesalePrice, { wholesalePrice = it; priceError = false }, label = { Text("Precio por mayor (${LocalCurrency.current.symbol})") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), supportingText = { Text("Opcional; habilita el modo mayorista en el POS") })
@@ -861,7 +869,7 @@ internal fun ProductForm(current: Product?, currentQuantity: Long, categories: L
             val wholesale = wholesalePrice.toPesosCents()
             val quantity = initialQuantity.toLongOrNull()
             val minimum = minimumStock.toLongOrNull()
-            val effectiveCode = code.ifBlank { "AUTO-" + name.trim().uppercase(Locale.ROOT).replace(Regex("[^A-Z0-9]+"), "-").take(24) }
+            val effectiveCode = code.ifBlank { generatedCode }
             val effectivePurchase = if (effectiveDecantMode || comboMode) 0L else if (saleUnit == "service" && purchasePrice.isBlank()) 0L else if (showCost) purchase else (current?.lastPurchaseCost ?: 0L)
             val effectiveQuantity = if (showInventoryFields && !effectiveDecantMode && saleUnit != "service" && !comboMode) quantity else 0L
             val selectedVolume = volumeMl.toIntOrNull()

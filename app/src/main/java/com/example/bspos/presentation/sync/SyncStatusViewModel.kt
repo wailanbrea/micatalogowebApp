@@ -47,7 +47,10 @@ class SyncStatusViewModel @Inject constructor(
         // sales, or arbitrary validation errors. Observe the outbox as well as
         // the active shop: a stale row may be restored after the shop has
         // already been selected, and in that case a shop-only collector would
-        // never see it.
+        // never see it. The same one-shot recovery applies to old product
+        // operations that used the name-derived AUTO-* SKU and were blocked
+        // after another product claimed that code. The server now assigns a
+        // unique AUTO-* replacement for that reserved namespace.
         viewModelScope.launch {
             combine(
                 shops.changes.filterNotNull().distinctUntilChanged(),
@@ -57,7 +60,7 @@ class SyncStatusViewModel @Inject constructor(
             }.collect { (shop, rows) ->
                 val recoverable = rows.filter {
                     it.state == "BLOCKED" &&
-                        isRecoverableDecantTypeRejection(it) &&
+                        (isRecoverableDecantTypeRejection(it) || isRecoverableGeneratedSkuConflict(it)) &&
                         attemptedRecoveries.add("$shop:${it.id}")
                 }
                 var retried = false
@@ -126,6 +129,16 @@ class SyncStatusViewModel @Inject constructor(
         val message = row.error.orEmpty().lowercase()
         if (!(("type" in message || "tipo" in message) && ("invalid" in message || "inválid" in message))) return false
         return operationType(row.payload) in RECOVERABLE_DECANT_TYPES
+    }
+
+    private fun isRecoverableGeneratedSkuConflict(row: com.example.bspos.data.local.entity.OperationOutboxEntity): Boolean {
+        if (operationType(row.payload) != "product_upsert") return false
+        val message = row.error.orEmpty().lowercase()
+        if (!("sku" in message && "existe" in message)) return false
+        val code = runCatching {
+            json.parseToJsonElement(row.payload).jsonObject["internal_code"]?.jsonPrimitive?.contentOrNull
+        }.getOrNull()
+        return code?.startsWith("AUTO-", ignoreCase = true) == true
     }
 
     private companion object {
