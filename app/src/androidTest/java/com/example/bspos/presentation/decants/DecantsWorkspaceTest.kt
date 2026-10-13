@@ -14,7 +14,7 @@ import org.junit.runner.RunWith
 class DecantsWorkspaceTest {
     @get:Rule val compose = createComposeRule()
     private val opening = DecantOpeningDto("opening", "2026-10-06", 100, 15, costCents = 100000, remainingCostCents = 15000)
-    private val size = DecantSizeDto("size", "Perfume 5 ml", 5, 30000, prepared = 5, capacity = 3, emptyVials = 2, vialCostCents = 5000)
+    private val size = DecantSizeDto("size", "Perfume 5 ml", 5, priceCents = 30000, prepared = 5, capacity = 3, emptyVials = 2, vialCostCents = 5000)
     private val group = DecantFragranceDto("source", "Perfume Demo 100ml", volumeMl = 100, sealed = 10, tracked = true, sizes = listOf(size), openings = listOf(opening), sourceSaleUnit = "bottle")
     private val workspace = DecantWorkspaceDto(enabled = true, canManage = true, finance = true, groups = listOf(group), prepared = 5, preparedValueCents = 150000,
         vials = listOf(DecantVialDto("vial", "5ml", 5, empty = 2, nextCostCents = 5000, lots = listOf(DecantVialLotDto(1, "2026-10-06", 2, 2, 5000)))))
@@ -41,6 +41,24 @@ class DecantsWorkspaceTest {
         compose.onNodeWithText("quedan 15 de 100 ml").performClick()
         compose.onNodeWithText("5 ml").performClick()
         compose.onNodeWithText("Preparar 1 frasco(s)").assertIsNotEnabled()
+    }
+
+    @Test fun availableVialWithoutCatalogPresentationIsShownAsNewPreparationOption() {
+        val groupWithoutPresentation = group.copy(sizes = emptyList())
+        val workspaceWithoutPresentation = workspace.copy(
+            groups = listOf(groupWithoutPresentation),
+            vials = listOf(
+                DecantVialDto("vial-5", "5 ml", 5, empty = 20, salePriceCents = 12500),
+                DecantVialDto("vial-10", "10 ml", 10, empty = 50)
+            )
+        )
+        compose.setContent { BSPOSTheme {
+            DecantPrepareSheet(workspaceWithoutPresentation, null, true, {}, {}) { _, _, _, _, _ -> }
+        } }
+        compose.onNodeWithText("quedan 15 de 100 ml").performClick()
+        compose.onNodeWithText("5 ml").assertExists()
+        compose.onNodeWithText("20 envases disponibles · nueva presentación").assertExists()
+        compose.onNodeWithText("10 ml").assertExists()
     }
 
     @Test fun cardsShowPreparedUnitsRatherThanSummingCompetingCapacities() {

@@ -86,6 +86,8 @@ class ShopReadModelTest {
                 buildJsonObject { put("type", "unit_upsert"); put("record_id", id); put("client_operation_uuid", operation) }.toString(), Instant.now())
             db.operationOutboxDao().insert(row)
             val api = object : MiCatalogoOperationApi {
+                override suspend fun submitAccount(payload: JsonObject): retrofit2.Response<JsonObject> = retrofit2.Response.success(buildJsonObject {})
+
                 override suspend fun submit(shopId: String, payload: JsonObject) = retrofit2.Response.success(buildJsonObject {
                     put("client_operation_uuid", operation); put("record_id", UUID.randomUUID().toString())
                 })

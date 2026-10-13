@@ -27,6 +27,8 @@ class FinancialOutboxTest {
             var status = 500
             val requests = mutableListOf<String>()
             val api = object : MiCatalogoOperationApi {
+                override suspend fun submitAccount(payload: JsonObject): Response<JsonObject> = Response.success(buildJsonObject {})
+
                 override suspend fun submit(shopId: String, payload: JsonObject): Response<JsonObject> {
                     assertEquals("shop-1", shopId)
                     requests.add(payload.toString())

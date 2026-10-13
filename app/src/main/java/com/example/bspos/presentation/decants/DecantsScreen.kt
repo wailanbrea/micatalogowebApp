@@ -53,6 +53,17 @@ private data class QuickDecantLine(
     val quantity: String = "0"
 )
 
+/** A configured decant product or an available empty-vial size not configured yet. */
+internal data class DecantPrepareSizeOption(
+    val id: String,
+    val productId: String?,
+    val volumeMl: Int,
+    val imageUrl: String?,
+    val priceCents: Long?,
+    val emptyVials: Int,
+    val priceSource: String = "envase"
+)
+
 @Composable
 fun DecantsScreen(presentation: MiCatalogoBusinessPresentation, showCost: Boolean,
     startTutorial: Boolean = false,
@@ -133,12 +144,29 @@ fun DecantsScreen(presentation: MiCatalogoBusinessPresentation, showCost: Boolea
             }
             sheet == "prepare" -> DecantPrepareSheet(workspace, focus, enabled, { sheet = null },
                 { createSource = it.id; sheet = null }, initialSizeId = focusSize) { group, opening, size, qty, price ->
-                viewModel.command(operation("decant_prepare") {
-                    put("product_id", size.id)
-                    if (opening != null) { put("opening_id", opening.id); put("expected_ml", opening.remainingMl) }
-                    else { put("source_product_id", group.id); put("expected_stock", group.sealed) }
-                    put("quantity", qty); put("price", price)
-                }, listOf(group.id, size.id))
+                if (size.productId == null) {
+                    // An empty vial can exist before its catalog presentation. Configure
+                    // that presentation and prepare its first batch atomically on the server.
+                    viewModel.command(operation("decant_setup") {
+                        put("source_product_id", group.id)
+                        put("expected_stock", group.sealed)
+                        put("mode", "ready")
+                        put("presentations", buildJsonArray {
+                            add(buildJsonObject {
+                                put("volume_ml", size.volumeMl)
+                                put("price", price)
+                                put("quantity", qty)
+                            })
+                        })
+                    }, listOf(group.id))
+                } else {
+                    viewModel.command(operation("decant_prepare") {
+                        put("product_id", size.productId)
+                        if (opening != null) { put("opening_id", opening.id); put("expected_ml", opening.remainingMl) }
+                        else { put("source_product_id", group.id); put("expected_stock", group.sealed) }
+                        put("quantity", qty); put("price", price)
+                    }, listOf(group.id, size.productId))
+                }
             }
             sheet == "price" -> focus?.sizes?.firstOrNull { it.id == focusSize }?.let { size ->
                 DecantPriceSheet(size, enabled, { sheet = null }) { price -> viewModel.command(operation("decant_presentation_update") {
@@ -543,15 +571,27 @@ private fun DecantQuickSetupSheet(
 
 @Composable internal fun DecantPrepareSheet(workspace: DecantWorkspaceDto, focus: DecantFragranceDto?, enabled: Boolean, onDismiss: () -> Unit,
     onNewSize: (DecantFragranceDto) -> Unit, initialSizeId: String? = null,
-    onPrepare: (DecantFragranceDto, DecantOpeningDto?, DecantSizeDto, Int, String) -> Unit) {
+    onPrepare: (DecantFragranceDto, DecantOpeningDto?, DecantPrepareSizeOption, Int, String) -> Unit) {
     var groupId by remember { mutableStateOf(focus?.id) }
     var openingId by remember { mutableStateOf(focus?.openings?.singleOrNull { it.remainingMl > 0 }?.id) }
     var sealedSelected by remember { mutableStateOf(false) }
-    var sizeId by remember { mutableStateOf(initialSizeId ?: focus?.sizes?.firstOrNull()?.id) }
+    var sizeKey by remember { mutableStateOf(initialSizeId ?: focus?.sizes?.firstOrNull()?.id) }
     var quantity by remember { mutableIntStateOf(1) }
-    var price by remember { mutableStateOf(focus?.sizes?.firstOrNull { it.id == sizeId }?.let { decimal(it.priceCents) } ?: "") }
     val eligibleGroups = workspace.groups.filter { it.isBottleSource() }
-    val group = eligibleGroups.firstOrNull { it.id == groupId }; val opening = group?.openings?.firstOrNull { it.id == openingId }; val size = group?.sizes?.firstOrNull { it.id == sizeId }
+    val group = eligibleGroups.firstOrNull { it.id == groupId }
+    val opening = group?.openings?.firstOrNull { it.id == openingId }
+    val sizeOptions = group?.let { source ->
+        val configured = source.sizes.map { item ->
+            DecantPrepareSizeOption(item.id, item.id, item.volumeMl, item.imageUrl ?: source.imageUrl, item.priceCents, item.emptyVials, item.priceSource)
+        }
+        val configuredVolumes = configured.map { it.volumeMl }.toSet()
+        val vialSizes = workspace.vials
+            .filter { it.active && it.empty > 0 && it.volumeMl <= source.volumeMl && it.volumeMl !in configuredVolumes }
+            .map { vial -> DecantPrepareSizeOption("vial:${vial.volumeMl}", null, vial.volumeMl, source.imageUrl, vial.salePriceCents, vial.empty, "envase") }
+        configured + vialSizes
+    }.orEmpty()
+    val size = sizeOptions.firstOrNull { it.id == sizeKey }
+    var price by remember(sizeKey, size?.priceCents) { mutableStateOf(size?.priceCents?.let(::decimal) ?: "") }
     val selected = opening != null || sealedSelected
     val remaining = opening?.remainingMl ?: if (sealedSelected) group?.volumeMl ?: 0 else 0
     val max = if (selected && size != null && size.volumeMl > 0) minOf(remaining / size.volumeMl, size.emptyVials) else 0
@@ -559,13 +599,15 @@ private fun DecantQuickSetupSheet(
     val valid = enabled && selected && size != null && quantity in 1..max && priceCents != null && priceCents >= 0
     fun selectSource(source: DecantFragranceDto, bottle: DecantOpeningDto?) {
         groupId = source.id; openingId = bottle?.id; sealedSelected = bottle == null
-        val first = source.sizes.firstOrNull { it.id == initialSizeId } ?: source.sizes.firstOrNull()
-        sizeId = first?.id; price = first?.let { decimal(it.priceCents) } ?: ""; quantity = 1
+        val first = source.sizes.firstOrNull { it.id == initialSizeId }?.id
+            ?: source.sizes.firstOrNull()?.id
+            ?: workspace.vials.firstOrNull { it.active && it.empty > 0 && it.volumeMl <= source.volumeMl }?.let { "vial:${it.volumeMl}" }
+        sizeKey = first; quantity = 1
     }
     CheckoutStyleBottomSheet("Preparar decants", onDismiss,
         subtitle = if (!selected) "Elige la botella de origen." else "${group?.name.orEmpty()} · ${if (sealedSelected) "botella nueva" else "botella abierta"}", footer = {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            BSPOSOutlinedButton({ if (selected) { openingId = null; sealedSelected = false; sizeId = null } else onDismiss() }) { Text(if (selected) "Atrás" else "Cancelar") }
+            BSPOSOutlinedButton({ if (selected) { openingId = null; sealedSelected = false; sizeKey = null } else onDismiss() }) { Text(if (selected) "Atrás" else "Cancelar") }
             CheckoutStylePrimaryButton("${if (sealedSelected) "Abrir y preparar" else "Preparar"} $quantity frasco(s)", {
                 if (group != null && size != null && valid) onPrepare(group, opening, size, quantity, decimal(priceCents!!))
             }, enabled = valid, modifier = Modifier.weight(1f))
@@ -589,7 +631,15 @@ private fun DecantQuickSetupSheet(
             if (eligibleGroups.none { it.sealed > 0 || it.openings.any { b -> b.remainingMl > 0 } }) Text("No hay perfumes completos configurados como botella disponibles. Registra o recibe una botella completa para continuar.")
         } else if (group != null) {
             BSPOSSectionLabel("Tamaño")
-            group.sizes.forEach { item -> SelectionRow("${item.volumeMl} ml", "${item.emptyVials} disponibles", sizeId == item.id, imageUrl = item.imageUrl, trailing = money(item.priceCents)) { sizeId = item.id; quantity = 1; price = decimal(item.priceCents) } }
+            sizeOptions.forEach { item ->
+                SelectionRow(
+                    "${item.volumeMl} ml",
+                    if (item.productId == null) "${item.emptyVials} envases disponibles · nueva presentación" else "${item.emptyVials} envases disponibles",
+                    sizeKey == item.id,
+                    imageUrl = item.imageUrl,
+                    trailing = item.priceCents?.let(::money) ?: "Precio pendiente"
+                ) { sizeKey = item.id; quantity = 1 }
+            }
             BSPOSOutlinedButton({ onNewSize(group) }) { Text("Nueva presentación") }
             if (size != null) {
                 BSPOSSectionLabel("Cuántos")
