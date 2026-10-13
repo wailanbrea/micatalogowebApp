@@ -84,8 +84,8 @@ android {
         applicationId = "com.bsolutions.micatalogo"
         minSdk = 26
         targetSdk = 37
-        versionCode = 111
-        versionName = "1.0.110"
+        versionCode = 112
+        versionName = "1.0.111"
         buildConfigField("String", "MICATALOGO_API_BASE_URL", "\"${miCatalogoApiBaseUrl.get()}\"")
 
         testInstrumentationRunner = if (qaProfile != null) "com.example.bspos.qa.IsolatedQaRunner" else "androidx.test.runner.AndroidJUnitRunner"
