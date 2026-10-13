@@ -37,6 +37,24 @@ class SyncStatusViewModel @Inject constructor(
     private val scheduler: PosSaleSyncScheduler,
     private val json: Json
 ) : ViewModel() {
+    init {
+        // A previous production build could leave a valid decant operation in
+        // BLOCKED when the API had not yet whitelisted its operation type. Once
+        // the backend is corrected, retry that narrow, known-safe case with
+        // the original UUID. Never auto-retry inventory conflicts, payments,
+        // sales, or arbitrary validation errors.
+        viewModelScope.launch {
+            shops.changes.filterNotNull().distinctUntilChanged().collectLatest { shop ->
+                val recoverable = operations.activeForShop(shop)
+                    .filter { it.state == "BLOCKED" && isRecoverableDecantTypeRejection(it) }
+                if (recoverable.isNotEmpty()) {
+                    recoverable.forEach { operations.retryBlocked(it.id) }
+                    scheduler.enqueue()
+                }
+            }
+        }
+    }
+
     val status = shops.changes.flatMapLatest { shop ->
         if (shop == null) flowOf(SyncStatus()) else combine(
             operations.observeOutstanding(), sales.observeOutstanding(), payments.observeOutstanding(), operations.observeRefreshes()
@@ -87,4 +105,24 @@ class SyncStatusViewModel @Inject constructor(
     private fun operationType(payload: String): String? = runCatching {
         json.parseToJsonElement(payload).jsonObject["type"]?.jsonPrimitive?.contentOrNull
     }.getOrNull()
+
+    private fun isRecoverableDecantTypeRejection(row: com.example.bspos.data.local.entity.OperationOutboxEntity): Boolean {
+        val message = row.error.orEmpty().lowercase()
+        if (!(("type" in message || "tipo" in message) && ("invalid" in message || "inválid" in message))) return false
+        return operationType(row.payload) in RECOVERABLE_DECANT_TYPES
+    }
+
+    private companion object {
+        val RECOVERABLE_DECANT_TYPES = setOf(
+            "decant_setup",
+            "decant_vial_receive",
+            "decant_vial_update",
+            "decant_prepare",
+            "decant_presentation_update",
+            "decant_discard",
+            "decant_undo_open",
+            "decant_sell_remainder",
+            "decant_reconcile_opening"
+        )
+    }
 }
