@@ -26,6 +26,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.testTag
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.example.bspos.core.money.LocalCurrency
 import com.example.bspos.core.money.MoneyUtils
@@ -52,11 +53,22 @@ fun FinanceScreen(
     initialTab: Int = 0,
     canMutateExpenses: Boolean = true,
     canMutateCash: Boolean = true,
+    allowedMenuKeys: Set<String>? = null,
     viewModel: FinanceViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
     var selectedTab by remember { mutableIntStateOf(initialTab.coerceIn(0, 4)) }
+    val access = uiState.access.limitedTo(allowedMenuKeys)
+    val allowedTabs = access.tabs
+    val displayedTab = selectedTab.takeIf { it in allowedTabs } ?: allowedTabs.firstOrNull()
+    val canEditExpenses = canMutateExpenses && access.mutateExpenses
+    val canEditCash = canMutateCash && access.mutateCash
     var showExpenseDialog by remember { mutableStateOf(false) }
+    LaunchedEffect(allowedMenuKeys) { viewModel.setMenuCeiling(allowedMenuKeys) }
+    LaunchedEffect(allowedTabs, canEditExpenses) {
+        displayedTab?.let { selectedTab = it }
+        if (!canEditExpenses) showExpenseDialog = false
+    }
 
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -81,7 +93,7 @@ fun FinanceScreen(
         // Control Financiero” labels and wasted vertical space on mobile.
         topBar = {},
         floatingActionButton = {
-            if (selectedTab == 3 && canMutateExpenses) {
+            if (displayedTab == 3 && canEditExpenses) {
                 FloatingActionButton(
                     onClick = { showExpenseDialog = true },
                     containerColor = BSPOSTheme.colors.primary,
@@ -117,40 +129,10 @@ fun FinanceScreen(
                     )
 
                     // Pestañas Principales
-                    PrimaryScrollableTabRow(
-                        selectedTabIndex = selectedTab,
-                        edgePadding = 16.dp,
-                        containerColor = BSPOSTheme.colors.surface
-                    ) {
-                        Tab(
-                            selected = selectedTab == 0,
-                            onClick = { selectedTab = 0 },
-                            text = { Text("Resumen y KPIs", fontWeight = FontWeight.Bold) }
-                        )
-                        Tab(
-                            selected = selectedTab == 1,
-                            onClick = { selectedTab = 1 },
-                            text = { Text("Estado de Resultados", fontWeight = FontWeight.Bold) }
-                        )
-                        Tab(
-                            selected = selectedTab == 2,
-                            onClick = { selectedTab = 2 },
-                            text = { Text("Flujo de Efectivo", fontWeight = FontWeight.Bold) }
-                        )
-                        Tab(
-                            selected = selectedTab == 3,
-                            onClick = { selectedTab = 3 },
-                            text = { Text("Gastos", fontWeight = FontWeight.Bold) }
-                        )
-                        Tab(
-                            selected = selectedTab == 4,
-                            onClick = { selectedTab = 4 },
-                            text = { Text("Caja en línea", fontWeight = FontWeight.Bold) }
-                        )
-                    }
+                    FinancePermissionTabs(access, displayedTab ?: initialTab) { selectedTab = it }
 
                     Box(modifier = Modifier.weight(1f)) {
-                        when (selectedTab) {
+                        when (displayedTab) {
                             0 -> FinanceSummaryTab(
                                 summary = uiState.summary,
                                 onNavigateToCash = onNavigateToCash
@@ -164,13 +146,13 @@ fun FinanceScreen(
                             )
                             3 -> ExpensesTab(
                                 expenses = uiState.expenses,
-                                onAddExpense = { showExpenseDialog = true }.takeIf { canMutateExpenses },
+                                onAddExpense = { showExpenseDialog = true }.takeIf { canEditExpenses },
                                 loading = uiState.expensesLoading, error = uiState.expensesError, onRetry = viewModel::refresh
                             )
                             4 -> RemoteCashTab(
                                 cash = uiState.cashSession,
                                 busy = uiState.isCashOperationBusy,
-                                canMutate = canMutateCash,
+                                canMutate = canEditCash,
                                 onOpen = viewModel::openRemoteCash,
                                 onClose = viewModel::closeRemoteCash,
                                 onMovement = viewModel::recordRemoteCashMovement
@@ -182,7 +164,7 @@ fun FinanceScreen(
         }
     }
 
-    if (showExpenseDialog) {
+    if (showExpenseDialog && canEditExpenses && displayedTab == 3) {
         ExpenseCreateDialog(
             categories = uiState.expenseCategories,
             isSaving = uiState.isRegisteringExpense,
@@ -192,6 +174,23 @@ fun FinanceScreen(
                 showExpenseDialog = false
             }
         )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun FinancePermissionTabs(access: FinanceAccess, selectedTab: Int, onSelect: (Int) -> Unit) {
+    val tabs = access.tabs
+    if (tabs.isEmpty()) {
+        Text("No tienes acceso a estas operaciones.", modifier = Modifier.padding(16.dp))
+        return
+    }
+    val displayed = selectedTab.takeIf { it in tabs } ?: tabs.first()
+    val labels = listOf("Resumen y KPIs", "Estado de Resultados", "Flujo de Efectivo", "Gastos", "Caja en línea")
+    PrimaryScrollableTabRow(selectedTabIndex = tabs.indexOf(displayed), modifier = Modifier.testTag("finance-permission-tabs"), edgePadding = 16.dp, containerColor = BSPOSTheme.colors.surface) {
+        tabs.forEach { tab ->
+            Tab(selected = displayed == tab, onClick = { onSelect(tab) }, text = { Text(labels[tab], fontWeight = FontWeight.Bold) })
+        }
     }
 }
 

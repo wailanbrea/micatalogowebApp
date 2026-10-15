@@ -32,6 +32,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.encodeToString
 import okhttp3.OkHttpClient
 import okhttp3.MediaType.Companion.toMediaType
 import org.junit.Assert.assertEquals
@@ -132,7 +133,8 @@ class PosSaleLiveIntegrationTest {
                 db.posSaleOutboxDao(),
                 QaSettings,
                 Json { ignoreUnknownKeys = true },
-                PosSaleSyncScheduler(context), com.example.bspos.data.local.tenant.tenantTestScope(shopId)
+                PosSaleSyncScheduler(context), com.example.bspos.data.local.tenant.tenantTestScope(shopId),
+                com.example.bspos.data.local.tenant.tenantTestMenuPolicy(shopId)
             )
             val invoicePrefix = "QA-OFFLINE-${UUID.randomUUID()}"
             val firstSale = completeSale(
@@ -220,6 +222,11 @@ class PosSaleLiveIntegrationTest {
             assertEquals("SENT", db.posSaleOutboxDao().stateForSale(creditSale.id))
             assertEquals(250050L, db.customerRouteDao().findCustomer(localCustomerId, shopId)?.balance)
 
+            val effectiveShops = checkNotNull(api.shops().body()) { "QA requires the current server shop permissions." }
+            val paymentPermissions = object : androidx.datastore.core.DataStore<androidx.datastore.preferences.core.Preferences> {
+                override val data = flowOf(androidx.datastore.preferences.core.preferencesOf(SHOP_SNAPSHOT_CACHE to json.encodeToString(effectiveShops)))
+                override suspend fun updateData(transform: suspend (androidx.datastore.preferences.core.Preferences) -> androidx.datastore.preferences.core.Preferences): androidx.datastore.preferences.core.Preferences = error("Read-only QA snapshot")
+            }
             val paymentUseCase = RecordPaymentUseCase(
                 RoomDatabaseTransactor(db),
                 db.paymentDao(),
@@ -229,7 +236,7 @@ class PosSaleLiveIntegrationTest {
                 db.paymentSyncDao(),
                 db.posSaleOutboxDao(),
                 PosSaleSyncScheduler(context),
-                json, com.example.bspos.data.local.tenant.tenantTestScope(shopId)
+                json, com.example.bspos.data.local.tenant.tenantTestScope(shopId), CachedShopMenuPolicy(paymentPermissions, json)
             )
             paymentUseCase(
                 RecordPaymentRequest(
@@ -370,7 +377,8 @@ class PosSaleLiveIntegrationTest {
                 db.posSaleOutboxDao(),
                 QaSettings,
                 Json { ignoreUnknownKeys = true },
-                PosSaleSyncScheduler(context), com.example.bspos.data.local.tenant.tenantTestScope(shopId)
+                PosSaleSyncScheduler(context), com.example.bspos.data.local.tenant.tenantTestScope(shopId),
+                com.example.bspos.data.local.tenant.tenantTestMenuPolicy(shopId)
             )
             val sale = completeSale(
                 CompleteSaleRequest(

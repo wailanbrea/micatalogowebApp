@@ -19,7 +19,8 @@ import javax.inject.Inject
 class RemoteMutationRecorder @Inject constructor(private val transactor: AppDatabaseTransactor,
     private val categories: CategoryDao, private val queue: OperationOutboxDao,
     private val scheduler: PosSaleSyncScheduler,
-    private val images: ProductImageSnapshot? = null) {
+    private val images: ProductImageSnapshot? = null,
+    private val catalogPolicy: CachedCatalogPolicy? = null) {
     suspend fun <T> transaction(block: suspend () -> T): T = transactor.runInTransaction { block() }
     fun wake() = scheduler.enqueue()
 
@@ -62,6 +63,8 @@ class RemoteMutationRecorder @Inject constructor(private val transactor: AppData
         val photo = product.imagePath?.takeIf { previous?.imagePath != it }?.let {
             checkNotNull(images) { "No está disponible el procesamiento de fotos." }.capture(it)
         }
+        val captureCost = previous == null && includeInitialCost(product.miCatalogoSaleUnit, product.lastPurchaseCost,
+            catalogPolicy?.canReadCosts(shop) ?: true)
         enqueue(shop, listOf(remote), buildJsonObject {
             put("type", "product_upsert"); put("product_id", remote)
             if (previous == null || previous.name != product.name) put("name", product.name)
@@ -103,7 +106,7 @@ class RemoteMutationRecorder @Inject constructor(private val transactor: AppData
                 put("price", MiCatalogoPosSaleOutboxMapper.decimalPrice(product.salePrice))
                 previous?.let { put("expected_price", MiCatalogoPosSaleOutboxMapper.decimalPrice(it.salePrice)) }
             }
-            if (previous == null) put("cost_price", MiCatalogoPosSaleOutboxMapper.decimalPrice(product.lastPurchaseCost))
+            if (captureCost) put("cost_price", MiCatalogoPosSaleOutboxMapper.decimalPrice(product.lastPurchaseCost))
         }, product.updatedAt)
     }
 
@@ -112,6 +115,16 @@ class RemoteMutationRecorder @Inject constructor(private val transactor: AppData
         require(product.tenant.shopId==shop && product.tenant.status==com.example.bspos.data.local.entity.TenantMetadata.ASSIGNED)
         val remote = checkNotNull(product.miCatalogoProductId)
         enqueue(shop, listOf(remote), buildJsonObject { put("type", "product_archive"); put("product_id", remote) }, at)
+    }
+
+    suspend fun photo(shop: String, productId: String, path: String) {
+        check(catalogPolicy?.canManagePhotos(shop) == true) { "No tienes permiso para gestionar fotos en esta tienda." }
+        val snapshot = checkNotNull(images) { "No está disponible el procesamiento de fotos." }.capture(path)
+        check(catalogPolicy?.canManagePhotos(shop) == true) { "El permiso de Fotos cambió mientras se preparaba la imagen." }
+        enqueue(shop, listOf(productId), buildJsonObject {
+            put("type", "product_photo_update"); put("product_id", productId)
+            put("image_base64", snapshot.base64); put("image_sha256", snapshot.sha256)
+        }, Instant.now())
     }
 
     /**

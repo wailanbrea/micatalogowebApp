@@ -160,10 +160,13 @@ fun PosScreen(
     val context = LocalContext.current
     val quantities = stock.associate { it.productId to it.quantity }
     val selectedQuantities = cart.associate { it.product.id to it.quantity }
+    val sourceProductNames = products.mapNotNull { product ->
+        product.remoteProductId?.let { remoteId -> remoteId to product.name }
+    }.toMap()
     val catalog = products.filter {
         it.isActive && it.deletedAt == null &&
             (!wholesaleMode || (it.wholesalePrice ?: 0L) > 0L) &&
-            (catalogTab == "all" || (catalogTab == "products" && it.remoteSaleUnit != "decant" && it.remoteSaleUnit != "service") || (catalogTab == "services" && it.remoteSaleUnit == "service") || (catalogTab == "decants" && it.remoteSaleUnit == "decant")) &&
+            (catalogTab == "all" || (catalogTab == "products" && !it.isDecantProduct() && !it.remoteSaleUnit.equals("service", ignoreCase = true)) || (catalogTab == "services" && it.remoteSaleUnit.equals("service", ignoreCase = true)) || (catalogTab == "decants" && it.isDecantProduct())) &&
             (selectedCategoryId == null || it.categoryId == selectedCategoryId) &&
             (it.name.contains(query, true) ||
                 it.internalCode.contains(query, true) ||
@@ -171,10 +174,10 @@ fun PosScreen(
     }
     val cartQuantity = cart.sumOf { it.quantity }
     val categoryOptions = categories.filter { category -> products.any { product -> product.categoryId == category.id } }
-    val hasDecants = products.any { it.remoteSaleUnit == "decant" }
-    val hasServices = products.any { it.remoteSaleUnit == "service" }
-    val decantsCount = products.count { it.isActive && it.deletedAt == null && it.remoteSaleUnit == "decant" }
-    val servicesCount = products.count { it.isActive && it.deletedAt == null && it.remoteSaleUnit == "service" }
+    val hasDecants = products.any(Product::isDecantProduct)
+    val hasServices = products.any { it.remoteSaleUnit.equals("service", ignoreCase = true) }
+    val decantsCount = products.count { it.isActive && it.deletedAt == null && it.isDecantProduct() }
+    val servicesCount = products.count { it.isActive && it.deletedAt == null && it.remoteSaleUnit.equals("service", ignoreCase = true) }
     val recentProducts = recentProductIds.mapNotNull { id -> products.firstOrNull { it.id == id } }
     LaunchedEffect(categoryOptions) {
         if (selectedCategoryId != null && categoryOptions.none { it.id == selectedCategoryId }) {
@@ -299,9 +302,9 @@ fun PosScreen(
                 ) { contentPadding ->
                     val mobileCatalog = catalog.filter { product ->
                         when (catalogTab) {
-                            "decants" -> product.remoteSaleUnit == "decant"
-                            "services" -> product.remoteSaleUnit == "service"
-                            else -> product.remoteSaleUnit != "decant" && product.remoteSaleUnit != "service"
+                            "decants" -> product.isDecantProduct()
+                            "services" -> product.remoteSaleUnit.equals("service", ignoreCase = true)
+                            else -> !product.isDecantProduct() && !product.remoteSaleUnit.equals("service", ignoreCase = true)
                         }
                     }
                     Column(Modifier.fillMaxSize().background(Color.White).padding(contentPadding)) {
@@ -330,7 +333,7 @@ fun PosScreen(
                         HorizontalDivider(color = Color(0xFFE4E4E7), modifier = Modifier.padding(top = 10.dp))
                         if (catalogTab == "all" && query.isBlank() && selectedCategoryId == null && recentProducts.isNotEmpty()) {
                             Spacer(Modifier.height(8.dp))
-                            PunttoRecentGrid(recentProducts.filter { !wholesaleMode || (it.wholesalePrice ?: 0L) > 0L }, quantities, selectedQuantities, settings.allowNegativeStock, { viewModel.add(it) }, wholesaleMode)
+                            PunttoRecentGrid(recentProducts.filter { !wholesaleMode || (it.wholesalePrice ?: 0L) > 0L }, quantities, selectedQuantities, settings.allowNegativeStock, sourceProductNames, { viewModel.add(it) }, wholesaleMode)
                         }
                         Spacer(Modifier.height(8.dp))
                         PunttoProductList(
@@ -338,6 +341,7 @@ fun PosScreen(
                             quantities = quantities,
                             selectedQuantities = selectedQuantities,
                             allowNegativeStock = settings.allowNegativeStock,
+                            sourceProductNames = sourceProductNames,
                             wholesaleMode = wholesaleMode,
                             onAdd = { viewModel.add(it) },
                             onChangeQuantity = { product, quantity -> viewModel.change(product.id, quantity) },
@@ -687,6 +691,7 @@ private fun PunttoProductList(
     quantities: Map<java.util.UUID, Long>,
     selectedQuantities: Map<java.util.UUID, Long>,
     allowNegativeStock: Boolean,
+    sourceProductNames: Map<String, String>,
     wholesaleMode: Boolean,
     onAdd: (Product) -> Unit,
     onChangeQuantity: (Product, Long) -> Unit,
@@ -706,7 +711,7 @@ private fun PunttoProductList(
         lazyItems(products, key = { it.id }) { product ->
             val available = quantities[product.id] ?: 0L
             val selected = selectedQuantities[product.id] ?: 0L
-            val canIncrease = product.remoteSaleUnit == "service" || selected < available
+            val canIncrease = product.remoteSaleUnit.equals("service", ignoreCase = true) || selected < available
             Row(
                 modifier = Modifier.fillMaxWidth().clickable(enabled = canIncrease) { onAdd(product) }.padding(horizontal = 16.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
@@ -715,6 +720,13 @@ private fun PunttoProductList(
                 Spacer(Modifier.width(14.dp))
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(product.name, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.Medium, color = Color(0xFF18181B), fontSize = 13.5.sp)
+                    product.decantPresentationLabel()?.let {
+                        Text(it, color = Color(0xFF2563EB), fontSize = 10.5.sp, fontWeight = FontWeight.Bold)
+                    }
+                    product.sourceProductName(sourceProductNames)?.let {
+                        Text("Fuente: $it", maxLines = 1, overflow = TextOverflow.Ellipsis, color = Color(0xFF71717A), fontSize = 10.5.sp)
+                    }
+                    Text(product.posStockLabel(available, allowNegativeStock), color = if (available > 0) Color(0xFF15803D) else Color(0xFFB45309), fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold)
                 }
                 Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(money(if (wholesaleMode) product.wholesalePrice ?: product.salePrice else product.salePrice), fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace, fontSize = 13.sp, color = Color(0xFF18181B))
@@ -742,6 +754,7 @@ private fun PunttoRecentGrid(
     quantities: Map<java.util.UUID, Long>,
     selectedQuantities: Map<java.util.UUID, Long>,
     allowNegativeStock: Boolean,
+    sourceProductNames: Map<String, String>,
     onAdd: (Product) -> Unit,
     wholesaleMode: Boolean = false
 ) {
@@ -751,7 +764,7 @@ private fun PunttoRecentGrid(
             products.take(2).forEach { product ->
                 val quantity = quantities[product.id] ?: 0L
                 val selected = selectedQuantities[product.id] ?: 0L
-                val canAdd = product.remoteSaleUnit == "service" || selected < quantity
+                val canAdd = product.remoteSaleUnit.equals("service", ignoreCase = true) || selected < quantity
                 Surface(
                     modifier = Modifier.weight(1f).clickable(enabled = canAdd) { onAdd(product) },
                     shape = RoundedCornerShape(16.dp),
@@ -761,7 +774,10 @@ private fun PunttoRecentGrid(
                 ) {
                     Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
                         Text(product.name, maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF18181B))
+                        product.decantPresentationLabel()?.let { Text(it, color = Color(0xFF2563EB), fontSize = 10.sp, fontWeight = FontWeight.Bold) }
+                        product.sourceProductName(sourceProductNames)?.let { Text("Fuente: $it", maxLines = 1, overflow = TextOverflow.Ellipsis, color = Color(0xFF71717A), fontSize = 10.sp) }
                         Text(money(if (wholesaleMode) product.wholesalePrice ?: product.salePrice else product.salePrice), color = Color(0xFF71717A), fontSize = 11.5.sp, fontFamily = FontFamily.Monospace, modifier = Modifier.padding(top = 4.dp))
+                        Text(product.posStockLabel(quantity, allowNegativeStock), color = if (quantity > 0) Color(0xFF15803D) else Color(0xFFB45309), fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
                     }
                 }
             }
@@ -1248,7 +1264,7 @@ private fun RecentProductsRow(
         ) {
             lazyItems(products, key = { it.id }) { product ->
                 val quantity = quantities[product.id] ?: 0L
-                val canAdd = product.remoteSaleUnit == "service" || quantity > 0 || allowNegativeStock
+                val canAdd = product.remoteSaleUnit.equals("service", ignoreCase = true) || quantity > 0 || allowNegativeStock
                 Surface(
                     modifier = Modifier
                         .widthIn(min = 150.dp, max = 230.dp)
@@ -1374,7 +1390,7 @@ internal fun ProductGrid(products: List<Product>, quantities: Map<java.util.UUID
         items(products, key = { it.id }) { product ->
             val quantity = quantities[product.id] ?: 0L
             val selected = selectedQuantities[product.id] ?: 0L
-            val canAdd = product.remoteSaleUnit == "service" || quantity > 0 || allowNegativeStock
+            val canAdd = product.remoteSaleUnit.equals("service", ignoreCase = true) || quantity > 0 || allowNegativeStock
             Card(Modifier.clickable { if (canAdd) onAdd(product) }, shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface), elevation = CardDefaults.cardElevation(1.dp)) {
                 Column(Modifier.padding(13.dp)) {
                     Box(Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(15.dp)).background(BSPOSTheme.colors.primaryLight), contentAlignment = Alignment.Center) {
@@ -1413,8 +1429,9 @@ internal fun ProductGrid(products: List<Product>, quantities: Map<java.util.UUID
                     }
                     Spacer(Modifier.height(9.dp))
                     Text(product.name, fontWeight = FontWeight.Bold, maxLines = 2, minLines = 2, overflow = TextOverflow.Ellipsis)
+                    product.decantPresentationLabel()?.let { Text(it, color = BSPOSTheme.colors.primary, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold) }
                     Text(money(if (wholesaleMode) product.wholesalePrice ?: product.salePrice else product.salePrice), color = BSPOSTheme.colors.textPrimary, fontWeight = FontWeight.ExtraBold)
-                     Surface(shape = RoundedCornerShape(50), color = if (product.remoteSaleUnit == "service") BSPOSTheme.colors.primaryLight else if (quantity > 0) BSPOSTheme.colors.successLight else if (allowNegativeStock) BSPOSTheme.colors.warningLight else BSPOSTheme.colors.errorLight) { Text(if (product.remoteSaleUnit == "service") "Servicio · sin inventario" else if (quantity > 0) "En stock ($quantity)" else if (allowNegativeStock) "Stock negativo permitido" else "Agotado", modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp), color = if (product.remoteSaleUnit == "service") BSPOSTheme.colors.primary else if (quantity > 0) BSPOSTheme.colors.success else if (allowNegativeStock) BSPOSTheme.colors.warning else BSPOSTheme.colors.error, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold) }
+                     Surface(shape = RoundedCornerShape(50), color = if (product.remoteSaleUnit.equals("service", ignoreCase = true)) BSPOSTheme.colors.primaryLight else if (quantity > 0) BSPOSTheme.colors.successLight else if (allowNegativeStock) BSPOSTheme.colors.warningLight else BSPOSTheme.colors.errorLight) { Text(product.posStockLabel(quantity, allowNegativeStock), modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp), color = if (product.remoteSaleUnit.equals("service", ignoreCase = true)) BSPOSTheme.colors.primary else if (quantity > 0) BSPOSTheme.colors.success else if (allowNegativeStock) BSPOSTheme.colors.warning else BSPOSTheme.colors.error, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold) }
                 }
             }
         }

@@ -16,3 +16,19 @@ fun tenantTestScope(shopId:String):ShopScope {
     }
     return ShopScope(store,ShopSwitchLock())
 }
+
+/** Explicit permissions for synthetic owner fixtures, never application preferences. */
+fun tenantTestMenuPolicy(shopId: String, keys: List<String> = listOf("sales", "credit", "collections")): com.example.bspos.data.micatalogo.CachedShopMenuPolicy {
+    val json = kotlinx.serialization.json.Json
+    val payload = kotlinx.serialization.json.buildJsonArray {
+        add(kotlinx.serialization.json.buildJsonObject {
+            put("id", kotlinx.serialization.json.JsonPrimitive(shopId))
+            put("menu_permissions", kotlinx.serialization.json.JsonArray(keys.map { kotlinx.serialization.json.JsonPrimitive(it) }))
+        })
+    }.toString()
+    val store = object : DataStore<Preferences> {
+        override val data = kotlinx.coroutines.flow.flowOf(preferencesOf(com.example.bspos.data.micatalogo.SHOP_SNAPSHOT_CACHE to payload))
+        override suspend fun updateData(transform: suspend (Preferences) -> Preferences): Preferences = error("Read-only synthetic fixture")
+    }
+    return com.example.bspos.data.micatalogo.CachedShopMenuPolicy(store, json)
+}

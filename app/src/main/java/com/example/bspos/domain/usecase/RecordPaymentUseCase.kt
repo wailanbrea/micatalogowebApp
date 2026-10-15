@@ -29,12 +29,12 @@ class RecordPaymentUseCase @Inject constructor(
     private val transactor: AppDatabaseTransactor, private val payments: PaymentDao,
     private val sales: SaleDao, private val customers: CustomerRouteDao, private val cash: CashSessionDao,
     private val paymentSync: PaymentSyncDao, private val saleOutbox: PosSaleOutboxDao,
-    private val scheduler: PosSaleSyncScheduler, private val json: Json, private val shops: ShopScope
+    private val scheduler: PosSaleSyncScheduler, private val json: Json, private val shops: ShopScope,
+    private val permissions: com.example.bspos.data.micatalogo.CachedShopMenuPolicy
 ) {
     suspend operator fun invoke(request: RecordPaymentRequest): Payment {
         var queued = false
-        val result = transactor.runInTransaction {
-            val shop=shops.current()
+        val result = shops.mutate { shop -> transactor.runInTransaction {
             require(request.receiptNumber.isNotBlank() && request.allocations.isNotEmpty()
                 && (request.cashSessionId == null || request.method == PaymentMethod.CASH))
             val session = if (request.method == PaymentMethod.CASH)
@@ -46,8 +46,11 @@ class RecordPaymentUseCase @Inject constructor(
             val remoteShops = request.allocations.map { saleOutbox.shopForSale(it.saleId) }
             val remoteCount = remoteShops.count { it != null }
             require(remoteShops.all { it==null || it==shop }) { "La venta pertenece a otra tienda" }
-            require(remoteCount == 0 || (remoteCount == request.allocations.size && remoteShops.distinct().size == 1)) {
-                "Registra por separado abonos de ventas locales y de distintas tiendas."
+             require(remoteCount == 0 || (remoteCount == request.allocations.size && remoteShops.distinct().size == 1)) {
+                 "Registra por separado abonos de ventas locales y de distintas tiendas."
+             }
+            if (remoteCount > 0 || customer.miCatalogoCustomerShopId != null) {
+                check(permissions.allows(shop, "collections")) { "No tienes permiso vigente para registrar cobros en esta tienda." }
             }
             val payment = PaymentEntity(id, request.receiptNumber, request.customerId, request.routeId,
                 request.date, amount, request.method, request.reference, request.notes, request.date,tenant=TenantMetadata.assigned(shop))
@@ -72,7 +75,7 @@ class RecordPaymentUseCase @Inject constructor(
             }
             Payment(payment.id, payment.receiptNumber, payment.customerId, payment.routeId, payment.date,
                 payment.amount, payment.method, payment.reference, payment.notes, payment.createdAt)
-        }
+        } }
         if (queued) scheduler.enqueue()
         return result
     }

@@ -27,6 +27,11 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.onStart
+import kotlinx.coroutines.flow.collectLatest
+import com.example.bspos.domain.model.MiCatalogoResult
+import com.example.bspos.domain.model.canAccessMiCatalogoMenu
 import kotlinx.coroutines.launch
 import java.time.Instant
 import java.util.UUID
@@ -47,7 +52,8 @@ class CollectionViewModel @Inject constructor(
     private val shops:ShopScope,
     private val paymentQueue: com.example.bspos.data.local.dao.PaymentSyncDao,
     private val paymentSync: com.example.bspos.data.micatalogo.PaymentSyncRepository,
-    private val mutations: com.example.bspos.data.micatalogo.RemoteMutationRecorder
+    private val mutations: com.example.bspos.data.micatalogo.RemoteMutationRecorder,
+    private val permissions: com.example.bspos.data.micatalogo.CachedShopMenuPolicy
 ) : ViewModel() {
     val customers = customers.observeAll().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val sales = sales.observeAll().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
@@ -58,19 +64,34 @@ class CollectionViewModel @Inject constructor(
     private val _collecting = MutableStateFlow(false)
     val collecting = _collecting.asStateFlow()
     private val paymentGate = PaymentAttemptGate()
+    private val _canCollect = MutableStateFlow(false)
+    val canCollect = _canCollect.asStateFlow()
 
     init {
-        refreshRemoteCustomers()
-    }
-
-    private fun refreshRemoteCustomers() {
         viewModelScope.launch {
-            connection.activeShopId()?.let { catalog.syncCustomers(it) }
+            var previousShop: String? = null
+            combine(connection.observeConnection(), connection.observeShops().onStart { emit(null) }) { state, snapshot -> state to snapshot }
+                .collectLatest { (state, snapshot) ->
+                    val available = if (!state.isConfigured) emptyList() else snapshot ?: when (val result = connection.shops()) {
+                        is MiCatalogoResult.Success -> result.value
+                        is MiCatalogoResult.Failure -> emptyList()
+                    }
+                    if (connection.activeShopId() != state.activeShopId) return@collectLatest
+                    val shop = available.firstOrNull { it.id == state.activeShopId }
+                    val allowed = shop != null && state.role != "accountant" && canAccessMiCatalogoMenu(false, false,
+                        shop.menuPermissions, "collections", shop.capabilities, shop.enabledMenuKeys, shop.canManageMenuVisibility)
+                    val refresh = allowed && (!_canCollect.value || previousShop != state.activeShopId)
+                    if (!allowed || previousShop != state.activeShopId) { _customer.value = null; _message.value = null }
+                    previousShop = state.activeShopId
+                    _canCollect.value = allowed
+                    if (refresh) state.activeShopId?.let { catalog.syncCustomers(it) }
+                }
         }
     }
 
-    fun select(customer: Customer?) { _customer.value = customer }
+    fun select(customer: Customer?) { _customer.value = customer?.takeIf { _canCollect.value } }
     fun collect(saleId: UUID, amount: Long, method: PaymentMethod) {
+        if (!_canCollect.value) { _message.value = "No tienes permiso vigente para registrar cobros."; return }
         val selected = _customer.value ?: return
         val operationKey = "local:${selected.id}:$saleId:$amount:${method.name}"
         val requestId = paymentGate.start(operationKey) ?: return
@@ -101,6 +122,7 @@ class CollectionViewModel @Inject constructor(
      * payment FIFO across its open invoices.
      */
     fun collectRemote(customer: Customer, amount: Long, method: PaymentMethod) {
+        if (!_canCollect.value) { _message.value = "No tienes permiso vigente para registrar cobros."; return }
         val operationKey = "remote:${customer.id}:$amount:${method.name}"
         val requestId = paymentGate.start(operationKey) ?: return
         _collecting.value = true
@@ -108,6 +130,7 @@ class CollectionViewModel @Inject constructor(
             var succeeded = false
             try {
                 runCatching { shops.mutate { shopId ->
+                    check(permissions.allows(shopId, "collections")) { "No tienes permiso vigente para registrar cobros en esta tienda." }
                     val local = checkNotNull(customerDao.findCustomer(customer.id,shopId)) { "Cliente no encontrado en la tienda activa." }
                     require(amount > 0L && amount <= local.balance) { "El monto supera el saldo pendiente." }
                     require(local.isActive && local.deletedAt==null) { "El cliente está inactivo" }
@@ -136,10 +159,10 @@ class CollectionViewModel @Inject constructor(
                             "SENT" -> {
                                 succeeded = true
                                 catalog.syncCustomers(shopId)
-                                _message.value = "Cobro sincronizado."
+                                if (connection.activeShopId() == shopId && _canCollect.value) _message.value = "Cobro sincronizado."
                             }
                             "BLOCKED" -> error(ack.error ?: "El abono requiere revisión.")
-                            else -> _message.value = "Abono pendiente de sincronización. Se conserva para reintentar sin duplicarlo."
+                            else -> if (connection.activeShopId() == shopId && _canCollect.value) _message.value = "Abono pendiente de sincronización. Se conserva para reintentar sin duplicarlo."
                     }
                 } }.onSuccess {
                     succeeded = true

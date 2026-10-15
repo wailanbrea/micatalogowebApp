@@ -68,7 +68,11 @@ class OperationSyncRepository @Inject constructor(private val api: MiCatalogoOpe
     private fun confirmsResource(body: JsonObject, ack: JsonObject): Boolean {
         fun nestedId(key: String) = (ack[key] as? JsonObject)?.get("id")?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
         val resource = body["resource_id"]?.jsonPrimitive?.contentOrNull
+        val productId = body["product_id"]?.jsonPrimitive?.contentOrNull
+        val imageHash = body["image_sha256"]?.jsonPrimitive?.contentOrNull
         return when (body["type"]?.jsonPrimitive?.contentOrNull) {
+            "product_photo_update" -> !productId.isNullOrBlank() && !imageHash.isNullOrBlank() &&
+                ack["product_id"]?.jsonPrimitive?.contentOrNull == productId && ack["image_sha256"]?.jsonPrimitive?.contentOrNull == imageHash
             "return" -> (ack["return_id"]?.jsonPrimitive?.longOrNull ?: 0) > 0
             "cash_open" -> nestedId("session") != null
             "cash_close" -> nestedId("session") == resource && resource != null

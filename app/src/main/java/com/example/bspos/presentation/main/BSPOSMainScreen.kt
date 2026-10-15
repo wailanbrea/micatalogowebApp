@@ -150,12 +150,6 @@ import com.example.bspos.presentation.startup.StartupSnapshot
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import kotlinx.coroutines.launch
 
-private data class DrawerGroup(
-    val title: String,
-    val screens: List<Screen>,
-    val administrative: Boolean = false
-)
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BSPOSMainScreen(
@@ -188,7 +182,7 @@ private fun ShopScopedMainScreen(
     LaunchedEffect(startupSnapshot.shops) {
         settingsViewModel.hydrateShops(startupSnapshot.shops)
     }
-    val availableShops = accountState.shops.ifEmpty { startupSnapshot.shops }
+    val availableShops = accountState.displayedShops(startupSnapshot.shops)
     val activeShopId = connection.activeShopId
     val activeShop = availableShops.firstOrNull { it.id == activeShopId }
     val accountQuota = activeShop?.quota
@@ -215,7 +209,7 @@ private fun ShopScopedMainScreen(
     val sellerMode = !canManageShop
     val menuPermissions = currentShop?.menuPermissions.orEmpty()
     val canSeeMenu: (String) -> Boolean = { key ->
-        canAccessMiCatalogoMenu(
+        currentShop != null && canAccessMiCatalogoMenu(
             connection.isAdmin,
             canManageShop,
             menuPermissions,
@@ -225,126 +219,7 @@ private fun ShopScopedMainScreen(
             currentShop?.canManageMenuVisibility == true
         )
     }
-    val drawerGroups = buildList {
-        add(
-            DrawerGroup(
-                title = "Operación",
-                screens = listOfNotNull(
-                    Screen.Dashboard,
-                    Screen.POS.takeIf { canSeeMenu("sales") },
-                    Screen.SalesHistory.takeIf { canSeeMenu("sales") },
-                    Screen.Quotes.takeIf { canSeeMenu("quotes") },
-                    Screen.Orders.takeIf { canSeeMenu("orders") },
-                    Screen.Encargos.takeIf { canSeeMenu("encargos") },
-                    Screen.Shipments.takeIf { canSeeMenu("shipments") },
-                    Screen.DayClose.takeIf { canSeeMenu("day_close") },
-                    // Puntto exposes the app download/update entry inside Operación;
-                    // reuse MiCatalogo's existing update module instead of inventing
-                    // a hard-coded APK URL.
-                    Screen.DownloadApp.takeIf { canSeeMenu("updates") }
-                )
-            )
-        )
-        add(
-            DrawerGroup(
-                title = "Compras",
-                screens = listOfNotNull(
-                    Screen.Containers.takeIf { canSeeMenu("containers") },
-                    Screen.Loads.takeIf { canSeeMenu("loads") },
-                    Screen.Suppliers.takeIf { canSeeMenu("suppliers") },
-                    Screen.PurchaseInvoices.takeIf { canSeeMenu("purchase_invoices") }
-                )
-            )
-        )
-        add(
-            DrawerGroup(
-                title = "Catálogo",
-                screens = listOfNotNull(
-                    Screen.Inventory.takeIf { canSeeMenu("inventory") },
-                    Screen.Photos.takeIf { canSeeMenu("photos") },
-                    Screen.Storefront.takeIf { canSeeMenu("storefront") },
-                    Screen.Categories.takeIf { canSeeMenu("products") },
-                    Screen.Services.takeIf { canSeeMenu("services") },
-                    Screen.PriceHealth.takeIf { canSeeMenu("price_health") },
-                    Screen.AutomaticPrices.takeIf { canSeeMenu("pricing") },
-                    Screen.Decants.takeIf { canSeeMenu("decants") },
-                    Screen.Attributes.takeIf { canSeeMenu("attributes") },
-                    Screen.Import.takeIf { canSeeMenu("import") }
-                )
-            )
-        )
-        add(
-            DrawerGroup(
-                title = "Cobros",
-                screens = listOfNotNull(
-                    Screen.CreditLedger.takeIf { canSeeMenu("collections") },
-                    Screen.Customers.takeIf { canSeeMenu("customers") }
-                )
-            )
-        )
-        add(
-            DrawerGroup(
-                title = "Finanzas",
-                screens = listOfNotNull(
-                    Screen.Finance.takeIf { canSeeMenu("finance") || canManageShop },
-                    Screen.InventoryAdjustments.takeIf { canSeeMenu("inventory_adjustments") },
-                    Screen.Expenses.takeIf { canSeeMenu("expenses") },
-                    Screen.Partners.takeIf { canSeeMenu("partners") }
-                )
-            )
-        )
-        add(
-            DrawerGroup(
-                title = "Análisis",
-                screens = listOfNotNull(Screen.Reports.takeIf { canSeeMenu("reports") })
-            )
-        )
-        add(
-            DrawerGroup(
-                title = "Equipo",
-                administrative = true,
-                screens = listOfNotNull(
-                    Screen.Commissions.takeIf { canSeeMenu("commissions") },
-                    Screen.Authorizations.takeIf { canSeeMenu("authorizations") }
-                )
-            )
-        )
-        add(
-            DrawerGroup(
-                title = "Ajustes",
-                administrative = true,
-                screens = listOfNotNull(
-                    Screen.ShopSettings.takeIf { canSeeMenu("shop_settings") },
-                    Screen.Team.takeIf { canSeeMenu("sellers") },
-                    Screen.Accountant.takeIf { canSeeMenu("accountant") },
-                    Screen.Profile,
-                    Screen.Updates.takeIf { canSeeMenu("updates") },
-                    Screen.Help.takeIf { canSeeMenu("help") },
-                    Screen.Practice.takeIf { canSeeMenu("practice") },
-                    Screen.Support.takeIf { canSeeMenu("support") },
-                    Screen.AdminShops.takeIf { connection.isAdmin }
-                )
-            )
-        )
-        add(
-            DrawerGroup(
-                title = "Más herramientas",
-                screens = listOfNotNull(
-                    // Estas funciones siguen disponibles, pero no compiten con
-                    // las entradas principales de Puntto ni duplican Catálogo.
-                    Screen.Catalog.takeIf { canSeeMenu("products") },
-                    Screen.Settings.takeIf { canSeeMenu("settings") },
-                    Screen.Cash.takeIf { canSeeMenu("cash") },
-                    Screen.Returns.takeIf { canSeeMenu("returns") },
-                    Screen.Routes.takeIf { routesEnabled && canSeeMenu("routes") },
-                    Screen.RouteLoads.takeIf { routesEnabled && canSeeMenu("routes") },
-                    Screen.Printers.takeIf { canSeeMenu("printers") },
-                    Screen.Metrics.takeIf { canSeeMenu("metrics") },
-                    Screen.PublicCatalog.takeIf { canSeeMenu("public_catalog") }
-                )
-            )
-        )
-    }.filter { it.screens.isNotEmpty() }
+    val drawerGroups = buildDrawerNavigation(currentShop?.navigation, canSeeMenu, connection.isAdmin, routesEnabled)
     val drawerScreens = drawerGroups.flatMap { it.screens }
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
@@ -352,13 +227,37 @@ private fun ShopScopedMainScreen(
     var shopMenuOpen by remember { mutableStateOf(false) }
     var storePreviewUrl by remember { mutableStateOf<String?>(null) }
     var menuQuery by remember { mutableStateOf("") }
-    var collapsedGroups by remember { mutableStateOf(emptySet<String>()) }
+    var collapsedGroups by remember { mutableStateOf(drawerGroups.filter { it.id !in setOf("home", "sales", "account_help", "account_help_fallback") }.map { it.id }.toSet()) }
     val currentBaseRoute = currentRoute.substringBefore('?')
-    val currentScreen = drawerScreens.firstOrNull { it.route == currentBaseRoute }
-    val currentGroup = drawerGroups.firstOrNull { group -> group.screens.any { it.route == currentBaseRoute } }?.title ?: "Operación"
+    val currentScreen = drawerScreens.firstOrNull { it.route == currentBaseRoute } ?: when (currentBaseRoute) {
+        Screen.CatalogCreate.route -> Screen.CatalogCreate
+        Screen.DecantCreate.route -> Screen.DecantCreate
+        Screen.DownloadApp.route -> Screen.DownloadApp
+        Screen.Credit.route -> Screen.Credit
+        Screen.Catalog.route -> Screen.Services.takeIf { canSeeMenu("services") }
+        else -> null
+    }
+    val selectedGroup = drawerGroups.firstOrNull { group -> group.screens.any { it.route == currentBaseRoute } }
+        ?: drawerGroups.firstOrNull { it.id == navigationAreaId(currentBaseRoute) }
+    val selectedDrawerRoute = when (currentBaseRoute) {
+        Screen.CatalogCreate.route -> Screen.Catalog.route
+        Screen.DecantCreate.route -> Screen.Decants.route
+        Screen.DownloadApp.route -> Screen.Updates.route
+        Screen.Credit.route -> Screen.POS.route
+        Screen.Catalog.route -> if (canSeeMenu("products")) Screen.Catalog.route else Screen.Services.route
+        else -> currentBaseRoute
+    }
+    val currentGroup = selectedGroup?.title ?: "Inicio"
     val currentTitle = when (currentBaseRoute) {
         Screen.Quotes.route -> Screen.Quotes.title
-        else -> currentScreen?.title ?: if (currentBaseRoute == Screen.Profile.route) Screen.Profile.title else "MiCatalogo"
+        else -> currentScreen?.let { selectedGroup?.label(it) ?: it.title } ?: if (currentBaseRoute == Screen.Profile.route) Screen.Profile.title else "MiCatalogo"
+    }
+    val routeAllowed = isNavigationRouteAllowed(currentBaseRoute, canSeeMenu, connection.isAdmin, routesEnabled)
+    LaunchedEffect(currentBaseRoute, routeAllowed) {
+        if (!routeAllowed) navController.navigate(Screen.Dashboard.route) {
+            popUpTo(navController.graph.id) { inclusive = false }
+            launchSingleTop = true
+        }
     }
     val connectedShop = activeShop
     val businessName = connectedShop?.name ?: settings?.invoice?.businessName?.ifBlank { null } ?: "MiCatalogo"
@@ -370,6 +269,8 @@ private fun ShopScopedMainScreen(
         // wrapping prematurely while preserving MiCatalogo's light palette.
         LocalConfiguration.current.screenWidthDp.dp * 0.72f
     }
+    val menuFocus = androidx.compose.ui.platform.LocalFocusManager.current
+    val menuKeyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
     val navigateTo: (Screen) -> Unit = { screen ->
         if (currentBaseRoute != screen.route) {
             navController.navigate(screen.route) {
@@ -378,6 +279,9 @@ private fun ShopScopedMainScreen(
                 restoreState = true
             }
         }
+        menuQuery = ""
+        menuFocus.clearFocus()
+        menuKeyboard?.hide()
         scope.launch { drawerState.close() }
     }
 
@@ -481,15 +385,15 @@ private fun ShopScopedMainScreen(
                     ) {
                         drawerGroups.forEach { group ->
                             val visibleScreens = group.screens.filter { screen ->
-                                menuQuery.isBlank() || screen.title.contains(menuQuery.trim(), ignoreCase = true)
+                                menuQuery.isBlank() || group.title.contains(menuQuery.trim(), ignoreCase = true) || group.label(screen).contains(menuQuery.trim(), ignoreCase = true) || screen.title.contains(menuQuery.trim(), ignoreCase = true)
                             }
                             if (visibleScreens.isNotEmpty()) {
                                 Row(
                                     modifier = Modifier.fillMaxWidth().clickable {
-                                        collapsedGroups = if (group.title in collapsedGroups) {
-                                            collapsedGroups - group.title
+                                        collapsedGroups = if (group.id in collapsedGroups) {
+                                            collapsedGroups - group.id
                                         } else {
-                                            collapsedGroups + group.title
+                                            collapsedGroups + group.id
                                         }
                                     }.padding(start = 12.dp, top = 12.dp, bottom = 4.dp),
                                     verticalAlignment = Alignment.CenterVertically
@@ -502,7 +406,7 @@ private fun ShopScopedMainScreen(
                                         fontWeight = FontWeight.ExtraBold
                                     )
                                     Text(
-                                        text = if (group.title in collapsedGroups) "›" else "⌄",
+                                        text = if (group.id in collapsedGroups) "›" else "⌄",
                                         color = BSPOSTheme.colors.textSecondary,
                                         fontSize = 18.sp,
                                         modifier = Modifier.padding(end = 8.dp)
@@ -517,15 +421,15 @@ private fun ShopScopedMainScreen(
                                 }
                             }
                             AnimatedVisibility(
-                                visible = visibleScreens.isNotEmpty() && group.title !in collapsedGroups,
+                                visible = visibleScreens.isNotEmpty() && (group.id !in collapsedGroups || menuQuery.isNotBlank() || group == selectedGroup),
                                 enter = fadeIn() + androidx.compose.animation.expandVertically(),
                                 exit = fadeOut() + androidx.compose.animation.shrinkVertically()
                             ) {
                                 Column(Modifier.animateContentSize()) {
                                     visibleScreens.forEach { screen ->
-                                        val selected = currentBaseRoute == screen.route
+                                        val selected = selectedDrawerRoute == screen.route
                                         NavigationDrawerItem(
-                                            label = { Text(screen.title, fontWeight = if (selected) FontWeight.ExtraBold else FontWeight.SemiBold) },
+                                            label = { Text(group.label(screen), fontWeight = if (selected) FontWeight.ExtraBold else FontWeight.SemiBold) },
                                             selected = selected,
                                             onClick = { navigateTo(screen) },
                                             icon = {
@@ -658,14 +562,10 @@ private fun ShopScopedMainScreen(
             snackbarHost = { SnackbarHost(snackbarHostState) },
             bottomBar = {
                 if (windowWidthSizeClass != WindowWidthSizeClass.Expanded) {
-                    val bottomItems = listOfNotNull(
-                        Triple("Terminal", Screen.POS, canSeeMenu("sales")),
-                        Triple("Pedidos", Screen.Orders, canSeeMenu("orders")),
-                        Triple("Inventario", Screen.Inventory, canSeeMenu("inventory"))
-                    ).filter { it.third }
+                    val bottomItems = phoneNavigation(canSeeMenu)
                     if (bottomItems.isNotEmpty()) {
                             Row(Modifier.fillMaxWidth().background(BSPOSTheme.colors.secondaryNavy).navigationBarsPadding().padding(vertical = 4.dp)) {
-                                bottomItems.forEach { (label, screen, _) ->
+                                bottomItems.forEach { (label, screen) ->
                                     val selected = currentBaseRoute == screen.route
                                     val tint = if (selected) Color.White else BSPOSTheme.colors.textOnNavy.copy(alpha = .7f)
                                      Column(Modifier.weight(1f).clickable { navigateTo(screen) }.padding(vertical = 2.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -892,6 +792,7 @@ fun BSPOSNavHost(
 ) {
     val context = LocalContext.current
     val canOpenSupport = !sellerMode || canSeeMenu("support")
+    val financialMenus = setOf("finance", "expenses", "cash", "day_close").filter(canSeeMenu).toSet()
     val publicStoreUrl = shopSlug?.trim()?.takeIf { it.isNotBlank() }?.let {
         "${BuildConfig.MICATALOGO_API_BASE_URL.trimEnd('/')}/tienda/$it"
     }
@@ -995,7 +896,7 @@ fun BSPOSNavHost(
         composable(Screen.POS.route) {
             RestrictedMenuDestination(canSeeMenu("sales"), navController) {
                 PosScreen(
-                    presentation = presentation.copy(posShowCredit = presentation.posShowCredit && (canSeeMenu("credit") || canSeeMenu("collections"))),
+                    presentation = presentation.copy(posShowCredit = presentation.posShowCredit && canSeeMenu("credit")),
                     onOpenQuotes = { if (canSeeMenu("quotes")) navController.navigate(Screen.Quotes.route) },
                     onOpenDayClose = { if (canSeeMenu("day_close")) navController.navigate(Screen.DayClose.route) },
                     onOpenCustomers = { if (canSeeMenu("customers")) navController.navigate(Screen.Customers.route) },
@@ -1003,7 +904,7 @@ fun BSPOSNavHost(
                     showServicesAction = canSeeMenu("services"),
                     showQuoteAction = canSeeMenu("quotes"),
                     showDayCloseAction = canSeeMenu("day_close"),
-                    showCosts = !sellerMode || canSeeMenu("inventory") || canSeeMenu("finance"),
+                    showCosts = !sellerMode || canSeeMenu("finance"),
                     onOpenMenu = onOpenMenu,
                     onNavigateBack = { navController.popBackStack() }
                 )
@@ -1084,7 +985,9 @@ fun BSPOSNavHost(
                     presentation = presentation,
                     showCost = !sellerMode || canSeeMenu("finance"),
                     showProductCode = productFields.isEmpty() || "sku" in productFields || "barcode" in productFields,
-                    initialServiceMode = true
+                    initialServiceMode = true,
+                    onOpenProducts = if (canSeeMenu("products")) ({ navController.navigate(Screen.Catalog.route) { launchSingleTop = true } }) else null,
+                    onOpenServices = {}
                 )
             }
         }
@@ -1161,7 +1064,7 @@ fun BSPOSNavHost(
         }
         composable(Screen.Updates.route) { FeatureDestination("updates", canSeeMenu("updates"), navController, canSeeMenu) }
         composable(Screen.Help.route) {
-            RestrictedMenuDestination(canSeeMenu("help"), navController) {
+            RestrictedMenuDestination(true, navController) {
                 HelpScreen(
                     onOpen = { destination ->
                         if (canOpenMenuScreen(destination, canSeeMenu)) {
@@ -1209,12 +1112,15 @@ fun BSPOSNavHost(
             RestrictedMenuDestination(canSeeMenu("sellers"), navController) { SettingsScreen(teamOnly = true) }
         }
         composable(Screen.Catalog.route) {
-            RestrictedMenuDestination(canSeeMenu("products"), navController) {
+            RestrictedMenuDestination(canSeeMenu("products") || canSeeMenu("services"), navController) {
                 CatalogHomeScreen(
                     isTablet = isTablet,
                     presentation = presentation,
                     showCost = !sellerMode || canSeeMenu("finance"),
-                    showProductCode = productFields.isEmpty() || "sku" in productFields || "barcode" in productFields
+                    showProductCode = productFields.isEmpty() || "sku" in productFields || "barcode" in productFields,
+                    initialServiceMode = !canSeeMenu("products"),
+                    onOpenProducts = if (canSeeMenu("products")) ({}) else null,
+                    onOpenServices = if (canSeeMenu("services")) ({ navController.navigate(Screen.Services.route) { launchSingleTop = true } }) else null
                 )
             }
         }
@@ -1277,13 +1183,17 @@ fun BSPOSNavHost(
             RestrictedMenuDestination(canSeeMenu("collections"), navController) { CollectionScreen() }
         }
         composable(Screen.CreditLedger.route) {
-            RestrictedMenuDestination(canSeeMenu("collections"), navController) { CollectionScreen() }
+            if (canSeeMenu("collections")) {
+                RestrictedMenuDestination(true, navController) { CollectionScreen() }
+            } else {
+                FeatureDestination("credit", canSeeMenu("credit"), navController, canSeeMenu)
+            }
         }
         composable(Screen.Credit.route) {
-            RestrictedMenuDestination(canSeeMenu("sales") && canSeeMenu("collections"), navController) {
+            RestrictedMenuDestination(canSeeMenu("sales") && canSeeMenu("credit"), navController) {
                 PosScreen(creditOnly = true, presentation = presentation.copy(posShowCredit = true),
                     showQuoteAction = false, showDayCloseAction = false, showServicesAction = false,
-                    showCosts = !sellerMode || canSeeMenu("inventory") || canSeeMenu("finance"))
+                    showCosts = !sellerMode || canSeeMenu("finance"))
             }
         }
         composable(Screen.Cash.route) {
@@ -1291,7 +1201,7 @@ fun BSPOSNavHost(
                 // Cash is a server-owned register. POS transactions are queued
                 // locally when offline and synchronized when connectivity returns;
                 // the local register is intentionally not exposed to users.
-                FinanceScreen(initialTab = 4)
+                FinanceScreen(initialTab = 4, allowedMenuKeys = financialMenus)
             }
         }
         composable(Screen.Returns.route) {
@@ -1329,7 +1239,8 @@ fun BSPOSNavHost(
                     onNavigateToDistributions = if (canSeeMenu("partners")) ({ navController.navigate(Screen.Partners.route) }) else null,
                     onNavigateToReceivables = if (canSeeMenu("collections")) ({ navController.navigate(Screen.CreditLedger.route) }) else null,
                     canMutateExpenses = canSeeMenu("expenses"),
-                    canMutateCash = canSeeMenu("cash")
+                    canMutateCash = canSeeMenu("cash"),
+                    allowedMenuKeys = financialMenus
                 )
             }
         }
@@ -1343,7 +1254,8 @@ fun BSPOSNavHost(
                     onNavigateToReceivables = if (canSeeMenu("collections")) ({ navController.navigate(Screen.CreditLedger.route) }) else null,
                     initialTab = 3,
                     canMutateExpenses = true,
-                    canMutateCash = canSeeMenu("cash")
+                    canMutateCash = canSeeMenu("cash"),
+                    allowedMenuKeys = financialMenus
                 )
             }
         }
@@ -1623,6 +1535,9 @@ private fun canOpenMenuScreen(
     screen: Screen,
     canSeeMenu: (String) -> Boolean
 ): Boolean {
+    if (screen == Screen.Help) return true
+    if (screen == Screen.Catalog) return canSeeMenu("products") || canSeeMenu("services")
+    if (screen == Screen.CreditLedger) return canSeeMenu("credit") || canSeeMenu("collections")
     val requiredMenu = when (screen) {
         Screen.Dashboard, Screen.Profile -> null
         Screen.POS, Screen.SalesHistory -> "sales"

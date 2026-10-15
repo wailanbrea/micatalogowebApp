@@ -130,6 +130,91 @@ class CatalogSyncIntegrationTest {
     }
 
     @Test
+    fun photoOnlyQueueSurvivesRevocationAndRequiresMatchingImageReceipt() = runTest {
+        assertTrue(repository.syncCatalog(shopId) is MiCatalogoResult.Success)
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val file = java.io.File.createTempFile("QA_NAV_photo-", ".png", context.cacheDir)
+        val bitmap = android.graphics.Bitmap.createBitmap(60, 80, android.graphics.Bitmap.Config.ARGB_8888)
+        bitmap.eraseColor(android.graphics.Color.GREEN)
+        var snapshot = """[{"id":"$shopId","menu_permissions":["photos"],"catalog_permissions":{"manage_photos":true}}]"""
+        val allowedSnapshot = snapshot
+        var revokeAfterRead = false
+        val store = object : androidx.datastore.core.DataStore<androidx.datastore.preferences.core.Preferences> {
+            override val data: kotlinx.coroutines.flow.Flow<androidx.datastore.preferences.core.Preferences>
+                get() {
+                    val current = snapshot
+                    if (revokeAfterRead) snapshot = "[]"
+                    return kotlinx.coroutines.flow.flowOf(androidx.datastore.preferences.core.preferencesOf(SHOP_SNAPSHOT_CACHE to current))
+                }
+            override suspend fun updateData(transform: suspend (androidx.datastore.preferences.core.Preferences) -> androidx.datastore.preferences.core.Preferences): androidx.datastore.preferences.core.Preferences = error("Read-only")
+        }
+        val recorder = RemoteMutationRecorder(RoomDatabaseTransactor(db), db.categoryDao(), db.operationOutboxDao(),
+            PosSaleSyncScheduler(context), ProductImageSnapshot(context), CachedCatalogPolicy(store, json))
+        try {
+            file.outputStream().use { assertTrue(bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)) }
+            val productsBefore = db.productDao().findForShop(shopId)
+            recorder.transaction { recorder.photo(shopId, "product-a", file.absolutePath) }
+            val dao = db.operationOutboxDao()
+            val row = dao.oldestActive(shopId)!!
+            val body = json.parseToJsonElement(row.payload) as kotlinx.serialization.json.JsonObject
+            assertEquals(setOf("type", "product_id", "image_base64", "image_sha256", "client_operation_uuid"), body.keys)
+            assertEquals("product_photo_update", (body["type"] as kotlinx.serialization.json.JsonPrimitive).content)
+            val hash = (body["image_sha256"] as kotlinx.serialization.json.JsonPrimitive).content
+            val bytes = android.util.Base64.decode((body["image_base64"] as kotlinx.serialization.json.JsonPrimitive).content, android.util.Base64.NO_WRAP)
+            assertEquals(hash, java.security.MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it.toInt() and 255) })
+            file.writeBytes(byteArrayOf(1, 2, 3))
+            assertEquals(row.payload, dao.find(row.id)!!.payload)
+            snapshot = "[]"
+            assertTrue(runCatching { recorder.transaction { recorder.photo(shopId, "product-b", file.absolutePath) } }.isFailure)
+            assertEquals(1, dao.activeForShop(shopId).size)
+            assertEquals(productsBefore, db.productDao().findForShop(shopId))
+            var status = 200
+            var ackProduct = "other-product"
+            var ackHash = hash
+            val requests = mutableListOf<String>()
+            val operationApi = object : TestOperationApi() {
+                override suspend fun submit(shopId: String, payload: kotlinx.serialization.json.JsonObject): Response<kotlinx.serialization.json.JsonObject> {
+                    assertEquals(this@CatalogSyncIntegrationTest.shopId, shopId)
+                    requests.add(payload.toString())
+                    if (status != 200) return Response.error(status, "{}".toResponseBody())
+                    return Response.success(json.parseToJsonElement("""{"client_operation_uuid":"${row.id}","product_id":"$ackProduct","image_sha256":"$ackHash"}""") as kotlinx.serialization.json.JsonObject)
+                }
+            }
+            val sync = OperationSyncRepository(operationApi, dao, json)
+            assertEquals(OperationSubmission.RETRY, sync.submit(dao.find(row.id)!!))
+            ackProduct = "product-a"
+            ackHash = "0".repeat(64)
+            assertEquals(OperationSubmission.RETRY, sync.submit(dao.find(row.id)!!))
+            status = 403
+            assertEquals(OperationSubmission.BLOCKED, sync.submit(dao.find(row.id)!!))
+            assertEquals(row.payload, dao.find(row.id)!!.payload)
+            assertTrue(dao.pendingRefreshes().isEmpty())
+            dao.retryBlocked(row.id)
+            status = 200
+            ackHash = hash
+            assertEquals(OperationSubmission.SENT, sync.submit(dao.find(row.id)!!))
+            assertEquals(1, dao.pendingRefreshes().size)
+            assertEquals(row.payload, dao.find(row.id)!!.payload)
+            assertEquals(1, requests.distinct().size)
+            val refresh = CatalogRefreshSyncRepository(dao, repository)
+            api.catalogStatus = 503
+            assertTrue(refresh.sync())
+            assertEquals(1, dao.pendingRefreshes().size)
+            api.catalogStatus = 200
+            assertFalse(refresh.sync())
+            assertTrue(dao.pendingRefreshes().isEmpty())
+            assertEquals(productsBefore, db.productDao().findForShop(shopId))
+            snapshot = allowedSnapshot
+            revokeAfterRead = true
+            file.outputStream().use { assertTrue(bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)) }
+            val revokedDuringCapture = runCatching { recorder.transaction { recorder.photo(shopId, "product-b", file.absolutePath) } }
+            assertTrue(revokedDuringCapture.exceptionOrNull()?.message.orEmpty().contains("mientras se preparaba"))
+            assertTrue(dao.activeForShop(shopId).isEmpty())
+            assertEquals(row.payload, dao.find(row.id)!!.payload)
+        } finally { bitmap.recycle(); file.delete() }
+    }
+
+    @Test
     fun selectedPhotoIsCopiedIntoBoundedImmutableQueuePayload() = runTest {
         assertTrue(repository.syncCatalog(shopId) is MiCatalogoResult.Success)
         val context = ApplicationProvider.getApplicationContext<Context>()

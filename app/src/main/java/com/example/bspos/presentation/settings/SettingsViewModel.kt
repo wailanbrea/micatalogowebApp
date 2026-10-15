@@ -35,9 +35,12 @@ data class MiCatalogoSettingsUiState(
     val updatingSellerMenuId: String? = null,
     val updatingMenuVisibilityShopId: String? = null,
     val shops: List<MiCatalogoShop> = emptyList(),
+    val hasResolvedShops: Boolean = false,
     val successMessage: String? = null,
     val errorMessage: String? = null
-)
+) {
+    fun displayedShops(bootstrap: List<MiCatalogoShop>): List<MiCatalogoShop> = if (hasResolvedShops) shops else bootstrap
+}
 
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
@@ -66,6 +69,14 @@ class SettingsViewModel @Inject constructor(
     val pendingCatalogs = shops.observe { shop -> operationQueue.observeRefreshes().map { rows -> rows.filter { it.shopId==shop } } }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     private var shopJob:Job?=null
 
+    init {
+        viewModelScope.launch {
+            connectionRepository.observeShops().collect { snapshot ->
+                miCatalogoUi.value = miCatalogoUi.value.copy(shops = snapshot.orEmpty(), hasResolvedShops = true)
+            }
+        }
+    }
+
     fun retryOperation(id:String) = viewModelScope.launch { operationQueue.retryBlocked(id); scheduler.enqueue() }
     fun retrySale(id:java.util.UUID) = viewModelScope.launch { saleQueue.retryBlocked(id,java.time.Instant.now()); scheduler.enqueue() }
     fun retryPayment(id:String) = viewModelScope.launch { paymentQueue.retryBlocked(id); scheduler.enqueue() }
@@ -79,7 +90,8 @@ class SettingsViewModel @Inject constructor(
 
     /** Uses the startup bootstrap snapshot without issuing a second account request. */
     fun hydrateShops(shops: List<MiCatalogoShop>) {
-        miCatalogoUi.value = miCatalogoUi.value.copy(shops = shops, isLoadingShops = false)
+        if (miCatalogoUi.value.hasResolvedShops) return
+        miCatalogoUi.value = miCatalogoUi.value.copy(shops = shops, isLoadingShops = false, hasResolvedShops = true)
     }
 
     fun connectMiCatalogo(email: String, password: String) = viewModelScope.launch {
@@ -174,7 +186,7 @@ class SettingsViewModel @Inject constructor(
         }
         when (val result = connectionRepository.shops()) {
             is MiCatalogoResult.Success -> {
-                miCatalogoUi.value = miCatalogoUi.value.copy(isLoadingShops = false, shops = result.value)
+                miCatalogoUi.value = miCatalogoUi.value.copy(isLoadingShops = false, shops = result.value, hasResolvedShops = true)
                 val active = connectionRepository.activeShopId()
                 if (result.value.isNotEmpty() && result.value.none { it.id == active }) {
                     connectionRepository.selectShop(result.value.first().id)

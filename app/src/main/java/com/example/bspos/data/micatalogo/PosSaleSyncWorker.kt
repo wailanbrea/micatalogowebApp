@@ -50,6 +50,9 @@ class PosSaleSyncWorker(
             PosSaleSyncWorkerDependencies::class.java
         )
         if (dependencies.connectionRepository().accessToken() == null) return Result.success()
+        // Publish current tenant/menu metadata before replaying any queued intent.
+        // Observers close revoked destinations; the server still authorizes each mutation.
+        dependencies.connectionRepository().shops()
 
         return when (val result = dependencies.posSaleRepository().syncDueSales()) {
             is MiCatalogoResult.Success -> {

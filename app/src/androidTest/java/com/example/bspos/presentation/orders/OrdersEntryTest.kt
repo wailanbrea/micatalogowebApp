@@ -32,8 +32,9 @@ class OrdersEntryTest {
     private var shop="qa-entry-a"
     private var response=CompletableDeferred<FeatureResponseDto>()
     private val requests=AtomicInteger()
+    private val customerRequests=AtomicInteger()
 
-    private fun show() {
+    private fun show(feature:String="orders") {
         val api=object:MiCatalogoApi by stub(MiCatalogoApi::class.java) {
             override suspend fun feature(shopId:String,feature:String,period:String?,query:String?,status:String?):Response<FeatureResponseDto> {
                 requests.incrementAndGet()
@@ -47,14 +48,28 @@ class OrdersEntryTest {
             if(method=="observeAll") flowOf(emptyList<Customer>()) else error("Unexpected customer method: $method")
         }
         val catalog=stub(MiCatalogoCatalogRepository::class.java) { method ->
-            if(method=="syncCustomers") MiCatalogoResult.Success(0) else error("Unexpected catalog method: $method")
+            if(method=="syncCustomers") { customerRequests.incrementAndGet(); MiCatalogoResult.Success(0) } else error("Unexpected catalog method: $method")
         }
         compose.runOnIdle { vm=OrdersViewModel(Lazy { api },connection,customers,catalog,tenantTestScope(shop)) }
-        compose.setContent { BSPOSTheme { OrdersScreen(viewModel=vm) } }
+        compose.setContent { BSPOSTheme { OrdersScreen(feature=feature,viewModel=vm) } }
         compose.waitUntil(5_000) { requests.get()>0 }
     }
 
     @After fun cancelPendingWork() { if(::vm.isInitialized) compose.runOnIdle { vm.viewModelScope.cancel() } }
+
+    @Test fun shipmentsDoNotDownloadUnrelatedCreditCustomers() {
+        show("shipments")
+        response.complete(module())
+        compose.waitUntil(5_000) { !vm.state.value.loading }
+        assertEquals(0,customerRequests.get())
+    }
+
+    @Test fun encargosDoNotDownloadUnrelatedCreditCustomers() {
+        show("encargos")
+        response.complete(module())
+        compose.waitUntil(5_000) { !vm.state.value.loading }
+        assertEquals(0,customerRequests.get())
+    }
 
     @Test fun firstResumeDoesNotShowEmptyLandingBeforeExistingOrdersArrive() {
         show()

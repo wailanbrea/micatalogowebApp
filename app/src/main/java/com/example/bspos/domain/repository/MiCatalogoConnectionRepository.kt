@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.Flow
 
 interface MiCatalogoConnectionRepository {
     fun observeConnection(): Flow<MiCatalogoConnectionState>
+    fun observeShops(): Flow<List<MiCatalogoShop>?> = kotlinx.coroutines.flow.emptyFlow()
     suspend fun accessToken(): String?
     suspend fun accountId(): String? = null
     suspend fun login(email: String, password: String, remember: Boolean): MiCatalogoResult<Unit>

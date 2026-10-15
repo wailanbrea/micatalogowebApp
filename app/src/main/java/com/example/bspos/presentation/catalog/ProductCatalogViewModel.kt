@@ -1,5 +1,7 @@
 package com.example.bspos.presentation.catalog
 
+import com.example.bspos.domain.model.canManageCatalogType
+import com.example.bspos.domain.model.canManageCatalogPhotos
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.bspos.domain.model.InventoryLocation
@@ -24,6 +26,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -41,7 +46,8 @@ class ProductCatalogViewModel @Inject constructor(
     private val connection: MiCatalogoConnectionRepository,
     productRepository: ProductRepository,
     private val transactor: AppDatabaseTransactor,
-    private val remote: RemoteMutationRecorder
+    private val remote: RemoteMutationRecorder,
+    private val shopScope: com.example.bspos.core.database.ShopScope
 ) : ViewModel() {
     val products = connection.observeConnection()
         .flatMapLatest { state ->
@@ -63,23 +69,60 @@ class ProductCatalogViewModel @Inject constructor(
     val message = _message.asStateFlow()
     private val _shops = MutableStateFlow<List<MiCatalogoShop>>(emptyList())
     val shops = _shops.asStateFlow()
+    private var configured = false
+    private var selectedShopId: String? = null
+    private var actorRole = ""
 
-    fun canEdit(product:com.example.bspos.domain.model.Product):Boolean = product.remoteShopId == null || _shops.value.any { it.id == product.remoteShopId }
+    fun canEdit(product:com.example.bspos.domain.model.Product):Boolean = canCreate(product.remoteSaleUnit, product.remoteShopId)
+    fun canCreate(saleUnit: String?, shopId: String?): Boolean {
+        val target = shopId ?: selectedShopId
+        return if (target == null) !configured else _shops.value.any { it.id == target && it.canManageCatalogType(saleUnit) }
+    }
     fun reportReadOnly() { _message.value = "Solo el propietario o administrador puede modificar los productos de esta tienda." }
+    fun canManagePhotos(product: com.example.bspos.domain.model.Product): Boolean = _shops.value.any { shop ->
+        shop.id == product.remoteShopId && shop.canManageCatalogPhotos()
+    }
+
+    fun updatePhoto(product: com.example.bspos.domain.model.Product, path: String) {
+        if (!canManagePhotos(product)) { reportReadOnly(); return }
+        val shop = product.remoteShopId ?: return
+        val remoteId = product.remoteProductId ?: return
+        viewModelScope.launch {
+            runCatching {
+                shopScope.mutate { active ->
+                    if (!canManagePhotos(product) || active != shop) error("El permiso o la tienda cambió.")
+                    remote.transaction { remote.photo(shop, remoteId, path) }
+                }
+                remote.wake()
+            }.onSuccess { _message.value = "Foto pendiente de sincronización." }
+                .onFailure { _message.value = it.toUiMessage("No se pudo guardar la foto") }
+        }
+    }
 
     init {
+        viewModelScope.launch { connection.observeShops().collectLatest { snapshot -> _shops.value = snapshot.orEmpty() } }
         viewModelScope.launch {
-            connection.observeConnection().collect { state ->
+            connection.observeConnection().collectLatest { state ->
+                if (selectedShopId != state.activeShopId || actorRole != state.role) _shops.value = emptyList()
+                configured = state.isConfigured
+                selectedShopId = state.activeShopId
+                actorRole = state.role
                 if (!state.isConfigured) _shops.value = emptyList()
-                else when (val result = connection.shops()) {
-                    is MiCatalogoResult.Success -> _shops.value = result.value.filter { state.isAdmin || it.canManageSellers }
+                else {
+                    val result = connection.shops()
+                    currentCoroutineContext().ensureActive()
+                    if (connection.activeShopId() != state.activeShopId) return@collectLatest
+                    when (result) {
+                    is MiCatalogoResult.Success -> _shops.value = result.value
                     is MiCatalogoResult.Failure -> { _shops.value = emptyList(); _message.value = result.message }
+                    }
                 }
             }
         }
     }
 
     fun add(input: ProductInput, initialQuantity: Long = 0L, onSaved: () -> Unit = {}) {
+        if (!canCreate(input.remoteSaleUnit, input.remoteShopId)) { reportReadOnly(); return }
         val remoteShopId = input.remoteShopId
         if (remoteShopId != null) {
             val quota = _shops.value.firstOrNull { it.id == remoteShopId }?.quota

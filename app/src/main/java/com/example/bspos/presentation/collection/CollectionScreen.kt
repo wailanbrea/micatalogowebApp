@@ -54,6 +54,11 @@ import java.util.Locale
 
 @Composable
 fun CollectionScreen(viewModel: CollectionViewModel = hiltViewModel()) {
+    val mayCollect by viewModel.canCollect.collectAsState()
+    if (!mayCollect) {
+        Text("No tienes permiso vigente para registrar cobros.", Modifier.fillMaxSize().padding(20.dp))
+        return
+    }
     val customers by viewModel.customers.collectAsState()
     val sales by viewModel.sales.collectAsState()
     val customer by viewModel.customer.collectAsState()

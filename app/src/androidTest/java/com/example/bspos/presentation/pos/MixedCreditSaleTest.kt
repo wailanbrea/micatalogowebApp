@@ -53,7 +53,7 @@ class MixedCreditSaleTest {
                 override suspend fun setRoutesEnabled(enabled: Boolean) {}
             }
             val useCase = CompleteSaleUseCase(RoomDatabaseTransactor(db,scope), db.saleDao(), db.inventoryDao(), db.productDao(),
-                db.customerRouteDao(), db.posSaleOutboxDao(), settings, Json { ignoreUnknownKeys = true }, PosSaleSyncScheduler(context),scope)
+                db.customerRouteDao(), db.posSaleOutboxDao(), settings, Json { ignoreUnknownKeys = true }, PosSaleSyncScheduler(context),scope,com.example.bspos.data.local.tenant.tenantTestMenuPolicy(shop))
             block(db, useCase, product, customer)
         } finally { db.close() }
     }

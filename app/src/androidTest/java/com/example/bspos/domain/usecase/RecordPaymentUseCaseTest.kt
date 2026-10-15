@@ -18,9 +18,38 @@ import java.util.UUID
 @RunWith(AndroidJUnit4::class)
 class RecordPaymentUseCaseTest {
  private lateinit var db:AppDatabase;private lateinit var useCase:RecordPaymentUseCase
+ private val permissionValues = kotlinx.coroutines.flow.MutableStateFlow<androidx.datastore.preferences.core.Preferences>(androidx.datastore.preferences.core.emptyPreferences())
+ private val permissionStore = object : androidx.datastore.core.DataStore<androidx.datastore.preferences.core.Preferences> {
+     override val data: kotlinx.coroutines.flow.Flow<androidx.datastore.preferences.core.Preferences> = permissionValues
+     override suspend fun updateData(transform: suspend (androidx.datastore.preferences.core.Preferences) -> androidx.datastore.preferences.core.Preferences): androidx.datastore.preferences.core.Preferences = transform(permissionValues.value).also { permissionValues.value = it }
+ }
  private val at=Instant.parse("2026-09-21T04:00:00Z");private val customerId=UUID.randomUUID();private val productId=UUID.randomUUID()
-   @Before fun setup()=runTest{db=Room.inMemoryDatabaseBuilder(ApplicationProvider.getApplicationContext<Context>(),AppDatabase::class.java).build();useCase=RecordPaymentUseCase(RoomDatabaseTransactor(db),db.paymentDao(),db.saleDao(),db.customerRouteDao(),db.cashSessionDao(),db.paymentSyncDao(),db.posSaleOutboxDao(),com.example.bspos.data.micatalogo.PosSaleSyncScheduler(ApplicationProvider.getApplicationContext<Context>()),kotlinx.serialization.json.Json,com.example.bspos.data.local.tenant.tenantTestScope("payment-qa"));val category=UUID.randomUUID();val unit=UUID.randomUUID();val tenant=TenantMetadata.assigned("payment-qa");db.categoryDao().insert(CategoryEntity(category,"C",createdAt=at,updatedAt=at,tenant=tenant));db.unitOfMeasureDao().insert(UnitOfMeasureEntity(unit,"U","u",createdAt=at,updatedAt=at,tenant=tenant));db.productDao().insert(ProductEntity(productId,"P","PAY-ATOMIC",categoryId=category,unitId=unit,salePrice=100,createdAt=at,updatedAt=at,tenant=tenant));db.customerRouteDao().insertCustomer(CustomerEntity(customerId,"Customer",creditLimit=100,balance=100,createdAt=at,updatedAt=at,tenant=tenant))}
- @After fun close()=db.close()
+   @Before fun setup()=runTest{db=Room.inMemoryDatabaseBuilder(ApplicationProvider.getApplicationContext<Context>(),AppDatabase::class.java).build();useCase=RecordPaymentUseCase(RoomDatabaseTransactor(db),db.paymentDao(),db.saleDao(),db.customerRouteDao(),db.cashSessionDao(),db.paymentSyncDao(),db.posSaleOutboxDao(),com.example.bspos.data.micatalogo.PosSaleSyncScheduler(ApplicationProvider.getApplicationContext<Context>()),kotlinx.serialization.json.Json,com.example.bspos.data.local.tenant.tenantTestScope("payment-qa"),com.example.bspos.data.micatalogo.CachedShopMenuPolicy(permissionStore,kotlinx.serialization.json.Json));val category=UUID.randomUUID();val unit=UUID.randomUUID();val tenant=TenantMetadata.assigned("payment-qa");db.categoryDao().insert(CategoryEntity(category,"C",createdAt=at,updatedAt=at,tenant=tenant));db.unitOfMeasureDao().insert(UnitOfMeasureEntity(unit,"U","u",createdAt=at,updatedAt=at,tenant=tenant));db.productDao().insert(ProductEntity(productId,"P","PAY-ATOMIC",categoryId=category,unitId=unit,salePrice=100,createdAt=at,updatedAt=at,tenant=tenant));db.customerRouteDao().insertCustomer(CustomerEntity(customerId,"Customer",creditLimit=100,balance=100,createdAt=at,updatedAt=at,tenant=tenant))}
+  @After fun close()=db.close()
+  @Test fun remoteCustomerCannotBeCollectedWithoutCurrentMenuAuthority()=runTest {
+      val sale=creditSale()
+      val customer=db.customerRouteDao().findCustomer(customerId,"payment-qa")!!
+      db.customerRouteDao().updateCustomer(customer.copy(miCatalogoCustomerId="remote-customer",miCatalogoCustomerShopId="payment-qa"))
+      fails<IllegalStateException> { useCase(RecordPaymentRequest("QA_NAV_REVOKED",customerId,at,PaymentMethod.TRANSFER,listOf(PaymentAllocationInput(sale.id,100)))) }
+      Assert.assertTrue(db.paymentDao().observeForCustomer(customerId,"payment-qa").first().isEmpty())
+      Assert.assertEquals(100L,db.saleDao().findById(sale.id,"payment-qa")!!.pendingAmount)
+      Assert.assertEquals(100L,db.customerRouteDao().findCustomer(customerId,"payment-qa")!!.balance)
+      Assert.assertTrue(db.paymentSyncDao().pending().isEmpty())
+  }
+  @Test fun collectionsOnlyCanPayAnExistingDebtWhenNewCreditIsDisabled()=runTest {
+      val sale=creditSale()
+      val customer=db.customerRouteDao().findCustomer(customerId,"payment-qa")!!
+      db.customerRouteDao().updateCustomer(customer.copy(miCatalogoCustomerId="remote-customer",miCatalogoCustomerShopId="payment-qa"))
+      permissionValues.value=androidx.datastore.preferences.core.preferencesOf(com.example.bspos.data.micatalogo.SHOP_SNAPSHOT_CACHE to
+          """[{"id":"payment-qa","menu_permissions":["collections"],"capabilities":{"customers":"enabled","credit":"disabled"}}]""")
+      val payment=useCase(RecordPaymentRequest("QA_NAV_ALLOWED",customerId,at,PaymentMethod.TRANSFER,listOf(PaymentAllocationInput(sale.id,25))))
+      Assert.assertEquals(25L,payment.amount)
+      Assert.assertEquals(75L,db.customerRouteDao().findCustomer(customerId,"payment-qa")!!.balance)
+      permissionValues.value=androidx.datastore.preferences.core.emptyPreferences()
+      fails<IllegalStateException> { useCase(RecordPaymentRequest("QA_NAV_REVOKED_AGAIN",customerId,at,PaymentMethod.TRANSFER,listOf(PaymentAllocationInput(sale.id,25)))) }
+      Assert.assertEquals(75L,db.customerRouteDao().findCustomer(customerId,"payment-qa")!!.balance)
+      Assert.assertEquals(1,db.paymentDao().observeForCustomer(customerId,"payment-qa").first().size)
+  }
    @Test fun paymentUpdatesReceiptAllocationSaleAndCashTogether()=runTest{val sale=creditSale();val session=CashSessionEntity(UUID.randomUUID(),at,openingAmount=0,remoteSessionId="qa-cash",tenant=TenantMetadata.assigned("payment-qa"));db.cashSessionDao().open(session);val payment=useCase(RecordPaymentRequest("R-ATOMIC",customerId,at.plusSeconds(1),PaymentMethod.CASH,listOf(PaymentAllocationInput(sale.id,100)),cashSessionId=session.id));Assert.assertEquals(100L,payment.amount);Assert.assertEquals(100L,db.saleDao().findById(sale.id,"payment-qa")!!.paidAmount);Assert.assertEquals(0L,db.saleDao().findById(sale.id,"payment-qa")!!.pendingAmount);Assert.assertEquals(1,db.paymentDao().observeAllocations(payment.id,"payment-qa").first().size);Assert.assertEquals(1,db.cashSessionDao().observeMovements(session.id,"payment-qa").first().size)}
    @Test fun cashCollectionRequiresAnOpenSession()=runTest{val sale=creditSale();fails<IllegalStateException>{useCase(RecordPaymentRequest("R-NO-SESSION",customerId,at,PaymentMethod.CASH,listOf(PaymentAllocationInput(sale.id,100))))};Assert.assertTrue(db.paymentDao().observeForCustomer(customerId,"payment-qa").first().isEmpty());Assert.assertEquals(100L,db.saleDao().findById(sale.id,"payment-qa")!!.pendingAmount);Assert.assertEquals(100L,db.customerRouteDao().findCustomer(customerId,"payment-qa")!!.balance)}
   @Test fun overpaymentRollsBackReceiptAndBalances()=runTest{val sale=creditSale();fails<IllegalArgumentException>{useCase(RecordPaymentRequest("R-FAIL",customerId,at,PaymentMethod.TRANSFER,listOf(PaymentAllocationInput(sale.id,101))))};Assert.assertTrue(db.paymentDao().observeForCustomer(customerId,"payment-qa").first().isEmpty());Assert.assertEquals(0L,db.saleDao().findById(sale.id,"payment-qa")!!.paidAmount);Assert.assertEquals(100L,db.saleDao().findById(sale.id,"payment-qa")!!.pendingAmount)}

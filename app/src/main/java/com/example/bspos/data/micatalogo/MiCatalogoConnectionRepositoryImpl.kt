@@ -157,7 +157,17 @@ class MiCatalogoConnectionRepositoryImpl @Inject constructor(
             val cached = dataStore.data.first()[SHOP_CACHE] ?: throw error
             json.decodeFromString<List<ShopDto>>(cached)
         }
-        remoteShops.mapNotNull { shop ->
+        mapShops(remoteShops)
+    }.fold(
+        onSuccess = { MiCatalogoResult.Success(it) },
+        onFailure = { MiCatalogoResult.Failure(it.message ?: "No se pudieron cargar las tiendas.") }
+    )
+
+    override fun observeShops(): Flow<List<MiCatalogoShop>?> = dataStore.data.map { values ->
+        values[SHOP_CACHE]?.let { cached -> runCatching { mapShops(json.decodeFromString<List<ShopDto>>(cached)) }.getOrNull() }
+    }.distinctUntilChanged()
+
+    private fun mapShops(remoteShops: List<ShopDto>): List<MiCatalogoShop> = remoteShops.mapNotNull { shop ->
             shop.id?.takeIf { it.isNotBlank() }?.let { id ->
                 MiCatalogoShop(
                     id = id,
@@ -166,6 +176,8 @@ class MiCatalogoConnectionRepositoryImpl @Inject constructor(
                     businessType = shop.businessType,
                     businessTypeLabel = shop.businessTypeLabel,
                     capabilities = shop.capabilities,
+                    navigation = com.example.bspos.data.micatalogo.dto.decodeNavigationManifest(shop.navigation, json),
+                    catalogPermissions = shop.catalogPermissions,
                     productFields = shop.productFields,
                     presentation = MiCatalogoBusinessPresentation(
                         archetype = shop.presentation.archetype,
@@ -205,10 +217,6 @@ class MiCatalogoConnectionRepositoryImpl @Inject constructor(
                 )
             }
         }
-    }.fold(
-        onSuccess = { MiCatalogoResult.Success(it) },
-        onFailure = { MiCatalogoResult.Failure(it.message ?: "No se pudieron cargar las tiendas.") }
-    )
 
     override suspend fun activeShopId(): String? = dataStore.data.first()[ACTIVE_SHOP_ID]?.takeIf { it.isNotBlank() }
 
@@ -453,6 +461,6 @@ class MiCatalogoConnectionRepositoryImpl @Inject constructor(
         val ACCOUNT_NAME = stringPreferencesKey("micatalogo_account_name")
         val ACCOUNT_ROLE = stringPreferencesKey("micatalogo_account_role")
         val ACTIVE_SHOP_ID = stringPreferencesKey("micatalogo_active_shop_id")
-        val SHOP_CACHE = stringPreferencesKey("micatalogo_shop_cache")
+        val SHOP_CACHE = SHOP_SNAPSHOT_CACHE
     }
 }

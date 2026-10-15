@@ -10,6 +10,8 @@ data class MiCatalogoShop(
     val productFields: List<String> = emptyList(),
     val presentation: MiCatalogoBusinessPresentation = MiCatalogoBusinessPresentation(),
     val quota: MiCatalogoShopQuota? = null,
+    val navigation: MiCatalogoNavigation? = null,
+    val catalogPermissions: Map<String, Boolean> = emptyMap(),
     val menuPermissions: List<String> = emptyList(),
     val enabledMenuKeys: List<String>? = null,
     val canManageMenuVisibility: Boolean = false,
@@ -132,10 +134,13 @@ fun canAccessMiCatalogoMenu(
         "inventory" -> "inventory"
         "sales" -> "sales"
         "customers" -> "customers"
-        "collections", "credit" -> "credit"
+        "collections" -> "customers"
+        "credit" -> "credit"
         "cash" -> "cash"
         "expenses" -> "expenses"
         "finance" -> "finance"
+        "services" -> "services"
+        "public_catalog", "metrics" -> "public_catalog"
         "decants" -> "decants"
         else -> null
     }

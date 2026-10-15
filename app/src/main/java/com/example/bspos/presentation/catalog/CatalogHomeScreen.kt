@@ -63,6 +63,8 @@ fun CatalogHomeScreen(
     initialDecantMode: Boolean = false,
     initialServiceMode: Boolean = false,
     startWithForm: Boolean = false,
+    onOpenProducts: (() -> Unit)? = null,
+    onOpenServices: (() -> Unit)? = null,
     viewModel: ProductCatalogViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
@@ -73,6 +75,12 @@ fun CatalogHomeScreen(
     var decantFocusProduct by remember { mutableStateOf<Product?>(null) }
     var preselectedSourceRemoteId by remember { mutableStateOf<String?>(null) }
     var photoFilter by remember { mutableStateOf("Pendientes") }
+    var photoTarget by remember { mutableStateOf<Product?>(null) }
+    val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        val target = photoTarget
+        photoTarget = null
+        if (uri != null && target != null) viewModel.updatePhoto(target, uri.toString())
+    }
     val products by viewModel.products.collectAsState()
     val categories by viewModel.categories.collectAsState()
     val units by viewModel.units.collectAsState()
@@ -80,6 +88,8 @@ fun CatalogHomeScreen(
     val message by viewModel.message.collectAsState()
     val shops by viewModel.shops.collectAsState()
     val activeShopId by viewModel.activeShopId.collectAsState()
+    val workspaceUnit = if (initialServiceMode) "service" else if (initialDecantMode) "decant" else "unit"
+    val mayCreate = remember(shops, workspaceUnit, activeShopId) { viewModel.canCreate(workspaceUnit, activeShopId) }
     val sourceProducts = products.filter {
         it.isActive && it.deletedAt == null && it.remoteShopId != null && it.remoteProductId != null &&
             it.remoteSaleUnit == "bottle" && it.remoteVolumeMl != null
@@ -97,6 +107,7 @@ fun CatalogHomeScreen(
         it.isActive && it.deletedAt == null &&
             (!initialDecantMode || it.remoteSaleUnit == "decant") &&
             (!initialServiceMode || it.remoteSaleUnit == "service") &&
+            (initialServiceMode || photosOnly || it.remoteSaleUnit != "service") &&
             (!photosOnly || when (photoFilter) {
                 "Con foto" -> !it.imagePath.isNullOrBlank()
                 "Todos" -> true
@@ -106,6 +117,12 @@ fun CatalogHomeScreen(
     }
 
     Column(Modifier.fillMaxSize().background(BSPOSTheme.colors.background).padding(if (isTablet) 28.dp else 20.dp)) {
+        if (onOpenProducts != null || onOpenServices != null) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                onOpenProducts?.let { action -> FilterChip(selected = !initialServiceMode, onClick = action, label = { Text("Productos y combos") }) }
+                onOpenServices?.let { action -> FilterChip(selected = initialServiceMode, onClick = action, label = { Text("Servicios") }) }
+            }
+        }
         if (photosOnly) {
             Text("Gestión de fotografías", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
         }
@@ -147,7 +164,7 @@ fun CatalogHomeScreen(
                 color = BSPOSTheme.colors.textSecondary,
                 style = MaterialTheme.typography.labelLarge
             )
-            if (!photosOnly && !initialDecantMode) {
+            if (!photosOnly && !initialDecantMode && mayCreate) {
                 Button({ showForm = true }, enabled = categories.any { it.isActive } && units.any { it.isActive }, shape = RoundedCornerShape(14.dp)) { Icon(Icons.Default.Add, null); Spacer(Modifier.width(5.dp)); Text(if (initialServiceMode) "Nuevo servicio" else "Nuevo producto") }
             }
         }
@@ -213,19 +230,20 @@ fun CatalogHomeScreen(
         } else {
             LazyVerticalGrid(GridCells.Fixed(if (isTablet) 4 else 2), Modifier.weight(1f), contentPadding = PaddingValues(bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 items(filtered, key = { it.id }) { product -> ProductCard(product, quantities[product.id] ?: 0L, categoryNames[product.categoryId], presentation.catalogShowStock, showCost, showProductCode,
-                    { if (viewModel.canEdit(product)) editingProduct = product else viewModel.reportReadOnly() },
-                    { if (viewModel.canEdit(product)) deleteTarget = product else viewModel.reportReadOnly() },
+                     { if (photosOnly) { if (viewModel.canManagePhotos(product)) { photoTarget = product; photoPicker.launch("image/*") } } else if (viewModel.canEdit(product)) editingProduct = product },
+                     { if (!photosOnly && viewModel.canEdit(product)) deleteTarget = product },
                     decantMode = initialDecantMode,
                     decantSource = sourceByRemoteId[product.remoteSourceProductId],
                     onPrepare = { decantFocusProduct = product; decantOverlay = "prepare" },
-                    photosOnly = photosOnly,
+                     photosOnly = photosOnly,
+                     editable = if (photosOnly) viewModel.canManagePhotos(product) else viewModel.canEdit(product),
                     onImageSearch = {
                         context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com/search?tbm=isch&q=${Uri.encode(product.name)}")))
                     }) }
             }
         }
     }
-    if ((showForm || editingProduct != null) && formReady) ProductForm(
+    if ((showForm && mayCreate || editingProduct?.let(viewModel::canEdit) == true) && formReady) ProductForm(
         current = editingProduct,
         currentQuantity = quantities[editingProduct?.id] ?: 0L,
         categories = categories.filter { it.isActive },
@@ -247,7 +265,7 @@ fun CatalogHomeScreen(
     deleteTarget?.let { product ->
         AlertDialog(onDismissRequest = { deleteTarget = null }, title = { Text("Eliminar producto") }, text = { Text("¿Eliminar ${product.name}? El producto dejará de aparecer en el catálogo.") }, confirmButton = { Button({ viewModel.delete(product); deleteTarget = null }, colors = ButtonDefaults.buttonColors(containerColor = BSPOSTheme.colors.error, contentColor = BSPOSTheme.colors.textOnPrimary)) { Text("Eliminar") } }, dismissButton = { TextButton({ deleteTarget = null }) { Text("Cancelar") } })
     }
-    message?.let { text -> AlertDialog(onDismissRequest = viewModel::consumeMessage, title = { Text("No se pudo completar") }, text = { Text(text) }, confirmButton = { TextButton(viewModel::consumeMessage) { Text("Cerrar") } }) }
+    message?.let { text -> AlertDialog(onDismissRequest = viewModel::consumeMessage, title = { Text("Catálogo") }, text = { Text(text) }, confirmButton = { TextButton(viewModel::consumeMessage) { Text("Cerrar") } }) }
     if (initialDecantMode) {
         when (decantOverlay) {
             "report" -> DecantReportDialog(
@@ -299,7 +317,7 @@ private fun DecantMetricCard(label: String, value: String, modifier: Modifier = 
 private fun Product.decantPoolMl(): Int? = remoteReservedDecantMl ?: remoteAvailableMl
 
 @Composable
-private fun ProductCard(product: Product, quantity: Long, category: String?, showStock: Boolean, showCost: Boolean, showProductCode: Boolean, onClick: () -> Unit, onLongClick: () -> Unit, decantMode: Boolean = false, decantSource: Product? = null, onPrepare: (() -> Unit)? = null, photosOnly: Boolean = false, onImageSearch: (() -> Unit)? = null) {
+private fun ProductCard(product: Product, quantity: Long, category: String?, showStock: Boolean, showCost: Boolean, showProductCode: Boolean, onClick: () -> Unit, onLongClick: () -> Unit, decantMode: Boolean = false, decantSource: Product? = null, onPrepare: (() -> Unit)? = null, photosOnly: Boolean = false, onImageSearch: (() -> Unit)? = null, editable: Boolean = true) {
     val statusColor = when {
         quantity <= 0 -> BSPOSTheme.colors.error
         product.minimumStock > 0 && quantity <= product.minimumStock -> BSPOSTheme.colors.warning
@@ -310,7 +328,7 @@ private fun ProductCard(product: Product, quantity: Long, category: String?, sho
         product.minimumStock > 0 && quantity <= product.minimumStock -> "Stock bajo"
         else -> "En stock"
     }
-    Card(modifier = Modifier.combinedClickable(onClick = onClick, onLongClick = onLongClick), shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface), elevation = CardDefaults.cardElevation(1.dp)) {
+    Card(modifier = Modifier.combinedClickable(enabled = editable, onClick = onClick, onLongClick = if (photosOnly) null else onLongClick), shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface), elevation = CardDefaults.cardElevation(1.dp)) {
         Column(Modifier.padding(14.dp)) {
             Box(Modifier.fillMaxWidth().height(92.dp).clip(RoundedCornerShape(16.dp)).background(BSPOSTheme.colors.primaryLight), contentAlignment = Alignment.Center) { if (product.imagePath != null) AsyncImage(product.imagePath, product.name, Modifier.fillMaxSize(), contentScale = ContentScale.Crop) else Icon(Icons.Default.Inventory2, null, modifier = Modifier.size(42.dp), tint = BSPOSTheme.colors.primary) }
             if (photosOnly && product.imagePath.isNullOrBlank() && onImageSearch != null) {
@@ -319,6 +337,14 @@ private fun ProductCard(product: Product, quantity: Long, category: String?, sho
                     Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(4.dp))
                     Text("Buscar en Google", style = MaterialTheme.typography.labelSmall)
+                }
+            }
+            if (photosOnly && editable) {
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(onClick, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(10.dp)) {
+                    Icon(Icons.Default.PhotoCamera, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("Cambiar foto", style = MaterialTheme.typography.labelSmall)
                 }
             }
             Spacer(Modifier.height(12.dp))

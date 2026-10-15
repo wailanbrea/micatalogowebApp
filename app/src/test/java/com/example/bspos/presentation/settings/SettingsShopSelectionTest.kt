@@ -14,4 +14,14 @@ class SettingsShopSelectionTest {
         assertEquals("b", resolveSettingsShop(listOf(shops[1]), null, "a")?.id)
         assertNull(resolveSettingsShop(emptyList(), null, null))
     }
+    @Test fun authoritativeEmptyShopListDoesNotResurrectRevokedBootstrapAccess() {
+        assertTrue(MiCatalogoSettingsUiState(hasResolvedShops = true).displayedShops(shops).isEmpty())
+        assertEquals(shops, MiCatalogoSettingsUiState().displayedShops(shops))
+    }
+    @Test fun currentShopSnapshotWinsOverStaleStartupPermissions() {
+        val revoked = shops[0].copy(menuPermissions = emptyList(), enabledMenuKeys = emptyList())
+        val displayed = MiCatalogoSettingsUiState(shops = listOf(revoked), hasResolvedShops = true).displayedShops(shops)
+        assertEquals(listOf(revoked), displayed)
+        assertEquals("a", resolveSettingsShop(displayed, "b", "b")?.id)
+    }
 }

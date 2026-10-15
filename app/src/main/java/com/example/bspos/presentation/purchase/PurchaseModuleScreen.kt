@@ -43,6 +43,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.key
 import androidx.compose.runtime.setValue
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.compose.ui.Alignment
@@ -68,7 +69,7 @@ fun PurchaseModuleScreen(
         when {
             state.loading && state.workspace == null -> CircularProgressIndicator(Modifier.align(Alignment.Center), color = BSPOSTheme.colors.primary)
             state.error != null && state.workspace == null -> PurchaseError(state.error!!, onRetry = { viewModel.load(feature) })
-            state.workspace != null -> PurchaseContent(feature, state.workspace!!, state, viewModel)
+            state.workspace != null && state.access.reads(feature) -> key(state.shopId, state.access) { PurchaseContent(feature, state.workspace!!, state, viewModel) }
         }
     }
 }
@@ -389,7 +390,7 @@ private fun PurchaseContent(
             item { Notice("Todavía no hay compras registradas.", success = true) }
         } else {
             itemsIndexed(documents, key = { _, document -> document.id }) { _, document ->
-                PurchaseDocumentCard(document, state.saving) { documentId -> viewModel.receive(documentId, feature) }
+                PurchaseDocumentCard(document, state.saving, state.access.receives(document)) { documentId -> viewModel.receive(documentId, feature) }
             }
         }
     }
@@ -504,7 +505,7 @@ private fun PurchaseLineEditor(
 }
 
 @Composable
-private fun PurchaseDocumentCard(document: PurchaseDocumentDto, saving: Boolean, onReceive: (String) -> Unit) {
+private fun PurchaseDocumentCard(document: PurchaseDocumentDto, saving: Boolean, canReceive: Boolean, onReceive: (String) -> Unit) {
     val statusLabel = when (document.status) {
         "draft" -> "Borrador"
         "debt" -> "Pendiente de pago"
@@ -584,7 +585,7 @@ private fun PurchaseDocumentCard(document: PurchaseDocumentDto, saving: Boolean,
                     if (logistics.isNotBlank()) Text(logistics, color = BSPOSTheme.colors.textPrimary, style = MaterialTheme.typography.bodySmall)
                     Text("${document.currency}${document.exchangeRate?.let { " · tasa $it" } ?: ""} · Flete/aduana: ${document.freightAmount ?: "0.00"}/${document.customsAmount ?: "0.00"}", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodySmall)
                 }
-            } else if (document.status == "draft") {
+            } else if (canReceive) {
                 OutlinedButton(onClick = { onReceive(document.id) }, enabled = !saving, modifier = Modifier.fillMaxWidth()) { Text("Recibir inventario") }
             }
         }

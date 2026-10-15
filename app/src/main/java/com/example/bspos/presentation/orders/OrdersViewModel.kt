@@ -124,7 +124,14 @@ class OrdersViewModel @Inject constructor(
             // Pedidos can be reopened after a customer is created from another
             // screen. Always refresh this small list here so the confirmation
             // dialog never keeps a stale customer cache.
-            loadCustomers(shopId, force = feature == "orders" || refresh)
+            if (feature == "orders") {
+                loadCustomers(shopId, force = refresh)
+            } else {
+                // Encargos/Envíos do not use the credit customer selector.
+                // Avoid unrelated downloads (and forbidden requests for restricted roles).
+                customersJob?.cancel()
+                _state.update { it.copy(customersLoading = false) }
+            }
 
             try {
                 val moduleResponse = api.get().feature(
