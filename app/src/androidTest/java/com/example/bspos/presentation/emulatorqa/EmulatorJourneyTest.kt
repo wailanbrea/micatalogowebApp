@@ -113,7 +113,7 @@ class EmulatorJourneyTest {
             evidence("04-order-confirmed-a")
             }
 
-            navigate("Crédito")
+            navigate("Cobros y abonos")
             waitFor(newCustomer)
             compose.onNodeWithText("Monto a cobrar").performTextReplacement("600")
             Espresso.closeSoftKeyboard()
@@ -129,13 +129,13 @@ class EmulatorJourneyTest {
             compose.onNodeWithText("QA Cliente A Activo").assertDoesNotExist()
             evidence("06-customers-only-b")
 
-            navigate("Terminal")
+            navigate("Vender")
             waitFor("QA Producto B")
             compose.onNodeWithText("QA Producto A").assertDoesNotExist()
             compose.onNodeWithText("QA Producto B").performClick()
             evidence("07-cart-b-before-switch")
             switchShop("QA Tienda A")
-            navigate("Terminal")
+            navigate("Vender")
             waitFor("QA Producto A")
             compose.onNodeWithText("QA Producto B").assertDoesNotExist()
             compose.onNodeWithText("Cobrar").assertDoesNotExist() // The empty cart has no charge action.
@@ -202,7 +202,7 @@ class EmulatorJourneyTest {
         evidence("13-orders-first-entry")
         compose.onNode(hasText("Confirmados") and hasClickAction()).performClick()
         waitFor("QA Comprador A2")
-        navigate("Terminal")
+        navigate("Vender")
         waitFor("QA Producto A")
         navigate("Pedidos")
         compose.onNodeWithText("COMPARTIR MI TIENDA").assertDoesNotExist()
@@ -244,7 +244,10 @@ class EmulatorJourneyTest {
     }
     private fun navigate(label:String) {
         openDrawer()
-        val query=hasSetTextAction() and hasText(if(drawerQuery.isBlank()) "Buscar en el menú…" else drawerQuery)
+        // The canonical shell clears the filter when a destination is opened.
+        // Locate either the cleared placeholder or a retained query; do not
+        // assume the previous drawer's search text survives navigation.
+        val query=hasSetTextAction() and (hasText("Buscar en el menú…") or hasText(drawerQuery.takeIf { it.isNotBlank() } ?: "Buscar en el menú…"))
         compose.onNode(query).performTextReplacement(label)
         drawerQuery=label
         Espresso.closeSoftKeyboard()

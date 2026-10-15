@@ -13,6 +13,7 @@ Validación de entrega:
 - Certificado SHA256: `5a5670decdac3ee1e2fc95503ae65343c3a1f075f62dec835d26125a578d490f`.
 - APK SHA256: `e043645ed2ee02a5697a2001d3b5465ef101978ef4fcb35b6ce1a3b1f2d442c9`.
 - Batería instrumentada amplia:183 PASS iniciales. Tres tests de navegación requieren `-e navigationQa true` y ocho casos requieren fixtures/argumentos especiales; no se presentan como aprobados por omisión. Evidencia y repetición correcta en el reporte Web `docs/RELEASE_1.0.112_2026-10-15.md` y `docs/navigation/evidence/`.
+- Cierre: **194 identidades instrumentadas únicas PASS**, sin fallos/assumptions pendientes entre las configuraciones QA18768 y QA18767. Se conservan las salidas iniciales y reruns en el reporte combinado del repositorio Web. El arnés de journeys se adaptó al filtro que se vacía al navegar y a Vender/Cobros y abonos; conserva las verificaciones originales de stock, clientes, crédito, caja y aislamiento.
 
 URL release: https://micatalogo.bsolutions.dev/downloads/bspos-1.0.112-release.apk
 
