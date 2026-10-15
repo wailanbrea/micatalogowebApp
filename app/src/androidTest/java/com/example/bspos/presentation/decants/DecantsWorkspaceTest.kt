@@ -5,6 +5,11 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.example.bspos.core.ui.theme.BSPOSTheme
 import com.example.bspos.data.micatalogo.dto.*
+import com.example.bspos.domain.model.Product
+import androidx.compose.runtime.*
+import java.time.Instant
+import java.util.UUID
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -85,6 +90,61 @@ class DecantsWorkspaceTest {
             DecantPrepareSheet(workspace.copy(groups = listOf(mixedSource)), null, true, {}, {}) { _, _, _, _, _ -> }
         } }
         compose.onNode(hasText("Perfume Demo 100ml") and hasText("10 en inventario · 100 ml")).assertExists()
+    }
+
+    @Test fun unconfiguredTabIsBetweenReportAndOptionsAndOpensTheFullSearchableList() {
+        val products = (1..12).map { index -> Product(UUID.randomUUID(), "Perfume pendiente $index", "PEND-$index",
+            categoryId = UUID.randomUUID(), unitId = UUID.randomUUID(), salePrice = 10000,
+            createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH) }
+        var selected: Product? = null
+        compose.setContent { BSPOSTheme {
+            var action by remember { mutableStateOf<String?>(null) }
+            DecantsContent(workspace, null, null, false, onRefresh = {}, onAction = { action = it },
+                onPrepare = {}, onDiscard = { _, _ -> }, onUndo = {}, onMode = { _, _ -> }, onNewSize = {},
+                unconfiguredSources = products)
+            if (action == "unconfigured") DecantUnconfiguredSourcesSheet(products, products.associate { it.id to 4L }, true,
+                { action = null }, { selected = it; action = null })
+        } }
+        val tree = compose.onRoot(useUnmergedTree = true).printToString()
+        check(tree.indexOf("Reporte") < tree.indexOf("Sin volumen (12)"))
+        check(tree.indexOf("Sin volumen (12)") < tree.indexOf("Más opciones"))
+        val reportBounds = compose.onNodeWithText("Reporte").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        val volumeBounds = compose.onNodeWithText("Sin volumen (12)").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        val moreBounds = compose.onNodeWithText("Más opciones").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        assertEquals(reportBounds.width, volumeBounds.width, 2f)
+        assertEquals(volumeBounds.width, moreBounds.width, 2f)
+        compose.onNodeWithText("Perfume pendiente 1").assertDoesNotExist()
+        compose.onNodeWithText("Sin volumen (12)").performScrollTo().performClick()
+        compose.onNodeWithText("Productos sin volumen").assertExists()
+        compose.onNodeWithText("Buscar producto").performTextReplacement("PEND-12")
+        compose.onNodeWithText("Perfume pendiente 12").assertExists()
+        compose.onNodeWithText("Perfume pendiente 1").assertDoesNotExist()
+        capture("style-decant-unconfigured-products")
+        compose.onNodeWithText("Configurar ml").performScrollTo().performClick()
+        compose.runOnIdle { assertEquals(products.last().id, selected?.id) }
+        compose.onNodeWithText("Productos sin volumen").assertDoesNotExist()
+    }
+
+    @Test fun unconfiguredProductsSheetExplainsTheEmptyStateAndCanClose() {
+        var closed = false
+        compose.setContent { BSPOSTheme {
+            DecantUnconfiguredSourcesSheet(emptyList(), emptyMap(), false, { closed = true }, {})
+        } }
+        compose.onNodeWithText("No hay productos pendientes de configurar.").assertExists()
+        compose.onNodeWithContentDescription("Cerrar").performClick()
+        compose.runOnIdle { assertEquals(true, closed) }
+    }
+
+    @Test fun unconfiguredProductsRemainReadOnlyWithoutManagementPermission() {
+        val product = Product(UUID.randomUUID(), "Perfume sin volumen", "PEND-1", categoryId = UUID.randomUUID(),
+            unitId = UUID.randomUUID(), salePrice = 10000, createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        var selected: Product? = null
+        compose.setContent { BSPOSTheme {
+            DecantUnconfiguredSourcesSheet(listOf(product), mapOf(product.id to 3L), false, {}, { selected = it })
+        } }
+        compose.onNodeWithText("Unidad · 3 disponible(s)").assertExists()
+        compose.onNodeWithText("Configurar ml").assertIsNotEnabled()
+        compose.runOnIdle { assertNull(selected) }
     }
 
     private fun capture(name: String) {

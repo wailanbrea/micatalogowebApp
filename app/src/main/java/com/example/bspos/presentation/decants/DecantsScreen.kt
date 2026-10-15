@@ -110,7 +110,6 @@ fun DecantsScreen(presentation: MiCatalogoBusinessPresentation, showCost: Boolea
     } else {
         DecantsContent(workspace, state.error, state.message, state.busy, viewModel::refreshSync,
             unconfiguredSources = unconfiguredBottleSources,
-            sourceQuantities = quantities,
             onTutorial = { showTutorial = true },
             onAction = { sheet = it; focus = null; focusSize = null }, onPrepare = { focus = it; focusSize = null; sheet = "prepare" },
             onDiscard = { group, opening -> focus = group; sheet = "discard:${opening.id}" },
@@ -121,8 +120,7 @@ fun DecantsScreen(presentation: MiCatalogoBusinessPresentation, showCost: Boolea
             onReconcile = { group -> focus = group; sheet = "reconcile" },
             onPrice = { group, size -> focus = group; focusSize = size.id; sheet = "price" },
             onPrepareSize = { group, size -> focus = group; focusSize = size.id; sheet = "prepare" },
-            onCreateBottle = { createBottleSource = true; sheet = null; focus = null; focusSize = null },
-            onConfigureBottle = { configureBottle = it })
+            onCreateBottle = { createBottleSource = true; sheet = null; focus = null; focusSize = null })
         val enabled = workspace.enabled && workspace.canManage && !state.busy
         when {
             sheet == "setup" -> DecantQuickSetupSheet(workspace, enabled, { sheet = null }, onCreateBottle = {
@@ -146,6 +144,12 @@ fun DecantsScreen(presentation: MiCatalogoBusinessPresentation, showCost: Boolea
             }
             sheet == "advanced" -> DecantAdvancedSheet(enabled, { sheet = null }) { next -> sheet = next }
             sheet == "report" -> DecantReportSheet(workspace) { sheet = null }
+            sheet == "unconfigured" -> DecantUnconfiguredSourcesSheet(
+                unconfiguredBottleSources, quantities, enabled, { sheet = null }
+            ) { product ->
+                sheet = null
+                configureBottle = product
+            }
             sheet == "vials" -> DecantVialsSheet(workspace, enabled, state.busy, state.error, state.message, { sheet = null }, { size, qty, cost, salePrice ->
                 viewModel.command(operation("decant_vial_receive") { put("volume_ml", size); put("quantity", qty); put("unit_cost", cost); if (salePrice.isNotBlank()) put("sale_price", salePrice) })
             }, { vial -> viewModel.command(operation("decant_vial_update") { put("vial_id", vial.id); put("active", !vial.active) }) })
@@ -296,8 +300,7 @@ internal fun DecantsContent(workspace: DecantWorkspaceDto, error: String?, messa
     onMode: (DecantSizeDto, Boolean) -> Unit, onNewSize: (DecantFragranceDto) -> Unit,
     onSell: (DecantFragranceDto, DecantOpeningDto) -> Unit = { _, _ -> }, onReconcile: (DecantFragranceDto) -> Unit = {},
     onPrice: (DecantFragranceDto, DecantSizeDto) -> Unit = { _, _ -> }, onPrepareSize: (DecantFragranceDto, DecantSizeDto) -> Unit = { _, _ -> },
-    onCreateBottle: () -> Unit = {}, unconfiguredSources: List<Product> = emptyList(),
-    sourceQuantities: Map<UUID, Long> = emptyMap(), onConfigureBottle: (Product) -> Unit = {}) {
+    onCreateBottle: () -> Unit = {}, unconfiguredSources: List<Product> = emptyList()) {
     var query by remember { mutableStateOf("") }; var filter by remember { mutableStateOf("Todas") }
     fun matches(g: DecantFragranceDto, option: String): Boolean = when (option) {
         "Listos" -> g.sizes.any { it.prepared > 0 }
@@ -357,39 +360,21 @@ internal fun DecantsContent(workspace: DecantWorkspaceDto, error: String?, messa
                 }
             }
         }
-        if (unconfiguredSources.isNotEmpty()) {
-            item {
-                Surface(
-                    shape = BSPOSDesign.cardRadius,
-                    color = BSPOSTheme.colors.primaryLight,
-                    border = BorderStroke(1.dp, BSPOSTheme.colors.primary.copy(alpha = .28f))
-                ) {
-                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text("Productos sin volumen configurado", fontWeight = FontWeight.Bold, color = BSPOSTheme.colors.textPrimary)
-                        Text(
-                            "Si un perfume llegó como Unidad, establece sus mililitros aquí para convertirlo en botella fuente sin crear otro producto.",
-                            style = MaterialTheme.typography.bodySmall, color = BSPOSTheme.colors.textSecondary
-                        )
-                        unconfiguredSources.take(8).forEach { product ->
-                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                Column(Modifier.weight(1f)) {
-                                    Text(product.name, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-                                    Text("Unidad · ${sourceQuantities[product.id] ?: 0} disponible(s)", fontSize = 11.sp, color = BSPOSTheme.colors.textSecondary)
-                                }
-                                BSPOSOutlinedButton({ onConfigureBottle(product) }, enabled = workspace.enabled && workspace.canManage && !busy) {
-                                    Text("Configurar ml")
-                                }
-                            }
+        item {
+            Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf("report" to "Reporte", "unconfigured" to "Sin volumen (${unconfiguredSources.size})", "advanced" to "Más opciones").forEach { (action, label) ->
+                    BSPOSOutlinedButton({ onAction(action) }, modifier = Modifier.weight(1f).fillMaxHeight(),
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp)) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Icon(when (action) {
+                                "report" -> Icons.Outlined.Assessment
+                                "unconfigured" -> Icons.Outlined.Straighten
+                                else -> Icons.Outlined.Tune
+                            }, null, Modifier.size(18.dp))
+                            Text(label, fontSize = 12.sp, maxLines = 2, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                         }
-                        if (unconfiguredSources.size > 8) Text("Hay ${unconfiguredSources.size - 8} producto(s) más. Puedes configurarlos desde Productos.", fontSize = 11.sp, color = BSPOSTheme.colors.textSecondary)
                     }
                 }
-            }
-        }
-        item {
-            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                BSPOSOutlinedButton({ onAction("report") }) { Icon(Icons.Outlined.Assessment, null); Spacer(Modifier.width(8.dp)); Text("Reporte") }
-                BSPOSOutlinedButton({ onAction("advanced") }) { Icon(Icons.Outlined.Tune, null); Spacer(Modifier.width(8.dp)); Text("Más opciones") }
             }
             Spacer(Modifier.height(8.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -871,6 +856,40 @@ private fun DecantQuickSetupSheet(
     CheckoutStyleBottomSheet("Reporte de decants", onDismiss) {
         Text("Período ${workspace.period.ifBlank { "no consultado" }}"); SummaryLine("Frascos preparados", workspace.prepared.toString()); SummaryLine("Valor en estante", money(workspace.preparedValueCents)); SummaryLine("Perfume perdido", "${workspace.lostMl} ml")
         workspace.groups.forEach { group -> Text(group.name, fontWeight = FontWeight.Bold); SummaryLine("Vendidos en el período", group.sizes.sumOf { it.soldMonth }.toString()); SummaryLine("Ingresos netos", money(group.sizes.sumOf { it.revenueMonthCents })); if (group.sizes.all { it.profitMonthCents != null }) SummaryLine("Margen monetario", money(group.sizes.sumOf { it.profitMonthCents ?: 0 })) }
+    }
+}
+
+@Composable
+internal fun DecantUnconfiguredSourcesSheet(
+    products: List<Product>,
+    quantities: Map<UUID, Long>,
+    enabled: Boolean,
+    onDismiss: () -> Unit,
+    onConfigure: (Product) -> Unit
+) {
+    var query by remember { mutableStateOf("") }
+    val visible = products.filter { query.isBlank() || it.name.contains(query.trim(), true) || it.internalCode.contains(query.trim(), true) }
+    CheckoutStyleBottomSheet("Productos sin volumen", onDismiss) {
+        Text("Configura los mililitros de un perfume registrado como Unidad para usarlo como botella fuente.",
+            style = MaterialTheme.typography.bodySmall, color = BSPOSTheme.colors.textSecondary)
+        BSPOSSearchField(query, { query = it }, "Buscar producto", Modifier.fillMaxWidth())
+        Text("${products.size} producto(s) sin volumen configurado", style = MaterialTheme.typography.labelLarge)
+        if (visible.isEmpty()) {
+            Text(if (products.isEmpty()) "No hay productos pendientes de configurar." else "No hay productos que coincidan con la búsqueda.",
+                color = BSPOSTheme.colors.textSecondary)
+        }
+        // CheckoutStyleBottomSheet owns the scroll; do not nest a lazy list.
+        visible.forEach { product ->
+            Surface(shape = BSPOSDesign.cardRadius, border = BorderStroke(1.dp, BSPOSTheme.colors.outline)) {
+                Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(product.name, fontWeight = FontWeight.SemiBold)
+                    Text("Unidad · ${quantities[product.id] ?: 0} disponible(s)", fontSize = 12.sp, color = BSPOSTheme.colors.textSecondary)
+                    BSPOSOutlinedButton({ onConfigure(product) }, enabled = enabled, modifier = Modifier.fillMaxWidth()) {
+                        Text("Configurar ml")
+                    }
+                }
+            }
+        }
     }
 }
 

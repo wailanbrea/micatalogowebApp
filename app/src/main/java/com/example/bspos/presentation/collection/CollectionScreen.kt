@@ -8,11 +8,12 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -39,6 +40,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -77,8 +80,8 @@ fun CollectionScreen(viewModel: CollectionViewModel = hiltViewModel()) {
     val remoteOnlyCustomers = customersWithBalance.filterNot { it.id in localSaleCustomerIds }
 
     LazyColumn(
-        modifier = Modifier.fillMaxSize().background(BSPOSTheme.colors.background),
-        contentPadding = PaddingValues(20.dp),
+        modifier = Modifier.fillMaxSize().background(BSPOSTheme.colors.background).imePadding(),
+        contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
@@ -105,25 +108,19 @@ fun CollectionScreen(viewModel: CollectionViewModel = hiltViewModel()) {
                 colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface)
             ) {
                 Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Person, null, tint = BSPOSTheme.colors.primary)
+                    Icon(Icons.Default.Person, null, tint = BSPOSTheme.colors.primary, modifier = Modifier.size(24.dp))
                     Spacer(Modifier.width(10.dp))
                     Column(Modifier.weight(1f)) {
-                        Text(customer?.businessName ?: "Seleccionar cliente", fontWeight = FontWeight.ExtraBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(customer?.fullName ?: "Seleccionar cliente", fontWeight = FontWeight.ExtraBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                         Text(customer?.let { "Saldo: ${money(it.balance)}" } ?: "Elige un cliente con saldo pendiente", color = BSPOSTheme.colors.textSecondary)
                     }
-                    Text("Cambiar", color = BSPOSTheme.colors.primary, fontWeight = FontWeight.Bold)
+                    Text("Cambiar", modifier = Modifier.padding(start = 8.dp), color = BSPOSTheme.colors.primary, fontWeight = FontWeight.Bold)
                 }
             }
         }
         if (tab == "Por cobrar") {
             item {
-                Text("Método de cobro", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelLarge)
-                Spacer(Modifier.size(3.dp))
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(PaymentMethod.entries.toList()) { value ->
-                        FilterChip(selected = method == value, onClick = { method = value }, label = { Text(value.label) })
-                    }
-                }
+                CollectionPaymentMethods(method, onSelect = { method = it })
             }
             item {
                 Text("Cuentas por cobrar", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold)
@@ -200,77 +197,90 @@ fun CollectionScreen(viewModel: CollectionViewModel = hiltViewModel()) {
 }
 
 @Composable
-private fun PendingSaleCard(
+internal fun PendingSaleCard(
     sale: Sale,
     customer: Customer?,
     method: PaymentMethod,
     busy: Boolean,
     onCollect: (Long) -> Unit
 ) {
-    var amount by remember(sale.id, sale.pendingAmount) { mutableStateOf(MoneyUtils.formatCentsCompact(sale.pendingAmount)) }
-    val value = MoneyUtils.parsePesosStringToCents(amount)
-    Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface)) {
-        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text(sale.invoiceNumber, fontWeight = FontWeight.ExtraBold)
-                    Text(customer?.businessName ?: "Cliente no asociado", color = if (customer == null) BSPOSTheme.colors.warning else BSPOSTheme.colors.textSecondary)
-                    Text("Pendiente: ${money(sale.pendingAmount)}", color = BSPOSTheme.colors.textSecondary)
-                }
-                Text(money(sale.total), fontWeight = FontWeight.ExtraBold)
+    Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface)) {
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(sale.invoiceNumber, color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelLarge)
+                Text(customer?.fullName ?: "Cliente no asociado", fontWeight = FontWeight.ExtraBold,
+                    maxLines = 2, overflow = TextOverflow.Ellipsis,
+                    color = if (customer == null) BSPOSTheme.colors.warning else BSPOSTheme.colors.textPrimary)
+                Text("Saldo pendiente", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelLarge)
+                Text(money(sale.pendingAmount), fontWeight = FontWeight.ExtraBold, style = MaterialTheme.typography.headlineSmall)
+                Text("Total factura: ${money(sale.total)} · ${method.label}",
+                    color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodySmall)
             }
-            Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                OutlinedTextField(
-                    value = amount,
-                    onValueChange = { amount = it.filter { char -> char.isDigit() || char == '.' } },
-                    modifier = Modifier.weight(1f),
-                    label = { Text("Monto a cobrar") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    singleLine = true
-                )
-                Button(
-                    onClick = { if (value > 0L && value <= sale.pendingAmount) onCollect(value) },
-                    enabled = !busy && customer != null && value > 0L && value <= sale.pendingAmount
-                ) { Text(if (busy) "Procesando…" else "Cobrar") }
-            }
+            CollectionAmountForm(sale.id.toString(), sale.pendingAmount, busy, customer != null, onCollect)
         }
     }
 }
 
 @Composable
-private fun RemoteCustomerDebtCard(
+internal fun RemoteCustomerDebtCard(
     customer: Customer,
     method: PaymentMethod,
     busy: Boolean,
     onCollect: (Long) -> Unit
 ) {
-    var amount by remember(customer.id, customer.balance) {
-        mutableStateOf(MoneyUtils.formatCentsCompact(customer.balance))
-    }
-    val value = MoneyUtils.parsePesosStringToCents(amount)
-    Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface)) {
-        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text(customer.fullName, fontWeight = FontWeight.ExtraBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text("Saldo pendiente: ${money(customer.balance)}", color = BSPOSTheme.colors.warning)
-                    Text("Cobro remoto · ${method.label}", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelMedium)
-                }
-                Text(money(customer.balance), fontWeight = FontWeight.ExtraBold)
+    Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface)) {
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(customer.fullName, fontWeight = FontWeight.ExtraBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text("Saldo pendiente", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelLarge)
+                Text(money(customer.balance), fontWeight = FontWeight.ExtraBold, style = MaterialTheme.typography.headlineSmall)
+                Text(method.label, color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodySmall)
             }
-            Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                OutlinedTextField(
-                    value = amount,
-                    onValueChange = { amount = it.filter { char -> char.isDigit() || char == '.' } },
-                    modifier = Modifier.weight(1f),
-                    label = { Text("Monto a cobrar") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    singleLine = true
-                )
-                Button(
-                    onClick = { if (value > 0L && value <= customer.balance) onCollect(value) },
-                    enabled = !busy && value > 0L && value <= customer.balance
-                ) { Text(if (busy) "Procesando…" else "Cobrar") }
+            CollectionAmountForm(customer.id.toString(), customer.balance, busy, true, onCollect)
+        }
+    }
+}
+
+/** A single mobile layout for local invoices and authoritative remote balances. */
+@Composable
+private fun CollectionAmountForm(identity: String, balance: Long, busy: Boolean, allowed: Boolean, onCollect: (Long) -> Unit) {
+    var amount by remember(identity, balance) { mutableStateOf(MoneyUtils.formatCentsCompact(balance)) }
+    val value = MoneyUtils.parsePesosStringToCents(amount)
+    val valid = value > 0L && value <= balance
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        OutlinedTextField(
+            value = amount,
+            onValueChange = { amount = it.filter { char -> char.isDigit() || char == '.' } },
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text("Monto a cobrar") },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
+            singleLine = true,
+            enabled = !busy,
+            isError = value > balance,
+            supportingText = if (value > balance) ({ Text("El monto no puede superar el saldo pendiente.") }) else null
+        )
+        Button(
+            onClick = { if (!busy && allowed && valid) onCollect(value) },
+            modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
+            enabled = !busy && allowed && valid
+        ) { Text(if (busy) "Procesando…" else "Cobrar") }
+    }
+}
+
+@Composable
+internal fun CollectionPaymentMethods(selected: PaymentMethod, onSelect: (PaymentMethod) -> Unit) {
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text("Método de cobro", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelLarge)
+        PaymentMethod.entries.toList().chunked(2).forEach { methods ->
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                methods.forEach { value ->
+                    FilterChip(
+                        selected = selected == value,
+                        onClick = { onSelect(value) },
+                        modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                        label = { Text(value.label, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center) }
+                    )
+                }
             }
         }
     }
