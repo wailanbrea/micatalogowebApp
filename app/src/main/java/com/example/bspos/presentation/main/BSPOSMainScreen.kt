@@ -1007,11 +1007,13 @@ fun BSPOSNavHost(
         }
         composable(Screen.Decants.route) {
             var startDecantsTutorial by remember { mutableStateOf(false) }
+            var prepareDecantsSourceId by remember { mutableStateOf<String?>(null) }
             LaunchedEffect(Unit) {
                 val previousEntry = navController.previousBackStackEntry
                 if (previousEntry?.savedStateHandle?.remove<Boolean>("start_decants_tutorial") == true) {
                     startDecantsTutorial = true
                 }
+                prepareDecantsSourceId = navController.previousBackStackEntry?.savedStateHandle?.remove("prepare_decants_source_id")
             }
             // Decants is an operational workspace, not a read-only feature card.
             // Keep the entry on the native flow so “Abrir botella”, “Preparar
@@ -1021,7 +1023,8 @@ fun BSPOSNavHost(
                 com.example.bspos.presentation.decants.DecantsScreen(
                     presentation = presentation,
                     showCost = !sellerMode || canSeeMenu("finance"),
-                    startTutorial = startDecantsTutorial
+                    startTutorial = startDecantsTutorial,
+                    prepareSourceRemoteId = prepareDecantsSourceId
                 )
             }
         }
@@ -1120,7 +1123,11 @@ fun BSPOSNavHost(
                     showProductCode = productFields.isEmpty() || "sku" in productFields || "barcode" in productFields,
                     initialServiceMode = !canSeeMenu("products"),
                     onOpenProducts = if (canSeeMenu("products")) ({}) else null,
-                    onOpenServices = if (canSeeMenu("services")) ({ navController.navigate(Screen.Services.route) { launchSingleTop = true } }) else null
+                    onOpenServices = if (canSeeMenu("services")) ({ navController.navigate(Screen.Services.route) { launchSingleTop = true } }) else null,
+                    onOpenDecants = if (canSeeMenu("decants")) ({ sourceId ->
+                        navController.currentBackStackEntry?.savedStateHandle?.set("prepare_decants_source_id", sourceId)
+                        navController.navigate(Screen.Decants.route) { launchSingleTop = true }
+                    }) else null
                 )
             }
         }
@@ -1131,7 +1138,11 @@ fun BSPOSNavHost(
                     presentation = presentation,
                     showCost = !sellerMode || canSeeMenu("finance"),
                     showProductCode = productFields.isEmpty() || "sku" in productFields || "barcode" in productFields,
-                    startWithForm = true
+                    startWithForm = true,
+                    onOpenDecants = if (canSeeMenu("decants")) ({ sourceId ->
+                        navController.currentBackStackEntry?.savedStateHandle?.set("prepare_decants_source_id", sourceId)
+                        navController.navigate(Screen.Decants.route) { launchSingleTop = true }
+                    }) else null
                 )
             }
         }
@@ -1577,7 +1588,8 @@ private fun canOpenMenuScreen(
         Screen.Support -> "support"
         Screen.Metrics -> "metrics"
         Screen.PublicCatalog -> "public_catalog"
-        Screen.Catalog, Screen.CatalogCreate, Screen.Categories -> "products"
+        Screen.Categories -> return canSeeMenu("products") || canSeeMenu("services") || canSeeMenu("decants")
+        Screen.Catalog, Screen.CatalogCreate -> "products"
         Screen.Settings -> "settings"
         Screen.Cash -> "cash"
         Screen.Returns -> "returns"

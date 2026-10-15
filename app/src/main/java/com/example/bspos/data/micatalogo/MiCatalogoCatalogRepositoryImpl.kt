@@ -31,6 +31,11 @@ import com.example.bspos.domain.repository.MiCatalogoCatalogRepository
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.*
@@ -80,8 +85,16 @@ class MiCatalogoCatalogRepositoryImpl @Inject constructor(
         if (!response.isSuccessful) error(response.apiErrorMessage("No se pudo descargar el catalogo."))
         val snapshot = checkNotNull(response.body()) { "MiCatalogo devolvio un catalogo vacio." }
         check(snapshot.shop.id == shopId) { "La respuesta no corresponde a la tienda solicitada." }
-        val imagePaths = snapshot.products.associate { remote ->
-            remote.id to downloadImages(remote)
+        // Cache image files concurrently: serially downloading full-size and
+        // thumbnail images for every product could exhaust the startup budget
+        // and make a valid seller login look like a timeout.
+        val imageDownloadSlots = Semaphore(8)
+        val imagePaths = coroutineScope {
+            snapshot.products.map { remote ->
+                async {
+                    remote.id to imageDownloadSlots.withPermit { downloadImages(remote) }
+                }
+            }.awaitAll().toMap()
         }
         val remoteCustomers = try {
             customerApi.customers(shopId).let { response -> if (response.isSuccessful) response.body()?.customers else null }

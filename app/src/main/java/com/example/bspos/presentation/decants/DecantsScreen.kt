@@ -43,6 +43,11 @@ private fun operation(type: String, block: JsonObjectBuilder.() -> Unit = {}) = 
 private fun money(cents: Long): String = MoneyUtils.formatCents(cents, CurrencyUnit.DOP)
 private fun decimal(cents: Long): String = BigDecimal.valueOf(cents, 2).toPlainString()
 
+internal fun finishBottleConfiguration(onDismiss: () -> Unit, onRefreshWorkspace: () -> Unit) {
+    onDismiss()
+    onRefreshWorkspace()
+}
+
 private fun DecantFragranceDto.isBottleSource(): Boolean = sourceSaleUnit.trim().equals("bottle", ignoreCase = true)
 
 private fun DecantFragranceDto.hasAvailableBottleStock(): Boolean =
@@ -69,6 +74,7 @@ internal data class DecantPrepareSizeOption(
 @Composable
 fun DecantsScreen(presentation: MiCatalogoBusinessPresentation, showCost: Boolean,
     startTutorial: Boolean = false,
+    prepareSourceRemoteId: String? = null,
     viewModel: DecantsViewModel = hiltViewModel(), catalog: ProductCatalogViewModel = hiltViewModel()) {
     val state by viewModel.state.collectAsState()
     val products by catalog.products.collectAsState()
@@ -82,6 +88,8 @@ fun DecantsScreen(presentation: MiCatalogoBusinessPresentation, showCost: Boolea
     var focusSize by remember { mutableStateOf<String?>(null) }
     var createSource by remember { mutableStateOf<String?>(null) }
     var createBottleSource by remember { mutableStateOf(false) }
+    var autoPrepareSourceRemoteId by remember { mutableStateOf(prepareSourceRemoteId) }
+    var handledAutoPrepareSourceRemoteId by remember { mutableStateOf<String?>(null) }
     var configureBottle by remember { mutableStateOf<Product?>(null) }
     var showTutorial by remember { mutableStateOf(false) }
     val quantities = stock.associate { it.productId to it.quantity }
@@ -91,6 +99,17 @@ fun DecantsScreen(presentation: MiCatalogoBusinessPresentation, showCost: Boolea
             (it.remoteSaleUnit == null || it.remoteSaleUnit == "unit")
     }
     LaunchedEffect(Unit) { viewModel.load() }
+    LaunchedEffect(prepareSourceRemoteId) {
+        if (!prepareSourceRemoteId.isNullOrBlank()) viewModel.refreshAfterCatalogMutation()
+    }
+    LaunchedEffect(autoPrepareSourceRemoteId, state.workspace) {
+        val sourceId = autoPrepareSourceRemoteId
+        if (!sourceId.isNullOrBlank() && handledAutoPrepareSourceRemoteId != sourceId &&
+            state.workspace?.groups?.any { it.id == sourceId } == true) {
+            handledAutoPrepareSourceRemoteId = sourceId
+            sheet = "setup"
+        }
+    }
     LaunchedEffect(startTutorial) {
         if (startTutorial) showTutorial = true
     }
@@ -123,7 +142,7 @@ fun DecantsScreen(presentation: MiCatalogoBusinessPresentation, showCost: Boolea
             onCreateBottle = { createBottleSource = true; sheet = null; focus = null; focusSize = null })
         val enabled = workspace.enabled && workspace.canManage && !state.busy
         when {
-            sheet == "setup" -> DecantQuickSetupSheet(workspace, enabled, { sheet = null }, onCreateBottle = {
+            sheet == "setup" -> DecantQuickSetupSheet(workspace, enabled, { sheet = null }, initialSourceId = autoPrepareSourceRemoteId, onCreateBottle = {
                 createBottleSource = true
                 sheet = null
             }) { source, mode, lines ->
@@ -212,27 +231,34 @@ fun DecantsScreen(presentation: MiCatalogoBusinessPresentation, showCost: Boolea
     if (createSource != null && categories.any { it.isActive } && units.any { it.isActive }) {
         ProductForm(current = null, currentQuantity = 0, categories = categories.filter { it.isActive }, units = units.filter { it.isActive },
             presentation = presentation, showCost = showCost, showInventoryFields = false, showProductCode = true,
-            onSave = { input, initialQuantity ->
-                catalog.add(input, initialQuantity) { viewModel.refreshAfterCatalogMutation() }
-                createSource = null
+            onSave = { input, initialQuantity, _ ->
+                catalog.add(input, initialQuantity) {
+                    viewModel.refreshAfterCatalogMutation()
+                    createSource = null
+                }
             }, onDismiss = { createSource = null },
             shops = shops, activeShopId = activeShop, decantMode = true,
             sourceProducts = products.filter { it.remoteSaleUnit == "bottle" }, initialSourceRemoteId = createSource)
     } else if (createBottleSource && categories.any { it.isActive } && units.any { it.isActive }) {
         ProductForm(current = null, currentQuantity = 0, categories = categories.filter { it.isActive }, units = units.filter { it.isActive },
             presentation = presentation, showCost = showCost, showInventoryFields = true, showProductCode = true,
-            onSave = { input, initialQuantity ->
-                catalog.add(input, initialQuantity) { viewModel.refreshAfterCatalogMutation() }
-                createBottleSource = false
+            onSave = { input, initialQuantity, prepareDecants ->
+                catalog.add(input, initialQuantity) { created ->
+                    autoPrepareSourceRemoteId = created.remoteProductId.takeIf { prepareDecants }
+                    viewModel.refreshAfterCatalogMutation()
+                    createBottleSource = false
+                }
             }, onDismiss = { createBottleSource = false }, shops = shops, activeShopId = activeShop,
-            initialSaleUnit = "bottle")
+            initialSaleUnit = "bottle", enableDecantPrompt = true)
     } else if (createSource != null) BSPOSAlertDialog(onDismissRequest = { createSource = null }, title = { Text("Nueva presentación") },
         text = { Text("Configura primero una categoría y una unidad activas en Catálogo.") },
         confirmButton = { BSPOSButton({ createSource = null }) { Text("Entendido") } })
     else if (createBottleSource) BSPOSAlertDialog(onDismissRequest = { createBottleSource = false }, title = { Text("Crear botella completa") },
         text = { Text("Configura primero una categoría y una unidad activas en Catálogo.") },
         confirmButton = { BSPOSButton({ createBottleSource = false }) { Text("Entendido") } })
-    if (configureBottle != null && categories.any { it.isActive } && units.any { it.isActive }) {
+    // Assigning bottle volume only changes the product's sale unit/metadata; it
+    // does not require category/unit editors to be available in this workspace.
+    if (configureBottle != null) {
         ConfigureBottleDialog(
             product = configureBottle!!,
             stock = quantities[configureBottle!!.id] ?: 0L,
@@ -240,15 +266,16 @@ fun DecantsScreen(presentation: MiCatalogoBusinessPresentation, showCost: Boolea
             onDismiss = { configureBottle = null },
             onConfirm = { volumeMl ->
                 catalog.configureAsBottle(configureBottle!!, volumeMl) {
-                    configureBottle = null
-                    viewModel.load()
+                    // Product edits are written through the durable outbox.
+                    // Wait for server acknowledgement and pull the authoritative
+                    // workspace; an immediate GET races the queued mutation.
+                    finishBottleConfiguration(
+                        onDismiss = { configureBottle = null },
+                        onRefreshWorkspace = viewModel::refreshAfterCatalogMutation
+                    )
                 }
             }
         )
-    } else if (configureBottle != null) {
-        BSPOSAlertDialog(onDismissRequest = { configureBottle = null }, title = { Text("Configurar botella") },
-            text = { Text("Configura primero una categoría y una unidad activas en Catálogo.") },
-            confirmButton = { BSPOSButton({ configureBottle = null }) { Text("Entendido") } })
     }
     if (showTutorial && workspace != null) {
         DecantsGuidedTutorial { showTutorial = false }
@@ -256,7 +283,7 @@ fun DecantsScreen(presentation: MiCatalogoBusinessPresentation, showCost: Boolea
 }
 
 @Composable
-private fun ConfigureBottleDialog(product: Product, stock: Long, enabled: Boolean, onDismiss: () -> Unit, onConfirm: (Int) -> Unit) {
+internal fun ConfigureBottleDialog(product: Product, stock: Long, enabled: Boolean, onDismiss: () -> Unit, onConfirm: (Int) -> Unit) {
     var volumeText by remember(product.id) { mutableStateOf("") }
     val volume = volumeText.toIntOrNull()
     val valid = volume != null && volume in 1..100_000
@@ -525,12 +552,15 @@ private fun DecantQuickSetupSheet(
     workspace: DecantWorkspaceDto,
     enabled: Boolean,
     onDismiss: () -> Unit,
+    initialSourceId: String? = null,
     onCreateBottle: () -> Unit,
     onSubmit: (DecantFragranceDto, String, List<QuickDecantLine>) -> Unit
 ) {
     val sources = workspace.groups.filter { it.isBottleSource() && it.hasAvailableBottleStock() }
     var step by remember { mutableIntStateOf(0) }
-    var sourceId by remember { mutableStateOf<String?>(sources.firstOrNull()?.id) }
+    var sourceId by remember(sources, initialSourceId) {
+        mutableStateOf(initialSourceId?.takeIf { id -> sources.any { it.id == id } } ?: sources.firstOrNull()?.id)
+    }
     var mode by remember { mutableStateOf("ready") }
     var customSize by remember { mutableStateOf("") }
     var lines by remember { mutableStateOf(listOf(QuickDecantLine(5), QuickDecantLine(10), QuickDecantLine(30))) }
@@ -881,9 +911,20 @@ internal fun DecantUnconfiguredSourcesSheet(
         // CheckoutStyleBottomSheet owns the scroll; do not nest a lazy list.
         visible.forEach { product ->
             Surface(shape = BSPOSDesign.cardRadius, border = BorderStroke(1.dp, BSPOSTheme.colors.outline)) {
-                Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(product.name, fontWeight = FontWeight.SemiBold)
-                    Text("Unidad · ${quantities[product.id] ?: 0} disponible(s)", fontSize = 12.sp, color = BSPOSTheme.colors.textSecondary)
+                Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.Top) {
+                        Surface(Modifier.size(68.dp), shape = RoundedCornerShape(12.dp), color = BSPOSTheme.colors.surfaceVariant) {
+                            val image = product.thumbnailPath ?: product.imagePath
+                            if (!image.isNullOrBlank()) AsyncImage(model = image, contentDescription = "Imagen de ${product.name}", modifier = Modifier.fillMaxSize())
+                            else Box(contentAlignment = Alignment.Center) { Icon(Icons.Outlined.Science, "Sin imagen", tint = BSPOSTheme.colors.textSecondary) }
+                        }
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(product.name, fontWeight = FontWeight.SemiBold)
+                            Text(product.description?.takeIf(String::isNotBlank) ?: "Sin descripción", fontSize = 12.sp, color = BSPOSTheme.colors.textSecondary)
+                            Text("Existencia: ${quantities[product.id] ?: 0} unidad(es)", fontSize = 12.sp, color = BSPOSTheme.colors.textSecondary)
+                            if (product.lastPurchaseCost > 0) Text("Costo por botella: ${money(product.lastPurchaseCost)}", fontSize = 12.sp, color = BSPOSTheme.colors.textSecondary)
+                        }
+                    }
                     BSPOSOutlinedButton({ onConfigure(product) }, enabled = enabled, modifier = Modifier.fillMaxWidth()) {
                         Text("Configurar ml")
                     }

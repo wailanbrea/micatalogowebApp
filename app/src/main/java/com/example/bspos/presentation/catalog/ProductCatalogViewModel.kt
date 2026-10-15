@@ -121,7 +121,7 @@ class ProductCatalogViewModel @Inject constructor(
         }
     }
 
-    fun add(input: ProductInput, initialQuantity: Long = 0L, onSaved: () -> Unit = {}) {
+    fun add(input: ProductInput, initialQuantity: Long = 0L, onSaved: (com.example.bspos.domain.model.Product) -> Unit = {}) {
         if (!canCreate(input.remoteSaleUnit, input.remoteShopId)) { reportReadOnly(); return }
         val remoteShopId = input.remoteShopId
         if (remoteShopId != null) {
@@ -139,9 +139,10 @@ class ProductCatalogViewModel @Inject constructor(
                 transactor.runInTransaction {
                     val product = productUseCases.create(input)
                     if (initialQuantity > 0) initialInventory(product.id, initialQuantity, input.purchasePrice)
+                    product
                 }
-            }.onSuccess {
-                onSaved()
+            }.onSuccess { product ->
+                onSaved(product)
             }.onFailure {
                 val message = it.toUiMessage("No se pudo guardar el producto")
                 _message.value = message
@@ -157,8 +158,14 @@ class ProductCatalogViewModel @Inject constructor(
                 val message = it.toUiMessage("No se pudo actualizar el producto")
                 _message.value = message
                 UiErrorBus.show(message)
-            }.onSuccess {
-                onSaved()
+            }.onSuccess { changed ->
+                if (changed) {
+                    onSaved()
+                } else {
+                    val message = "No se encontró el producto en la tienda activa; no se guardaron cambios."
+                    _message.value = message
+                    UiErrorBus.show(message)
+                }
             }
         }
     }

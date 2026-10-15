@@ -5,6 +5,7 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -25,6 +26,7 @@ import com.example.bspos.presentation.common.BSPOSButton as Button
 import com.example.bspos.presentation.common.BSPOSOutlinedButton as OutlinedButton
 import com.example.bspos.presentation.common.BSPOSActionTextButton as TextButton
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -35,6 +37,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -65,6 +68,7 @@ fun CatalogHomeScreen(
     startWithForm: Boolean = false,
     onOpenProducts: (() -> Unit)? = null,
     onOpenServices: (() -> Unit)? = null,
+    onOpenDecants: ((String?) -> Unit)? = null,
     viewModel: ProductCatalogViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
@@ -252,7 +256,22 @@ fun CatalogHomeScreen(
         showCost = showCost,
         showInventoryFields = presentation.inventoryEnabled,
         showProductCode = showProductCode,
-        onSave = { input, initialQuantity -> if (editingProduct == null) viewModel.add(input, initialQuantity) else viewModel.update(editingProduct!!, input); showForm = false; editingProduct = null; preselectedSourceRemoteId = null },
+        onSave = { input, initialQuantity, prepareDecants ->
+            val editing = editingProduct
+            if (editing == null) {
+                viewModel.add(input, initialQuantity) { created ->
+                    showForm = false
+                    preselectedSourceRemoteId = null
+                    if (prepareDecants) onOpenDecants?.invoke(created.remoteProductId)
+                }
+            } else {
+                viewModel.update(editing, input) {
+                    showForm = false
+                    editingProduct = null
+                    preselectedSourceRemoteId = null
+                }
+            }
+        },
         onDismiss = { showForm = false; editingProduct = null; preselectedSourceRemoteId = null },
         shops = shops,
         activeShopId = activeShopId,
@@ -260,7 +279,8 @@ fun CatalogHomeScreen(
         serviceMode = initialServiceMode,
         sourceProducts = sourceProducts,
         initialSourceRemoteId = preselectedSourceRemoteId,
-        comboComponentProducts = comboComponentProducts
+        comboComponentProducts = comboComponentProducts,
+        enableDecantPrompt = onOpenDecants != null
     )
     deleteTarget?.let { product ->
         AlertDialog(onDismissRequest = { deleteTarget = null }, title = { Text("Eliminar producto") }, text = { Text("¿Eliminar ${product.name}? El producto dejará de aparecer en el catálogo.") }, confirmButton = { Button({ viewModel.delete(product); deleteTarget = null }, colors = ButtonDefaults.buttonColors(containerColor = BSPOSTheme.colors.error, contentColor = BSPOSTheme.colors.textOnPrimary)) { Text("Eliminar") } }, dismissButton = { TextButton({ deleteTarget = null }) { Text("Cancelar") } })
@@ -544,7 +564,7 @@ private fun DecantSummaryRow(label: String, value: String) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun ProductForm(current: Product?, currentQuantity: Long, categories: List<Category>, units: List<UnitOfMeasure>, presentation: MiCatalogoBusinessPresentation, showCost: Boolean, showInventoryFields: Boolean, showProductCode: Boolean, onSave: (ProductInput, Long) -> Unit, onDismiss: () -> Unit, shops: List<com.example.bspos.domain.model.MiCatalogoShop>, activeShopId: String?, decantMode: Boolean = false, serviceMode: Boolean = false, sourceProducts: List<Product> = emptyList(), initialSourceRemoteId: String? = null, comboComponentProducts: List<Product> = emptyList(), initialSaleUnit: String? = null) {
+internal fun ProductForm(current: Product?, currentQuantity: Long, categories: List<Category>, units: List<UnitOfMeasure>, presentation: MiCatalogoBusinessPresentation, showCost: Boolean, showInventoryFields: Boolean, showProductCode: Boolean, onSave: (ProductInput, Long, Boolean) -> Unit, onDismiss: () -> Unit, shops: List<com.example.bspos.domain.model.MiCatalogoShop>, activeShopId: String?, decantMode: Boolean = false, serviceMode: Boolean = false, sourceProducts: List<Product> = emptyList(), initialSourceRemoteId: String? = null, comboComponentProducts: List<Product> = emptyList(), initialSaleUnit: String? = null, enableDecantPrompt: Boolean = false) {
     val context = LocalContext.current
     var name by remember(current?.id) { mutableStateOf(current?.name.orEmpty()) }
     var description by remember(current?.id) { mutableStateOf(current?.description.orEmpty()) }
@@ -588,16 +608,17 @@ internal fun ProductForm(current: Product?, currentQuantity: Long, categories: L
     var saleUnit by remember(current?.id, effectiveDecantMode, initialSaleUnit) {
         mutableStateOf(if (effectiveDecantMode) "decant" else if (serviceMode && current == null) "service" else (current?.remoteSaleUnit ?: initialSaleUnit ?: "unit"))
     }
-    var saleUnitOpen by remember { mutableStateOf(false) }
     var sourceProduct by remember(current?.id, sourceProducts, initialSourceRemoteId) { mutableStateOf(sourceProducts.firstOrNull { it.remoteProductId == (current?.remoteSourceProductId ?: initialSourceRemoteId) }) }
     var sourceOpen by remember { mutableStateOf(false) }
     val availableComboComponents = comboComponentProducts.filter { it.remoteShopId == shopId && it.id != current?.id }
-    var comboMode by remember(current?.id) { mutableStateOf(current?.remoteIsCombo == true) }
+    var comboMode by rememberSaveable(current?.id?.toString() ?: "new-product") { mutableStateOf(current?.remoteIsCombo == true) }
     var comboRows by remember(current?.id, comboComponentProducts) {
         mutableStateOf<List<ComboDraft>>(current?.remoteComboItems?.map { ComboDraft(it.productId, it.quantity.toString()) } ?: emptyList())
     }
     var comboMenuRow by remember { mutableStateOf<Int?>(null) }
     var comboError by remember { mutableStateOf(false) }
+    var askPrepareDecants by remember { mutableStateOf(false) }
+    var pendingDecantSave by remember { mutableStateOf<Pair<ProductInput, Long>?>(null) }
     var published by remember(current?.id) { mutableStateOf(current?.isActive ?: true) }
     val imageLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri ?: return@rememberLauncherForActivityResult
@@ -706,27 +727,7 @@ internal fun ProductForm(current: Product?, currentQuantity: Long, categories: L
                 if (sourceProducts.isEmpty()) Text("Primero sincroniza o crea un perfume completo configurado como botella, con volumen y control de inventario.", color = BSPOSTheme.colors.warning, style = MaterialTheme.typography.bodySmall)
                 OutlinedTextField(volumeMl, { volumeMl = it.filter(Char::isDigit) }, label = { Text("Tamaño del decant (ml)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), supportingText = { Text("Máximo: ${sourceProduct?.remoteVolumeMl ?: "—"} ml") })
             }
-            if (current == null) Box {
-                val selectedShop = shops.find { it.id == shopId }
-                val destinationLabel = selectedShop?.name
-                    ?: if (shopId != null && shopId == activeShopId) "Tienda activa" else "Solo este dispositivo"
-                TextButton({ shopOpen = true }) { Text("Destino: $destinationLabel") }
-                DropdownMenu(shopOpen, { shopOpen = false }) {
-                    DropdownMenuItem({ Text("Solo este dispositivo") }, { shopId = null; shopOpen = false })
-                    if (activeShopId != null && shops.none { it.id == activeShopId }) {
-                        DropdownMenuItem({ Text("Tienda activa") }, { shopId = activeShopId; shopOpen = false })
-                    }
-                    shops.forEach { shop -> DropdownMenuItem({ Text(shop.name) }, { shopId = shop.id; shopOpen = false }) }
-                }
-            } else if (current.remoteShopId != null) Text("Producto vinculado a MiCatalogo: se enviarán los cambios al sincronizar.", style = MaterialTheme.typography.bodySmall)
-            if (imagePath != null) {
-                AsyncImage(imagePath, "Foto del producto", Modifier.fillMaxWidth().height(150.dp).clip(RoundedCornerShape(16.dp)), contentScale = ContentScale.Crop)
-            } else {
-                Box(Modifier.fillMaxWidth().height(110.dp).clip(RoundedCornerShape(16.dp)).background(BSPOSTheme.colors.primaryLight), contentAlignment = Alignment.Center) { Icon(Icons.Default.Inventory2, null, tint = BSPOSTheme.colors.primary, modifier = Modifier.size(42.dp)) }
-            }
-            OutlinedButton({ imageLauncher.launch(arrayOf("image/*")) }, Modifier.fillMaxWidth()) { Icon(Icons.Default.PhotoCamera, null); Spacer(Modifier.width(6.dp)); Text(if (imagePath == null) "Subir foto" else "Cambiar foto") }
-            if (shopId != null) Text("La foto se enviará como principal. Se conservan las anteriores y se respeta el límite de tu plan.", style = MaterialTheme.typography.bodySmall)
-            OutlinedTextField(name, { name = it }, label = { Text(presentation.term("product", "Nombre")) })
+            OutlinedTextField(name, { name = it }, modifier = Modifier.fillMaxWidth().testTag("product-name-field"), label = { Text("Nombre") }, singleLine = true)
             if (serviceMode || current?.remoteSaleUnit == "service") {
                 OutlinedTextField(
                     value = description,
@@ -759,7 +760,7 @@ internal fun ProductForm(current: Product?, currentQuantity: Long, categories: L
                     }
                 }
             }
-            if (!effectiveDecantMode && !serviceMode && current?.remoteSaleUnit != "service" && shopId != null && availableComboComponents.isNotEmpty()) {
+            if (!effectiveDecantMode && !serviceMode && current?.remoteSaleUnit != "service" && shopId != null) {
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(14.dp),
@@ -770,13 +771,21 @@ internal fun ProductForm(current: Product?, currentQuantity: Long, categories: L
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
                             Column(Modifier.weight(1f)) {
                                 Text("Vender como combo", fontWeight = FontWeight.Bold)
-                                Text("El stock se calcula con los componentes y se descuenta al vender.", style = MaterialTheme.typography.bodySmall, color = BSPOSTheme.colors.textSecondary)
+                                Text("El stock se calcula con sus componentes y se descuenta al vender.", style = MaterialTheme.typography.bodySmall, color = BSPOSTheme.colors.textSecondary)
                             }
-                            Switch(checked = comboMode, onCheckedChange = {
-                                comboMode = it
-                                if (it) saleUnit = "unit"
-                                comboError = false
-                            })
+                            RadioButton(
+                                selected = comboMode,
+                                enabled = availableComboComponents.isNotEmpty(),
+                                modifier = Modifier.testTag("combo-mode-radio"),
+                                onClick = {
+                                    comboMode = !comboMode
+                                    if (comboMode) saleUnit = "unit"
+                                    comboError = false
+                                }
+                            )
+                        }
+                        if (availableComboComponents.isEmpty()) {
+                            Text("Sin productos sincronizados de esta tienda para armar el combo. Agrega primero sus productos componentes.", style = MaterialTheme.typography.bodySmall, color = BSPOSTheme.colors.textSecondary)
                         }
                         if (comboMode) {
                             Spacer(Modifier.height(8.dp))
@@ -784,13 +793,27 @@ internal fun ProductForm(current: Product?, currentQuantity: Long, categories: L
                                 val selected = availableComboComponents.firstOrNull { it.remoteProductId == row.productId }
                                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                     Box(Modifier.weight(1f)) {
-                                        TextButton(onClick = { comboMenuRow = index }, modifier = Modifier.fillMaxWidth()) {
-                                            Text(selected?.name ?: "Seleccionar componente", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        OutlinedButton(onClick = { comboMenuRow = index }, modifier = Modifier.fillMaxWidth().testTag("combo-component-$index"), shape = RoundedCornerShape(12.dp)) {
+                                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                                Column(Modifier.weight(1f), horizontalAlignment = Alignment.Start) {
+                                                    Text(if (selected == null) "Elegir producto componente" else selected.name, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
+                                                    selected?.let { Text("${money(it.salePrice)} · ${it.internalCode}", style = MaterialTheme.typography.labelSmall, color = BSPOSTheme.colors.textSecondary) }
+                                                }
+                                                Text("⌄", color = BSPOSTheme.colors.primary)
+                                            }
                                         }
                                         DropdownMenu(expanded = comboMenuRow == index, onDismissRequest = { comboMenuRow = null }) {
                                             availableComboComponents.filter { candidate -> comboRows.none { it.productId == candidate.remoteProductId && it.productId != row.productId } }.forEach { candidate ->
                                                 DropdownMenuItem(
-                                                    text = { Text(candidate.name) },
+                                                    text = {
+                                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                                            AsyncImage(candidate.imagePath, null, Modifier.size(38.dp).clip(RoundedCornerShape(8.dp)), contentScale = ContentScale.Crop)
+                                                            Column {
+                                                                Text(candidate.name, fontWeight = FontWeight.SemiBold)
+                                                                Text("${money(candidate.salePrice)} · ${candidate.internalCode}", style = MaterialTheme.typography.labelSmall, color = BSPOSTheme.colors.textSecondary)
+                                                            }
+                                                        }
+                                                    },
                                                     onClick = {
                                                         comboRows = comboRows.toMutableList().also { it[index] = row.copy(productId = candidate.remoteProductId.orEmpty()) }
                                                         comboMenuRow = null
@@ -821,22 +844,41 @@ internal fun ProductForm(current: Product?, currentQuantity: Long, categories: L
                 Spacer(Modifier.height(8.dp))
             }
             if (!effectiveDecantMode && !serviceMode && current?.remoteSaleUnit != "service" && !comboMode) {
-                Box {
-                    TextButton({ saleUnitOpen = true }) {
-                        Text("Se vende como: ${when (saleUnit) {
-                            "bottle" -> "Botella completa"
-                            "ml" -> "Por mililitro (ml)"
-                            "service" -> "Servicio (sin inventario)"
-                            else -> "Unidad"
-                        }}")
-                    }
-                    DropdownMenu(saleUnitOpen, { saleUnitOpen = false }) {
-                        listOf("unit" to "Unidad", "bottle" to "Botella completa", "ml" to "Por mililitro (ml)", "service" to "Servicio (sin inventario)").forEach { (value, label) ->
-                            DropdownMenuItem({ Text(label) }, {
+                Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                    Text("Se vende como", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = BSPOSTheme.colors.textPrimary)
+                    listOf(
+                        "unit" to "Unidad",
+                        "bottle" to "Botella completa",
+                        "ml" to "Por mililitro (ml)"
+                    ).forEach { (value, label) ->
+                        val selected = saleUnit == value
+                        Surface(
+                            modifier = Modifier.fillMaxWidth().testTag("sale-unit-$value").clip(RoundedCornerShape(13.dp)).clickable {
                                 saleUnit = value
-                                if (value == "unit" || value == "service") volumeMl = ""
-                                saleUnitOpen = false
-                            })
+                                if (value == "unit") volumeMl = ""
+                            },
+                            shape = RoundedCornerShape(13.dp),
+                            color = if (selected) BSPOSTheme.colors.primaryLight else BSPOSTheme.colors.surface,
+                            border = androidx.compose.foundation.BorderStroke(1.dp, if (selected) BSPOSTheme.colors.primary else BSPOSTheme.colors.outline)
+                        ) {
+                            Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                RadioButton(selected = selected, onClick = {
+                                    saleUnit = value
+                                    if (value == "unit") volumeMl = ""
+                                })
+                                Column(Modifier.padding(start = 4.dp)) {
+                                    Text(label, fontWeight = FontWeight.SemiBold)
+                                    Text(
+                                        when (value) {
+                                            "bottle" -> "Controla botellas selladas y permite prepararlas para Decants."
+                                            "ml" -> "El inventario y la venta se controlan directamente en mililitros."
+                                            else -> "Cada unidad del inventario equivale a un artículo."
+                                        },
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = BSPOSTheme.colors.textSecondary
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -844,28 +886,78 @@ internal fun ProductForm(current: Product?, currentQuantity: Long, categories: L
                     OutlinedTextField(
                         volumeMl,
                         { volumeMl = it.filter(Char::isDigit) },
-                        label = { Text("Contenido en ml") },
+                        modifier = Modifier.fillMaxWidth().testTag("product-volume-ml"),
+                        label = { Text(if (saleUnit == "bottle") "Contenido de la botella (ml)" else "Contenido total (ml)") },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        supportingText = { Text("Ejemplo: 100 ml") }
+                        supportingText = { Text(if (saleUnit == "bottle") "Se requiere para controlar aperturas y preparar decants." else "Se usa para convertir las entradas y ventas a mililitros.") }
+                    )
+                }
+                if (isPerfumyArchetype(presentation.archetype) && saleUnit == "ml") {
+                    Text(
+                        "Para abrir una botella sellada y preparar decants, selecciona “Botella completa”. La venta directa por ml no representa botellas físicas.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = BSPOSTheme.colors.warning
                     )
                 }
             }
-            if (showProductCode) OutlinedTextField(
+            if (current == null) Box {
+                val selectedShop = shops.find { it.id == shopId }
+                val destinationLabel = selectedShop?.name
+                    ?: if (shopId != null && shopId == activeShopId) "Tienda activa" else "Solo este dispositivo"
+                TextButton({ shopOpen = true }) { Text("Destino: $destinationLabel") }
+                DropdownMenu(shopOpen, { shopOpen = false }) {
+                    DropdownMenuItem({ Text("Solo este dispositivo") }, { shopId = null; shopOpen = false })
+                    if (activeShopId != null && shops.none { it.id == activeShopId }) {
+                        DropdownMenuItem({ Text("Tienda activa") }, { shopId = activeShopId; shopOpen = false })
+                    }
+                    shops.forEach { shop -> DropdownMenuItem({ Text(shop.name) }, { shopId = shop.id; shopOpen = false }) }
+                }
+            } else if (current.remoteShopId != null) Text("Producto vinculado a MiCatalogo: se enviarán los cambios al sincronizar.", style = MaterialTheme.typography.bodySmall)
+            if (imagePath != null) {
+                AsyncImage(imagePath, "Foto del producto", Modifier.fillMaxWidth().height(150.dp).clip(RoundedCornerShape(16.dp)), contentScale = ContentScale.Crop)
+            } else {
+                Box(Modifier.fillMaxWidth().height(110.dp).clip(RoundedCornerShape(16.dp)).background(BSPOSTheme.colors.primaryLight), contentAlignment = Alignment.Center) { Icon(Icons.Default.Inventory2, null, tint = BSPOSTheme.colors.primary, modifier = Modifier.size(42.dp)) }
+            }
+            OutlinedButton({ imageLauncher.launch(arrayOf("image/*")) }, Modifier.fillMaxWidth()) { Icon(Icons.Default.PhotoCamera, null); Spacer(Modifier.width(6.dp)); Text(if (imagePath == null) "Subir foto" else "Cambiar foto") }
+            if (shopId != null) Text("La foto se enviará como principal. Se conservan las anteriores y se respeta el límite de tu plan.", style = MaterialTheme.typography.bodySmall)
+            if (showProductCode && current != null) OutlinedTextField(
                 code,
                 { code = it },
+                modifier = Modifier.fillMaxWidth(),
                 label = { Text("Código interno") },
-                supportingText = { if (code.isBlank()) Text("Se generará un código único automáticamente") }
+                supportingText = { Text("Referencia para identificar el producto. En productos nuevos se asigna automáticamente.") }
             )
-            if (showCost && !effectiveDecantMode && !comboMode) OutlinedTextField(purchasePrice, { value -> if (current == null) purchasePrice = value; purchaseChanged = true; priceError = false }, label = { Text(when (saleUnit) { "bottle" -> "Costo de compra por botella (${LocalCurrency.current.symbol})"; "service" -> "Costo de insumos (${LocalCurrency.current.symbol})"; else -> "Precio de compra (${LocalCurrency.current.symbol})" }) }, enabled = current == null, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), isError = priceError, supportingText = { if (saleUnit == "bottle") Text("Obligatorio para calcular la ganancia y el costo recuperado por decants") else if (saleUnit == "service") Text("Opcional; se usa para calcular la ganancia del servicio") else if (current != null) Text("Se actualiza desde una entrada de inventario") })
-            OutlinedTextField(price, { value -> price = value; priceChanged = true; priceError = false }, label = { Text(if (saleUnit == "service") "Precio del servicio (${LocalCurrency.current.symbol})" else "Precio de venta (${LocalCurrency.current.symbol})") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), isError = priceError, supportingText = { if (priceError) Text("Indica un precio válido, con hasta dos decimales") })
+            if (showCost && !effectiveDecantMode && !comboMode) OutlinedTextField(purchasePrice, { value -> if (current == null) purchasePrice = value; purchaseChanged = true; priceError = false }, modifier = Modifier.fillMaxWidth().testTag("product-purchase-price"), label = { Text(when (saleUnit) { "bottle" -> "Costo de compra por botella (${LocalCurrency.current.symbol})"; "service" -> "Costo de insumos (${LocalCurrency.current.symbol})"; else -> "Precio de compra (${LocalCurrency.current.symbol})" }) }, enabled = current == null, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), isError = priceError, supportingText = { if (saleUnit == "bottle") Text("Obligatorio para calcular la ganancia y el costo recuperado por decants") else if (saleUnit == "service") Text("Opcional; se usa para calcular la ganancia del servicio") else if (current != null) Text("Se actualiza desde una entrada de inventario") })
+            OutlinedTextField(price, { value -> price = value; priceChanged = true; priceError = false }, modifier = Modifier.fillMaxWidth().testTag("product-sale-price"), label = { Text(if (saleUnit == "service") "Precio del servicio (${LocalCurrency.current.symbol})" else "Precio de venta (${LocalCurrency.current.symbol})") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), isError = priceError, supportingText = { if (priceError) Text("Indica un precio válido, con hasta dos decimales") })
             if (!serviceMode && current?.remoteSaleUnit != "service") OutlinedTextField(wholesalePrice, { wholesalePrice = it; priceError = false }, label = { Text("Precio por mayor (${LocalCurrency.current.symbol})") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), supportingText = { Text("Opcional; habilita el modo mayorista en el POS") })
-            if (showInventoryFields && !effectiveDecantMode && saleUnit != "service" && !comboMode) OutlinedTextField(initialQuantity, { value -> if (current == null) initialQuantity = value.filter(Char::isDigit) }, label = { Text("Stock inicial") }, enabled = current == null, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), supportingText = { Text(if (current == null) "Se registra en 0 si lo dejas así" else "Edita existencias desde Inventario") })
+            if (showInventoryFields && !effectiveDecantMode && saleUnit != "service" && !comboMode) OutlinedTextField(initialQuantity, { value -> if (current == null) initialQuantity = value.filter(Char::isDigit) }, modifier = Modifier.fillMaxWidth().testTag("product-initial-stock"), label = { Text("Stock inicial") }, enabled = current == null, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), supportingText = { Text(if (current == null) "Se registra en 0 si lo dejas así" else "Edita existencias desde Inventario") })
             if (!serviceMode && current?.remoteSaleUnit != "service") {
                 OutlinedTextField(minimumStock, { minimumStock = it.filter(Char::isDigit) }, label = { Text("Aviso de mínimo") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), supportingText = { Text("Te avisaremos al llegar a esta cantidad") })
-                Box { TextButton({ categoryOpen = true }) { Text("Categoría: ${category.name}") }; DropdownMenu(categoryOpen, { categoryOpen = false }) { categories.forEach { item -> DropdownMenuItem({ Text(item.name) }, { category = item; categoryOpen = false }) } } }
+                Box(Modifier.fillMaxWidth()) {
+                    OutlinedButton({ categoryOpen = true }, modifier = Modifier.fillMaxWidth().testTag("product-category-selector"), shape = RoundedCornerShape(13.dp)) {
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f), horizontalAlignment = Alignment.Start) {
+                                Text("Categoría", style = MaterialTheme.typography.labelSmall, color = BSPOSTheme.colors.textSecondary)
+                                Text(category.name, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                            Text("⌄", color = BSPOSTheme.colors.primary)
+                        }
+                    }
+                    DropdownMenu(categoryOpen, { categoryOpen = false }, modifier = Modifier.fillMaxWidth(.92f)) {
+                        categories.forEach { item -> DropdownMenuItem(text = { Text(item.name) }, onClick = { category = item; categoryOpen = false }) }
+                    }
+                }
                 Box {
-                    TextButton({ unitOpen = true }) { Text("Unidad: ${unitDisplayName(unit)}") }
-                    DropdownMenu(unitOpen, { unitOpen = false }) {
+                    OutlinedButton({ unitOpen = true }, modifier = Modifier.fillMaxWidth().testTag("product-unit-selector"), shape = RoundedCornerShape(13.dp)) {
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f), horizontalAlignment = Alignment.Start) {
+                                Text("Unidad de inventario", style = MaterialTheme.typography.labelSmall, color = BSPOSTheme.colors.textSecondary)
+                                Text(unitDisplayName(unit), fontWeight = FontWeight.SemiBold)
+                            }
+                            Text("⌄", color = BSPOSTheme.colors.primary)
+                        }
+                    }
+                    DropdownMenu(unitOpen, { unitOpen = false }, modifier = Modifier.fillMaxWidth(.92f)) {
                         selectableUnits.forEach { item ->
                             DropdownMenuItem(
                                 text = { Text(unitDisplayName(item)) },
@@ -909,19 +1001,46 @@ internal fun ProductForm(current: Product?, currentQuantity: Long, categories: L
             } else {
                 validVolume && validCombo && (comboMode || saleUnit != "bottle" || !showInventoryFields || effectivePurchase?.let { it > 0 } == true)
             }
-            if (name.isBlank() || (showProductCode && effectiveCode.isBlank()) || sale == null || sale < 0 || effectivePurchase == null || effectivePurchase < 0 || wholesale?.let { it < 0 } == true || effectiveQuantity == null || effectiveQuantity < 0 || minimum == null || minimum < 0 || !validPresentation) {
+            if (name.isBlank() || sale == null || sale < 0 || effectivePurchase == null || effectivePurchase < 0 || wholesale?.let { it < 0 } == true || effectiveQuantity == null || effectiveQuantity < 0 || minimum == null || minimum < 0 || !validPresentation) {
                 priceError = true
                 comboError = comboMode && !validCombo
             } else {
-                onSave(ProductInput(name, effectiveCode, category.id, unit.id, sale, purchasePrice = effectivePurchase, wholesalePrice = wholesale, description = description.trim().ifBlank { null }, imagePath = imagePath, thumbnailPath = imagePath, minimumStock = minimum, tracksExpiration = current?.tracksExpiration ?: false, remoteShopId = shopId, remoteSaleUnit = if (effectiveDecantMode) "decant" else if (comboMode) "unit" else saleUnit, remoteVolumeMl = if (effectiveDecantMode || saleUnit == "bottle" || saleUnit == "ml") selectedVolume else null, remoteSourceProductId = if (effectiveDecantMode) sourceProduct?.remoteProductId else null, isCombo = comboMode, comboItems = if (comboMode) selectedComboItems else emptyList(), isActive = if (serviceMode || current?.remoteSaleUnit == "service") published else (current?.isActive ?: true)), if (current == null && !comboMode) effectiveQuantity else 0L)
+                val input = ProductInput(name, effectiveCode, category.id, unit.id, sale, purchasePrice = effectivePurchase, wholesalePrice = wholesale, description = description.trim().ifBlank { null }, imagePath = imagePath, thumbnailPath = imagePath, minimumStock = minimum, tracksExpiration = current?.tracksExpiration ?: false, remoteShopId = shopId, remoteSaleUnit = if (effectiveDecantMode) "decant" else if (comboMode) "unit" else saleUnit, remoteVolumeMl = if (effectiveDecantMode || saleUnit == "bottle" || saleUnit == "ml") selectedVolume else null, remoteSourceProductId = if (effectiveDecantMode) sourceProduct?.remoteProductId else null, isCombo = comboMode, comboItems = if (comboMode) selectedComboItems else emptyList(), isActive = if (serviceMode || current?.remoteSaleUnit == "service") published else (current?.isActive ?: true))
+                val quantityToSave = if (current == null && !comboMode) effectiveQuantity ?: 0L else 0L
+                pendingDecantSave = input to quantityToSave
+                if (enableDecantPrompt && isPerfumyArchetype(presentation.archetype) && current == null && !effectiveDecantMode && saleUnit == "bottle" && !comboMode && quantityToSave > 0) {
+                    askPrepareDecants = true
+                } else {
+                    onSave(input, pendingDecantSave!!.second, false)
+                }
             }
                         },
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.weight(1f).testTag("product-save-button"),
                         shape = RoundedCornerShape(14.dp)
                     ) { Text(if (current == null) "Crear producto" else "Guardar cambios") }
                 }
             }
         }
+    }
+    if (askPrepareDecants) {
+        val pending = pendingDecantSave
+        AlertDialog(
+            onDismissRequest = { askPrepareDecants = false },
+            title = { Text("¿Preparar decants ahora?") },
+            text = { Text("El perfume se guardará como botella completa. Luego elegirás tamaños, precios y cantidades. La botella solo se abrirá y descontará cuando confirmes la preparación.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    askPrepareDecants = false
+                    pending?.let { (input, quantity) -> onSave(input, quantity, true) }
+                }) { Text("Guardar y preparar") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    askPrepareDecants = false
+                    pending?.let { (input, quantity) -> onSave(input, quantity, false) }
+                }) { Text("Guardar solamente") }
+            }
+        )
     }
 }
 
@@ -941,5 +1060,10 @@ private fun unitDisplayName(unit: UnitOfMeasure): String {
 }
 
 private data class ComboDraft(val productId: String, val quantity: String)
+
+private fun isPerfumyArchetype(archetype: String): Boolean =
+    archetype.contains("fragrance", ignoreCase = true) ||
+        archetype.contains("perfume", ignoreCase = true) ||
+        archetype.contains("perfum", ignoreCase = true)
 
 private fun String.toPesosCents(): Long? = MoneyUtils.parseDecimalToCents(this)

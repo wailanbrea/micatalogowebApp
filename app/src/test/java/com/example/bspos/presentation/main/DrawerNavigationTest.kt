@@ -3,6 +3,7 @@ package com.example.bspos.presentation.main
 import com.example.bspos.domain.model.MiCatalogoNavigation
 import com.example.bspos.domain.model.MiCatalogoNavigationItem
 import com.example.bspos.domain.model.MiCatalogoNavigationSection
+import com.example.bspos.domain.model.visibleSections
 import com.example.bspos.presentation.navigation.Screen
 import org.junit.Assert.*
 import org.junit.Test
@@ -52,6 +53,17 @@ class DrawerNavigationTest {
         assertTrue(isNavigationRouteAllowed("credit", { it in setOf("sales", "credit") }, false, false))
         assertTrue(isNavigationRouteAllowed("catalog", { it == "services" }, false, false))
         assertFalse(isNavigationRouteAllowed("catalog_create", { it == "services" }, false, false))
+    }
+
+    @Test fun servicesOnlyCanOpenTaxonomyWithoutUnlockingPhysicalCatalog() {
+        val permission: (String) -> Boolean = { it == "services" }
+        val manifest = MiCatalogoNavigation(listOf(MiCatalogoNavigationSection("catalog", "Catálogo", listOf(
+            MiCatalogoNavigationItem("categories", "products", "Categorías y unidades", "categories")))), emptyList(), emptyList())
+        val visible = manifest.visibleSections(permission, false)
+        assertEquals(listOf("categories"), visible.flatMap { it.items }.map { it.destination })
+        assertTrue(isNavigationRouteAllowed("categories", permission, false, false))
+        assertTrue(isNavigationRouteAllowed("catalog", permission, false, false))
+        assertFalse(isNavigationRouteAllowed("catalog_create", permission, false, false))
     }
     @Test fun internalAndLegacyRoutesKeepTheirCanonicalContext() {
         assertEquals("catalog", navigationAreaId("catalog_create"))

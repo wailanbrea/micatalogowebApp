@@ -28,6 +28,7 @@ fun MiCatalogoNavigation.visibleSections(
 ): List<MiCatalogoNavigationSection> {
     fun allowed(item: MiCatalogoNavigationItem): Boolean =
         item.destination == "dashboard" || item.key in setOf("account", "help") || canAccess(item.key)
+            || (item.destination == "categories" && canAccess("services"))
     val primary = sections + contextualSections.filter { it.requiresLocalSetting == "routesEnabled" && routesEnabled }
     val result = primary.mapNotNull { section ->
         section.items.filter(::allowed).distinctBy { it.destination }.takeIf { it.isNotEmpty() }

@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.flow.first
 
 data class StartupSnapshot(
     val shops: List<MiCatalogoShop>,
@@ -73,6 +74,7 @@ class StartupViewModel @Inject constructor(
             try {
                 val snapshot = withTimeout(STARTUP_TIMEOUT_MS) { loadOnlineSnapshot() }
                 _state.value = StartupState.Ready(snapshot)
+                syncPendingSalesInBackground()
             } catch (timeout: TimeoutCancellationException) {
                 val fallback = loadOfflineSnapshot("La conexión tardó demasiado. Se muestran tus últimos datos guardados.")
                 _state.value = fallback?.let { StartupState.OfflineReady(it) }
@@ -145,17 +147,6 @@ class StartupViewModel @Inject constructor(
         val activeShopId = selectActiveShop(shops)
         val warnings = mutableListOf<String>()
 
-        when (val result = posSales.syncDueSales()) {
-            is MiCatalogoResult.Success -> {
-                if (result.value.retried > 0) scheduler.enqueue()
-                if (result.value.blocked > 0) warnings += "Hay ventas pendientes de revisión."
-            }
-            is MiCatalogoResult.Failure -> {
-                scheduler.enqueue()
-                warnings += "Hay ventas pendientes de sincronizar."
-            }
-        }
-
         _state.value = StartupState.Loading("Preparando tu catálogo…")
         runCatching { catalog.archiveRemoteProductsExcept(shops.map { it.id }.toSet()) }
             .onFailure { warnings += "No se pudo limpiar el catálogo local anterior." }
@@ -188,13 +179,24 @@ class StartupViewModel @Inject constructor(
         )
     }
 
-    private suspend fun loadOfflineSnapshot(reason: String): StartupSnapshot? {
-        val shops = withTimeoutOrNull(2_000) {
-            when (val result = connection.shops()) {
-                is MiCatalogoResult.Success -> result.value
-                is MiCatalogoResult.Failure -> emptyList()
+    /**
+     * Uploading queued sales is important but must never hold the seller at the
+     * login/startup gate. The durable worker retries these operations safely.
+     */
+    private fun syncPendingSalesInBackground() {
+        viewModelScope.launch {
+            when (val result = posSales.syncDueSales()) {
+                is MiCatalogoResult.Success -> if (result.value.retried > 0 || result.value.blocked > 0) scheduler.enqueue()
+                is MiCatalogoResult.Failure -> scheduler.enqueue()
             }
-        }.orEmpty()
+        }
+    }
+
+    private suspend fun loadOfflineSnapshot(reason: String): StartupSnapshot? {
+        // The online shops call already persisted its response before catalog
+        // sync begins. Read that cache here instead of making a second network
+        // request while recovering from the very timeout we are handling.
+        val shops = withTimeoutOrNull(2_000) { connection.observeShops().first() }.orEmpty()
         if (shops.isEmpty()) return null
         return StartupSnapshot(
             shops = shops,
@@ -246,7 +248,7 @@ class StartupViewModel @Inject constructor(
     private class SessionExpiredException : Exception()
 
     private companion object {
-        const val STARTUP_TIMEOUT_MS = 10_000L
+        const val STARTUP_TIMEOUT_MS = 30_000L
         const val FOREGROUND_REFRESH_COOLDOWN_MS = 15_000L
         val CLOSED_ORDER_STATUSES = setOf("delivered", "cancelled", "completed", "entregado", "cancelado", "completado")
     }

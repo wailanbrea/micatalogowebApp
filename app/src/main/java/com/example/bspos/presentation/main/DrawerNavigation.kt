@@ -43,7 +43,8 @@ internal fun isNavigationRouteAllowed(
     if (base == "catalog") return canSeeMenu("products") || canSeeMenu("services")
     val key = when (base) {
         "pos", "sales_history" -> "sales"
-        "catalog_create", "categories" -> "products"
+        "catalog_create" -> "products"
+        "categories" -> return canSeeMenu("products") || canSeeMenu("services") || canSeeMenu("decants")
         "decant_create" -> "decants"
         "download_app" -> "updates"
         "team" -> "sellers"

@@ -95,6 +95,7 @@ class DecantsWorkspaceTest {
     @Test fun unconfiguredTabIsBetweenReportAndOptionsAndOpensTheFullSearchableList() {
         val products = (1..12).map { index -> Product(UUID.randomUUID(), "Perfume pendiente $index", "PEND-$index",
             categoryId = UUID.randomUUID(), unitId = UUID.randomUUID(), salePrice = 10000,
+            description = "Botella de prueba $index",
             createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH) }
         var selected: Product? = null
         compose.setContent { BSPOSTheme {
@@ -116,8 +117,10 @@ class DecantsWorkspaceTest {
         compose.onNodeWithText("Perfume pendiente 1").assertDoesNotExist()
         compose.onNodeWithText("Sin volumen (12)").performScrollTo().performClick()
         compose.onNodeWithText("Productos sin volumen").assertExists()
+        compose.onAllNodesWithText("Existencia: 4 unidad(es)", substring = true).assertCountEquals(12)
         compose.onNodeWithText("Buscar producto").performTextReplacement("PEND-12")
         compose.onNodeWithText("Perfume pendiente 12").assertExists()
+        compose.onNodeWithText("Botella de prueba 12").assertExists()
         compose.onNodeWithText("Perfume pendiente 1").assertDoesNotExist()
         capture("style-decant-unconfigured-products")
         compose.onNodeWithText("Configurar ml").performScrollTo().performClick()
@@ -142,9 +145,68 @@ class DecantsWorkspaceTest {
         compose.setContent { BSPOSTheme {
             DecantUnconfiguredSourcesSheet(listOf(product), mapOf(product.id to 3L), false, {}, { selected = it })
         } }
-        compose.onNodeWithText("Unidad · 3 disponible(s)").assertExists()
+        compose.onNodeWithText("Existencia: 3 unidad(es)", substring = true).assertExists()
         compose.onNodeWithText("Configurar ml").assertIsNotEnabled()
         compose.runOnIdle { assertNull(selected) }
+    }
+
+    @Test fun configuringBottleVolumeShowsStockAndReturnsMlWithoutClosingOnInvalidInput() {
+        val product = Product(UUID.randomUUID(), "Perfume unidad", "SKU-1", description = "Eau de parfum",
+            categoryId = UUID.randomUUID(), unitId = UUID.randomUUID(), salePrice = 1000, lastPurchaseCost = 25000,
+            createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        var configured: Int? = null
+        compose.setContent { BSPOSTheme {
+            ConfigureBottleDialog(product, 3, true, {}, { configured = it })
+        } }
+        compose.onNodeWithText("3 botella(s) · costo", substring = true).assertExists()
+        compose.onNodeWithText("Guardar y usar en Decants").assertIsNotEnabled()
+        compose.onNodeWithText("Contenido de la botella (ml)").performTextInput("100")
+        compose.onNodeWithText("Guardar y usar en Decants").assertIsEnabled().performClick()
+        compose.runOnIdle { assertEquals(100, configured) }
+    }
+
+    @Test fun savingBottleVolumeClosesDialogAndRefreshesAuthoritativeDecantWorkspace() {
+        val product = Product(UUID.randomUUID(), "Perfume unidad persistente", "SKU-PERSIST", categoryId = UUID.randomUUID(),
+            unitId = UUID.randomUUID(), salePrice = 1000, lastPurchaseCost = 25000,
+            createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        var dialogVisible by mutableStateOf(true)
+        var refreshRequested = false
+        compose.setContent { BSPOSTheme {
+            if (dialogVisible) ConfigureBottleDialog(product, 2, true, {}, { _ ->
+                finishBottleConfiguration(
+                    onDismiss = { dialogVisible = false },
+                    onRefreshWorkspace = { refreshRequested = true }
+                )
+            })
+        } }
+
+        compose.onNodeWithText("Contenido de la botella (ml)").performTextInput("100")
+        compose.onNodeWithText("Guardar y usar en Decants").performClick()
+        compose.onNodeWithText("Configurar botella fuente").assertDoesNotExist()
+        compose.runOnIdle { assertEquals(true, refreshRequested) }
+    }
+
+    @Test fun selectingUnconfiguredBottleOpensVolumeDialogAndCancelDoesNotSave() {
+        val product = Product(UUID.randomUUID(), "Perfume unidad QA", "SKU-QA", description = "Botella de 100 ml",
+            categoryId = UUID.randomUUID(), unitId = UUID.randomUUID(), salePrice = 1000, lastPurchaseCost = 25000,
+            createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+        var showSources by mutableStateOf(true)
+        var selected: Product? by mutableStateOf(null)
+        var savedVolume: Int? = null
+        compose.setContent { BSPOSTheme {
+            if (showSources) DecantUnconfiguredSourcesSheet(listOf(product), mapOf(product.id to 3L), true,
+                onDismiss = { showSources = false }, onConfigure = { selected = it; showSources = false })
+            selected?.let { chosen -> ConfigureBottleDialog(chosen, 3, true,
+                onDismiss = { selected = null }, onConfirm = { savedVolume = it }) }
+        } }
+
+        compose.onNodeWithText("Configurar ml").performScrollTo().performClick()
+        compose.onNodeWithText("Configurar botella fuente").assertExists()
+        compose.onNodeWithText("Perfume unidad QA").assertExists()
+        compose.onNodeWithText("Productos sin volumen").assertDoesNotExist()
+        compose.onNodeWithText("Cancelar").performClick()
+        compose.onNodeWithText("Configurar botella fuente").assertDoesNotExist()
+        compose.runOnIdle { assertNull(savedVolume) }
     }
 
     private fun capture(name: String) {
