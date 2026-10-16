@@ -151,7 +151,7 @@ class PosViewModel @Inject constructor(
     fun add(product: Product) {
         if (_isProcessing.value) return
         val available = stock.value.firstOrNull { it.productId == product.id }?.quantity ?: 0L
-        val maximum = if (product.remoteSaleUnit == "service") Long.MAX_VALUE else available.coerceAtLeast(0L)
+        val maximum = if (product.remoteSaleUnit == "service" || settings.value.allowNegativeStock) Long.MAX_VALUE else available.coerceAtLeast(0L)
         _cart.value = _cart.value.toMutableList().also { lines ->
             val index = lines.indexOfFirst { it.product.id == product.id }
             val current = if (index < 0) 0 else lines[index].quantity
@@ -166,7 +166,7 @@ class PosViewModel @Inject constructor(
         val product = products.value.firstOrNull { it.id == productId }
             ?: _cart.value.firstOrNull { it.product.id == productId }?.product
         val available = stock.value.firstOrNull { it.productId == productId }?.quantity ?: 0L
-        val maximum = if (product?.remoteSaleUnit == "service") Long.MAX_VALUE else available.coerceAtLeast(0L)
+        val maximum = if (product?.remoteSaleUnit == "service" || settings.value.allowNegativeStock) Long.MAX_VALUE else available.coerceAtLeast(0L)
         val next = quantity.coerceIn(0, maximum)
         _cart.value = _cart.value.mapNotNull {
             if (it.product.id != productId) it

@@ -141,12 +141,13 @@ internal fun ResumenOverview(
     val priorProfit = remote?.previousPeriod?.grossProfit?.let(::cents) ?: previousSales.sumOf { it.total - (costTotals[it.id] ?: 0L) }
     val priorAverage = remote?.previousPeriod?.averageTicket?.let(::cents) ?: if (previousSales.isEmpty()) 0L else priorTotal / previousSales.size
     val active = products.filter { it.isActive && it.deletedAt == null }
-    val tracked = active.filter { it.remoteSaleUnit != "service" && !it.remoteIsCombo }
+    val tracked = active.filter { it.remoteSaleUnit != "decant" && it.remoteSaleUnit != "service" && !it.remoteIsCombo }
     val inStock = tracked.count { (quantities[it.id] ?: 0) > 0 }
     val out = tracked.filter { (quantities[it.id] ?: 0) <= 0 }
     val low = tracked.filter { (quantities[it.id] ?: 0) > 0 && it.minimumStock > 0 && (quantities[it.id] ?: 0) <= it.minimumStock }
     val capital = tracked.filter { it.remoteSourceProductId == null }.sumOf { Math.multiplyExact((quantities[it.id] ?: 0L).coerceAtLeast(0), it.averageCost.coerceAtLeast(0)) }
-    val decantCapital = tracked.filter { it.remoteSourceProductId != null }.sumOf { Math.multiplyExact((quantities[it.id] ?: 0L).coerceAtLeast(0), it.averageCost.coerceAtLeast(0)) }
+    val decantCapital = active.filter { it.remoteSaleUnit == "decant" || it.remoteSourceProductId != null }.sumOf { Math.multiplyExact((quantities[it.id] ?: 0L).coerceAtLeast(0), it.averageCost.coerceAtLeast(0)) }
+    val totalCapital = remote?.currentState?.inventoryCostValue?.takeIf { it > 0.0 }?.let(::cents) ?: (capital + decantCapital)
     val balances = customers.filter { it.isActive && it.balance > 0 }.sortedByDescending { it.balance }
     val receivable = remote?.currentState?.receivableTotal?.let(::cents) ?: customers.sumOf { it.balance }
     val saleIds = selectedSales.map { it.id }.toSet()
@@ -160,6 +161,12 @@ internal fun ResumenOverview(
         ?: selectedSales.groupBy { it.paymentType }.mapValues { (_, rows) -> rows.sumOf { it.paidAmount } }).filterValues { it > 0 }
     val context = LocalContext.current
     val onlyDay = range.from == range.to
+    val periodSubtitle = when {
+        customFrom != null -> "Resumen del periodo seleccionado."
+        period == "Este mes" -> "Así va tu negocio este mes."
+        period == "Últimos 7" -> "Así va tu negocio en los últimos 7 días."
+        else -> "Así va tu negocio hoy."
+    }
     val bars = if (onlyDay) (0..23).map { hour ->
         "%02d:00".format(hour) to selectedSales.filter { it.date.atZone(zone).hour == hour }.sumOf { it.total }
     } else (0..ChronoUnit.DAYS.between(range.from, range.to).toInt()).map { offset ->
@@ -171,7 +178,7 @@ internal fun ResumenOverview(
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 MonoLabel("RESUMEN")
                 Text("Buenas, ${businessName.ifBlank { "tu negocio" }}", color = ResumenInk, fontSize = 25.sp, fontWeight = FontWeight.Bold)
-                Text("Así va tu negocio hoy.", color = ResumenMuted, fontSize = 16.sp)
+                Text(periodSubtitle, color = ResumenMuted, fontSize = 16.sp)
                 Spacer(Modifier.height(4.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (showCollections) OutlinedButton(onCollections, shape = RoundedCornerShape(8.dp), border = BorderStroke(1.dp, Line), colors = ButtonDefaults.outlinedButtonColors(contentColor = ResumenInk), contentPadding = PaddingValues(12.dp), modifier = Modifier.weight(1f)) {
@@ -239,7 +246,7 @@ internal fun ResumenOverview(
                     Row(Modifier.height(IntrinsicSize.Min)) {
                         MetricCell("TICKET PROMEDIO", amount(average), resumenComparison(average, priorAverage), Modifier.weight(1f), if (average < priorAverage) Red else Green)
                         VerticalDivider(color = Line)
-                        MetricCell("POR COBRAR", amount(receivable), if (receivable == 0L) "al día" else "${balances.size} clientes pendientes", Modifier.weight(1f), if (receivable > 0L) ResumenAccent else Green)
+                        MetricCell("POR COBRAR", amount(receivable), if (receivable == 0L) "al día" else "${balances.size} ${if (balances.size == 1) "cliente pendiente" else "clientes pendientes"}", Modifier.weight(1f), if (receivable > 0L) ResumenAccent else Green)
                     }
                 }
             }
@@ -263,7 +270,7 @@ internal fun ResumenOverview(
             SummaryPanel("Tu inventario", Icons.Default.Inventory2, "Ver inventario", onInventory) {
                 Surface(Modifier.fillMaxWidth(), color = Panel, shape = RoundedCornerShape(12.dp)) {
                     Column(Modifier.padding(14.dp)) {
-                        Text(if (showCost) amount(capital + decantCapital) else "Restringido", fontFamily = FontFamily.Monospace, color = ResumenInk, fontSize = 24.sp)
+                        Text(if (showCost) amount(totalCapital) else "Restringido", fontFamily = FontFamily.Monospace, color = ResumenInk, fontSize = 24.sp)
                         Text("Capital al costo", color = ResumenMuted, fontSize = 13.sp)
                     }
                 }
@@ -277,7 +284,7 @@ internal fun ResumenOverview(
                     StatePill("${low.size} bajo mínimo", if (low.isEmpty()) ResumenMuted else ResumenAccent, { onStockFilter("low") })
                     StatePill("${out.size} agotados", if (out.isEmpty()) ResumenMuted else Red, { onStockFilter("out") })
                 }
-                if (decantCapital > 0 && showCost) Text("Incluye ${amount(decantCapital)} en decants.", color = ResumenMuted, fontSize = 12.sp)
+                if (decantCapital > 0 && showCost && remote?.currentState?.inventoryCostValue == null) Text("Incluye ${amount(decantCapital)} en decants.", color = ResumenMuted, fontSize = 12.sp)
                 TextButton(onMovements, contentPadding = PaddingValues(0.dp), colors = ButtonDefaults.textButtonColors(contentColor = ResumenMuted)) {
                     Icon(Icons.Default.SwapHoriz, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Ver movimientos")
                 }
@@ -339,11 +346,15 @@ internal fun ResumenOverview(
         }
         item {
             SummaryPanel("Dinero por método", Icons.Default.Payments, "Cierre", onDayClose) {
+                val otherSalesCents = if (remoteInflows != null && remoteInflows.salesOther > 0) cents(remoteInflows.salesOther) else 0L
+                val otherInflowsCents = if (remoteInflows != null && remoteInflows.otherInflows > 0) cents(remoteInflows.otherInflows) else 0L
+                val totalReceived = mix.values.sum() + otherSalesCents + otherInflowsCents + creditCollected
                 mix.forEach { (method, received) -> MoneyRow(when(method) { SalePaymentType.CASH -> "Efectivo"; SalePaymentType.CARD -> "Tarjeta"; SalePaymentType.TRANSFER -> "Transferencia"; SalePaymentType.CREDIT -> "Crédito"; SalePaymentType.MIXED -> "Mixto" }, received) }
-                if(remoteInflows!=null && remoteInflows.salesOther>0) MoneyRow("Otros",cents(remoteInflows.salesOther))
+                if (otherSalesCents > 0L) MoneyRow("Otros", otherSalesCents)
+                if (otherInflowsCents > 0L) MoneyRow("Otros ingresos", otherInflowsCents)
                 MoneyRow("Crédito cobrado", creditCollected)
                 HorizontalDivider(color = Line, modifier = Modifier.padding(vertical = 8.dp))
-                MoneyRow("Total recibido", remote?.period?.collectedInPeriod?.let(::cents) ?: (mix.values.sum() + creditCollected), true)
+                MoneyRow("Total recibido", totalReceived, true)
             }
         }
         if (showInventory) item {

@@ -89,6 +89,8 @@ import java.util.UUID
 @Composable
 fun InventoryScreen(
     onOpenProducts: (() -> Unit)? = null,
+    onOpenPhotos: (() -> Unit)? = null,
+    onEditProduct: ((UUID) -> Unit)? = null,
     onOpenPrices: (() -> Unit)? = null,
     onOpenImport: (() -> Unit)? = null,
     onOpenQuickCreate: (() -> Unit)? = null,
@@ -148,12 +150,12 @@ fun InventoryScreen(
         val matchesQuery = query.isBlank() || product.name.contains(query, true) || product.internalCode.contains(query, true) || product.barcode.orEmpty().contains(query, true)
         val matchesStock = filter == 0 || (filter == 1 && quantity <= 0L) || (filter == 2 && quantity > 0L)
         val matchesPhoto = !photoFilter || !product.imagePath.isNullOrBlank()
-        val matchesLow = !lowStockFilter || (product.minimumStock > 0L && quantity <= product.minimumStock)
+        val matchesLow = !lowStockFilter || (product.minimumStock > 0L && quantity > 0L && quantity <= product.minimumStock)
         matchesQuery && matchesStock && matchesPhoto && matchesLow
     }
     val unavailable = activeProducts.count { (quantityByProductId[it.id] ?: 0L) <= 0L }
     val productsWithStock = activeProducts.count { (quantityByProductId[it.id] ?: 0L) > 0L }
-    val lowStock = activeProducts.count { product -> product.minimumStock > 0L && (quantityByProductId[product.id] ?: 0L) <= product.minimumStock }
+    val lowStock = activeProducts.count { product -> val qty = quantityByProductId[product.id] ?: 0L; product.minimumStock > 0L && qty > 0L && qty <= product.minimumStock }
     val totalUnits = stock.filter { productById[it.productId]?.remoteSaleUnit != "decant" }.sumOf { it.quantity }
     val capitalAtCost = if (showCosts) remoteValuation ?: stock.sumOf { row ->
         val product = productById[row.productId]
@@ -259,8 +261,7 @@ fun InventoryScreen(
         inventorySection {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(
-                onClick = { onOpenProducts?.invoke() },
-                enabled = onOpenProducts != null,
+                onClick = { inventoryTab = 2 },
                 modifier = Modifier.weight(1f),
                 shape = RoundedCornerShape(12.dp)
             ) { Text("Configurar combos", maxLines = 1, overflow = TextOverflow.Ellipsis) }
@@ -269,7 +270,7 @@ fun InventoryScreen(
         }
         if (productsWithoutPhoto > 0) {
             inventorySection {
-                Card(onClick = { onOpenProducts?.invoke() }, enabled = onOpenProducts != null, shape = RoundedCornerShape(10.dp), border = androidx.compose.foundation.BorderStroke(1.dp, BSPOSTheme.colors.outline), colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface)) {
+                Card(onClick = { (onOpenPhotos ?: onOpenProducts)?.invoke() }, enabled = onOpenPhotos != null || onOpenProducts != null, shape = RoundedCornerShape(10.dp), border = androidx.compose.foundation.BorderStroke(1.dp, BSPOSTheme.colors.outline), colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface)) {
                     Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.WarningAmber, null, tint = BSPOSTheme.colors.warning)
                         Spacer(Modifier.width(10.dp))
@@ -316,7 +317,7 @@ fun InventoryScreen(
                     quantity = quantity,
                     onClick = { selectedProduct = product.id; viewModel.select(product.id) },
                     onReceive = if (stockEditableProducts.any { it.id == product.id }) { { receiptProductId = product.id; receiptForm = true } } else null,
-                    onEdit = { onOpenProducts?.invoke() }, selected = product.id in selectedIds,
+                    onEdit = { onEditProduct?.invoke(product.id) ?: onOpenProducts?.invoke() }, selected = product.id in selectedIds,
                     onSelected = { checked -> selectedIds = if (checked) selectedIds + product.id else selectedIds - product.id },
                     first = product.id == filteredProducts.first().id, last = product.id == filteredProducts.last().id
                 )
@@ -402,7 +403,11 @@ fun InventoryScreen(
             onReceive = if (stockEditableProducts.any { it.id == id }) {
                 { selectedProduct = null; viewModel.select(null); receiptProductId = id; receiptForm = true }
             } else null,
-            onEdit = { onOpenProducts?.invoke() },
+            onEdit = {
+                selectedProduct = null
+                viewModel.select(null)
+                onEditProduct?.invoke(id) ?: onOpenProducts?.invoke()
+            },
             onOpenStore = onOpenStore,
             onCorrectLot = {
                 adjustmentProductId = id

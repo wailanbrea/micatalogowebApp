@@ -417,6 +417,7 @@ fun PosScreen(
             wholesaleMode = wholesaleMode,
             saleDate = saleDate,
             quantities = quantities,
+            allowNegativeStock = settings.allowNegativeStock,
             creditEnabled = presentation.posShowCredit || creditOnly,
             showCosts = showCosts,
             isProcessing = isProcessing,
@@ -711,7 +712,7 @@ private fun PunttoProductList(
         lazyItems(products, key = { it.id }) { product ->
             val available = quantities[product.id] ?: 0L
             val selected = selectedQuantities[product.id] ?: 0L
-            val canIncrease = product.remoteSaleUnit.equals("service", ignoreCase = true) || selected < available
+            val canIncrease = product.remoteSaleUnit.equals("service", ignoreCase = true) || allowNegativeStock || selected < available
             Row(
                 modifier = Modifier.fillMaxWidth().clickable(enabled = canIncrease) { onAdd(product) }.padding(horizontal = 16.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically

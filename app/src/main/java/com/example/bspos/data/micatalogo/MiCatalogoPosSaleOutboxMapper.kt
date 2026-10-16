@@ -56,7 +56,7 @@ object MiCatalogoPosSaleOutboxMapper {
                         expectedSourceProductId = it.expectedSourceProductId
                     )
                 },
-                payments = payments,
+                payments = payments?.filterNot { it.method.equals("credit", ignoreCase = true) }?.takeIf { it.isNotEmpty() },
                 dueDate = dueDate
             )
         )

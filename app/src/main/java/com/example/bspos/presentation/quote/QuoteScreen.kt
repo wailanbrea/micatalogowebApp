@@ -102,6 +102,7 @@ internal fun QuoteTerminalContent(
         onAdd(it)
     }
     val recent = recentIds.mapNotNull { id -> state.products.firstOrNull { it.id == id } }
+    LaunchedEffect(state.rows) { quoteDetail = quoteDetail?.let { cur -> state.rows.firstOrNull { it.id != null && it.id == cur.id } ?: cur } }
     LaunchedEffect(state.message, state.saving) {
         if (!state.saving && state.message != null && state.cart.isEmpty() && showCart) {
             showCart = false

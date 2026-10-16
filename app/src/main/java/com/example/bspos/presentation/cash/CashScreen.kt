@@ -47,6 +47,39 @@ fun CashScreen(
     if (opening) CashAmountDialog("Abrir caja", { amount, notes -> returnToSaleAfterOpening = onCashOpened != null; viewModel.open(amount, notes); opening = false }, { opening = false }); if (closing) CashAmountDialog("Cerrar caja", { amount, notes -> viewModel.close(amount, notes); closing = false }, { closing = false })
 }
 
-@Composable private fun CashAmountDialog(title: String, onSave: (Long, String?) -> Unit, onDismiss: () -> Unit) { var amount by remember { mutableStateOf("") }; var notes by remember { mutableStateOf("") }; var amountError by remember { mutableStateOf(false) }; AlertDialog(onDismissRequest = onDismiss, title = { Text(title) }, text = { DialogScrollableColumn { OutlinedTextField(amount, { amount = it.filter(Char::isDigit); amountError = false }, label = { Text("Monto (${LocalCurrency.current.symbol})") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), isError = amountError, supportingText = { if (amountError) Text("Indica un monto válido mayor o igual a cero") }); OutlinedTextField(notes, { notes = it }, label = { Text("Notas") }) } }, confirmButton = { TextButton({ val value = MoneyUtils.parseWholeUnitsToCents(amount); if (value == null) amountError = true else onSave(value, notes.ifBlank { null }) }) { Text("Confirmar") } }, dismissButton = { TextButton(onDismiss) { Text("Cancelar") } }) }
+@Composable private fun CashAmountDialog(title: String, onSave: (Long, String?) -> Unit, onDismiss: () -> Unit) {
+    var amount by remember { mutableStateOf("") }
+    var notes by remember { mutableStateOf("") }
+    var amountError by remember { mutableStateOf(false) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            DialogScrollableColumn {
+                OutlinedTextField(
+                    value = amount,
+                    onValueChange = { raw ->
+                        val filtered = raw.replace(',', '.').filter { c -> c.isDigit() || c == '.' }
+                        val parts = filtered.split('.')
+                        amount = if (parts.size <= 2) filtered else parts[0] + "." + parts.drop(1).joinToString("")
+                        amountError = false
+                    },
+                    label = { Text("Monto (${LocalCurrency.current.symbol})") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    isError = amountError,
+                    supportingText = { if (amountError) Text("Indica un monto válido mayor o igual a cero") }
+                )
+                OutlinedTextField(notes, { notes = it }, label = { Text("Notas") })
+            }
+        },
+        confirmButton = {
+            TextButton({
+                val value = if (amount.isBlank()) null else MoneyUtils.parseDecimalToCents(amount)
+                if (value == null || value < 0L) amountError = true else onSave(value, notes.ifBlank { null })
+            }) { Text("Confirmar") }
+        },
+        dismissButton = { TextButton(onDismiss) { Text("Cancelar") } }
+    )
+}
 @Composable
 private fun money(cents: Long): String = MoneyUtils.formatCents(cents, LocalCurrency.current)

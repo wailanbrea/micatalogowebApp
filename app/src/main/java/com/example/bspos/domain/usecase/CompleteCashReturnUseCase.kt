@@ -87,7 +87,8 @@ class CompleteCashReturnUseCase @Inject constructor(private val transactor:AppDa
             val restocked = items.filter { it.restockInventory }.map { item ->
                 checkNotNull(sold.find { it.id == item.saleItemId }).copy(quantity=item.quantity)
             }
-            if (restocked.isNotEmpty()) LinkedInventorySaleRecorder.record(restocked,id,request.date,InventoryLocation.MAIN,
+            val targetLocation = sale.routeId?.let(InventoryLocation::route) ?: InventoryLocation.MAIN
+            if (restocked.isNotEmpty()) LinkedInventorySaleRecorder.record(restocked,id,request.date,targetLocation,
                 products,inventory,settings.observe().first().allowNegativeStock,restoring=true)
             if (total > 0) {
                 val sessionId = checkNotNull(cash.findOpenId(activeShop)) { "Abre una caja para registrar el reembolso." }

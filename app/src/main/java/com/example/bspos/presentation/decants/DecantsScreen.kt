@@ -48,6 +48,10 @@ internal fun finishBottleConfiguration(onDismiss: () -> Unit, onRefreshWorkspace
     onRefreshWorkspace()
 }
 
+/** Prevents a late dismiss callback from an outgoing sheet from closing its replacement. */
+internal fun dismissDecantSheetIfCurrent(current: String?, closing: String): String? =
+    current.takeUnless { it == closing }
+
 private fun DecantFragranceDto.isBottleSource(): Boolean = sourceSaleUnit.trim().equals("bottle", ignoreCase = true)
 
 private fun DecantFragranceDto.hasAvailableBottleStock(): Boolean =
@@ -142,7 +146,7 @@ fun DecantsScreen(presentation: MiCatalogoBusinessPresentation, showCost: Boolea
             onCreateBottle = { createBottleSource = true; sheet = null; focus = null; focusSize = null })
         val enabled = workspace.enabled && workspace.canManage && !state.busy
         when {
-            sheet == "setup" -> DecantQuickSetupSheet(workspace, enabled, { sheet = null }, initialSourceId = autoPrepareSourceRemoteId, onCreateBottle = {
+            sheet == "setup" -> DecantQuickSetupSheet(workspace, enabled, { sheet = dismissDecantSheetIfCurrent(sheet, "setup") }, initialSourceId = autoPrepareSourceRemoteId, onCreateBottle = {
                 createBottleSource = true
                 sheet = null
             }) { source, mode, lines ->
@@ -161,24 +165,47 @@ fun DecantsScreen(presentation: MiCatalogoBusinessPresentation, showCost: Boolea
                     })
                 }, listOf(source.id))
             }
-            sheet == "advanced" -> DecantAdvancedSheet(enabled, { sheet = null }) { next -> sheet = next }
-            sheet == "report" -> DecantReportSheet(workspace) { sheet = null }
+            sheet == "advanced" || sheet == "vials" -> {
+                val destination = checkNotNull(sheet)
+                DecantOperationsSheet(
+                    destination = destination,
+                    workspace = workspace,
+                    enabled = enabled,
+                    busy = state.busy,
+                    error = state.error,
+                    message = state.message,
+                    onDismiss = { sheet = dismissDecantSheetIfCurrent(sheet, destination) },
+                    onOpen = { next -> sheet = next },
+                    onReceive = { size, qty, cost, salePrice ->
+                        viewModel.command(operation("decant_vial_receive") {
+                            put("volume_ml", size)
+                            put("quantity", qty)
+                            put("unit_cost", cost)
+                            if (salePrice.isNotBlank()) put("sale_price", salePrice)
+                        })
+                    },
+                    onActive = { vial ->
+                        viewModel.command(operation("decant_vial_update") {
+                            put("vial_id", vial.id)
+                            put("active", !vial.active)
+                        })
+                    }
+                )
+            }
+            sheet == "report" -> DecantReportSheet(workspace) { sheet = dismissDecantSheetIfCurrent(sheet, "report") }
             sheet == "unconfigured" -> DecantUnconfiguredSourcesSheet(
-                unconfiguredBottleSources, quantities, enabled, { sheet = null }
+                unconfiguredBottleSources, quantities, enabled, { sheet = dismissDecantSheetIfCurrent(sheet, "unconfigured") }
             ) { product ->
                 sheet = null
                 configureBottle = product
             }
-            sheet == "vials" -> DecantVialsSheet(workspace, enabled, state.busy, state.error, state.message, { sheet = null }, { size, qty, cost, salePrice ->
-                viewModel.command(operation("decant_vial_receive") { put("volume_ml", size); put("quantity", qty); put("unit_cost", cost); if (salePrice.isNotBlank()) put("sale_price", salePrice) })
-            }, { vial -> viewModel.command(operation("decant_vial_update") { put("vial_id", vial.id); put("active", !vial.active) }) })
-            sheet == "open" -> DecantOpenSheet(workspace.groups, enabled, { sheet = null }, onCreateBottle = {
+            sheet == "open" -> DecantOpenSheet(workspace.groups, enabled, { sheet = dismissDecantSheetIfCurrent(sheet, "open") }, onCreateBottle = {
                 createBottleSource = true
                 sheet = null
             }) { group ->
                 viewModel.command(operation("open_bottle") { put("product_id", group.id); put("quantity", 1); put("expected_stock", group.sealed); put("track_decants", true) }, listOf(group.id))
             }
-            sheet == "prepare" -> DecantPrepareSheet(workspace, focus, enabled, { sheet = null },
+            sheet == "prepare" -> DecantPrepareSheet(workspace, focus, enabled, { sheet = dismissDecantSheetIfCurrent(sheet, "prepare") },
                 { createSource = it.id; sheet = null }, initialSizeId = focusSize) { group, opening, size, qty, price ->
                 if (size.productId == null) {
                     // An empty vial can exist before its catalog presentation. Configure
@@ -205,24 +232,24 @@ fun DecantsScreen(presentation: MiCatalogoBusinessPresentation, showCost: Boolea
                 }
             }
             sheet == "price" -> focus?.sizes?.firstOrNull { it.id == focusSize }?.let { size ->
-                DecantPriceSheet(size, enabled, { sheet = null }) { price -> viewModel.command(operation("decant_presentation_update") {
+                DecantPriceSheet(size, enabled, { sheet = dismissDecantSheetIfCurrent(sheet, "price") }) { price -> viewModel.command(operation("decant_presentation_update") {
                     put("product_id", size.id); put("price", price); put("expected_price", decimal(size.priceCents))
                 }, listOf(size.id)) }
             }
             sheet?.startsWith("discard:") == true -> focus?.openings?.firstOrNull { sheet == "discard:${it.id}" }?.let { opening ->
-                DecantDiscardSheet(opening, enabled, { sheet = null }) { qty, notes ->
+                DecantDiscardSheet(opening, enabled, { sheet = dismissDecantSheetIfCurrent(sheet, "discard:${opening.id}") }) { qty, notes ->
                     viewModel.command(operation("decant_discard") { put("opening_id", opening.id); put("expected_ml", opening.remainingMl);
                         put("quantity", qty); put("notes", notes) }, listOfNotNull(focus?.id))
                 }
             }
             sheet?.startsWith("sell:") == true -> focus?.openings?.firstOrNull { sheet == "sell:${it.id}" }?.let { opening ->
-                DecantRemainderSheet(opening, enabled, { sheet = null }) { price, method ->
+                DecantRemainderSheet(opening, enabled, { sheet = dismissDecantSheetIfCurrent(sheet, "sell:${opening.id}") }) { price, method ->
                     viewModel.command(operation("decant_sell_remainder") { put("opening_id", opening.id); put("expected_ml", opening.remainingMl);
                         put("price", price); put("payment_method", method) }, listOfNotNull(focus?.id))
                 }
             }
             sheet == "reconcile" -> focus?.let { group ->
-                DecantReconcileSheet(group, enabled, { sheet = null }) { ml ->
+                DecantReconcileSheet(group, enabled, { sheet = dismissDecantSheetIfCurrent(sheet, "reconcile") }) { ml ->
                     viewModel.command(operation("decant_reconcile_opening") { put("product_id", group.id); put("expected_ml", group.untrackedOpenMl); put("quantity", ml) }, listOf(group.id))
                 }
             }
@@ -356,7 +383,7 @@ internal fun DecantsContent(workspace: DecantWorkspaceDto, error: String?, messa
                 }
                 IconButton(onRefresh) { Icon(Icons.Outlined.Refresh, "Actualizar") }
             }
-            Text("${groups.size} fragancia(s) · ${workspace.opened} con botella abierta", color = BSPOSTheme.colors.textSecondary)
+            Text("${groups.size} ${if (groups.size == 1) "fragancia" else "fragancias"} · ${workspace.opened} ${if (workspace.opened == 1) "botella abierta" else "botellas abiertas"}", color = BSPOSTheme.colors.textSecondary)
         }
         if (availableBottleSources.isEmpty()) {
             item {
@@ -414,14 +441,14 @@ internal fun DecantsContent(workspace: DecantWorkspaceDto, error: String?, messa
         item {
             Surface(shape = BSPOSDesign.cardRadius, border = BorderStroke(1.dp, BSPOSTheme.colors.outline)) {
                 Column {
-                    Row {
-                        Metric("Listos para vender", workspace.prepared.toString(), "frascos · ${money(workspace.preparedValueCents)} en estante", Modifier.weight(1f))
-                        Metric("A pedido", workspace.onDemand.toString(), "tamaños que se preparan al vender", Modifier.weight(1f))
+                    Row(Modifier.height(IntrinsicSize.Min)) {
+                        Metric("Listos para vender", workspace.prepared.toString(), "En estante: ${money(workspace.preparedValueCents)}", Modifier.weight(1f).fillMaxHeight())
+                        Metric("A pedido", workspace.onDemand.toString(), "Se preparan al vender", Modifier.weight(1f).fillMaxHeight())
                     }
                     HorizontalDivider(color = BSPOSTheme.colors.outline)
-                    Row {
-                        Metric("Botellas abiertas", workspace.opened.toString(), "${workspace.groups.flatMap { it.openings }.sumOf { it.remainingMl }} ml en total", Modifier.weight(1f))
-                        Metric("Perfume perdido", "${workspace.lostMl} ml", "acumulado", Modifier.weight(1f))
+                    Row(Modifier.height(IntrinsicSize.Min)) {
+                        Metric("Botellas abiertas", workspace.opened.toString(), "${workspace.groups.flatMap { it.openings }.sumOf { it.remainingMl }} ml disponibles", Modifier.weight(1f).fillMaxHeight())
+                        Metric("Perfume perdido", "${workspace.lostMl} ml", "acumulado", Modifier.weight(1f).fillMaxHeight())
                     }
                 }
             }
@@ -453,13 +480,13 @@ internal fun DecantsContent(workspace: DecantWorkspaceDto, error: String?, messa
 @Composable private fun Metric(label: String, value: String, detail: String, modifier: Modifier) {
     val color = when (label) { "Listos para vender" -> BSPOSTheme.colors.success; "A pedido" -> BSPOSTheme.colors.warning; "Perfume perdido" -> BSPOSTheme.colors.error; else -> BSPOSTheme.colors.primary }
     val icon = when (label) { "Listos para vender" -> Icons.Outlined.CheckCircle; "A pedido" -> Icons.Outlined.Schedule; "Perfume perdido" -> Icons.Outlined.WaterDrop; else -> Icons.Outlined.Science }
-    Column(modifier.height(108.dp).background(color.copy(alpha = .035f)).padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(modifier.heightIn(min = 108.dp).background(color.copy(alpha = .035f)).padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             Surface(Modifier.size(20.dp), shape = RoundedCornerShape(6.dp), color = color.copy(alpha = .12f)) { Box(contentAlignment = Alignment.Center) { Icon(icon, null, Modifier.size(14.dp), tint = color) } }
-            Text(label, fontSize = 12.sp, color = BSPOSTheme.colors.textSecondary)
+            Text(label, fontSize = 12.sp, color = BSPOSTheme.colors.textSecondary, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
         }
         BSPOSMoney(value, prominent = true)
-        Text(detail, fontFamily = FontFamily.Monospace, fontSize = 10.sp, lineHeight = 15.sp, color = BSPOSTheme.colors.textTertiary)
+        Text(detail, fontFamily = FontFamily.Monospace, fontSize = 10.sp, lineHeight = 14.sp, color = BSPOSTheme.colors.textTertiary, maxLines = 1, softWrap = false)
     }
 }
 
@@ -478,7 +505,7 @@ internal fun DecantsContent(workspace: DecantWorkspaceDto, error: String?, messa
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
                     Text(group.name, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
-                    Text("${group.sizes.size} tamaños · ${group.sizes.sumOf { it.prepared }} listos", fontFamily = FontFamily.Monospace, fontSize = 11.sp, color = BSPOSTheme.colors.textSecondary)
+                    Text("${group.sizes.size} ${if (group.sizes.size == 1) "tamaño" else "tamaños"} · ${group.sizes.sumOf { it.prepared }} listos", fontFamily = FontFamily.Monospace, fontSize = 11.sp, color = BSPOSTheme.colors.textSecondary)
                 }
                 IconButton({ onPrepare(group) }, enabled = enabled) { Icon(Icons.Outlined.Science, "Preparar") }
                 IconButton({ expanded = !expanded }) { Icon(if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore, if (expanded) "Contraer" else "Expandir") }
@@ -527,22 +554,6 @@ internal fun DecantsContent(workspace: DecantWorkspaceDto, error: String?, messa
                     }
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun DecantAdvancedSheet(enabled: Boolean, onDismiss: () -> Unit, onOpen: (String) -> Unit) {
-    CheckoutStyleBottomSheet("Opciones avanzadas", onDismiss) {
-        Text("Usa estas funciones para controlar manualmente aperturas, envases y ajustes de inventario.", color = BSPOSTheme.colors.textSecondary)
-        BSPOSOutlinedButton({ onOpen("vials") }, enabled = enabled, modifier = Modifier.fillMaxWidth()) {
-            Text("Frascos vacíos")
-        }
-        BSPOSOutlinedButton({ onOpen("open") }, enabled = enabled, modifier = Modifier.fillMaxWidth()) {
-            Text("Abrir botella manualmente")
-        }
-        BSPOSOutlinedButton({ onOpen("prepare") }, enabled = enabled, modifier = Modifier.fillMaxWidth()) {
-            Text("Preparar manualmente")
         }
     }
 }
@@ -820,7 +831,20 @@ private fun DecantQuickSetupSheet(
     }
 }
 
-@Composable private fun DecantVialsSheet(workspace: DecantWorkspaceDto, enabled: Boolean, busy: Boolean, error: String?, message: String?, onDismiss: () -> Unit, onReceive: (Int, Int, String, String) -> Unit, onActive: (DecantVialDto) -> Unit) {
+@Composable
+internal fun DecantOperationsSheet(
+    destination: String,
+    workspace: DecantWorkspaceDto,
+    enabled: Boolean,
+    busy: Boolean,
+    error: String?,
+    message: String?,
+    onDismiss: () -> Unit,
+    onOpen: (String) -> Unit,
+    onReceive: (Int, Int, String, String) -> Unit,
+    onActive: (DecantVialDto) -> Unit
+) {
+    val showVials = destination == "vials"
     val standardSizes = remember(workspace.vials) { (listOf(5, 10, 30) + workspace.vials.map { it.volumeMl }).distinct().sorted() }
     var size by remember { mutableStateOf(standardSizes.firstOrNull()?.toString().orEmpty()) }
     var qty by remember { mutableStateOf("") }; var cost by remember { mutableStateOf("") }; var salePrice by remember { mutableStateOf("") }
@@ -828,50 +852,68 @@ private fun DecantQuickSetupSheet(
     val costCents = MoneyUtils.parseDecimalToCents(cost)
     val saleCents = MoneyUtils.parseDecimalToCents(salePrice)
     val valid = enabled && !busy && (selectedSize ?: 0) in 1..1000 && (qty.toIntOrNull() ?: 0) in 1..100000 && costCents?.let { it >= 0 } == true && saleCents?.let { it >= 0 } == true
-    CheckoutStyleBottomSheet("Frascos vacíos", onDismiss, dismissEnabled = !busy, footer = {
-        CheckoutStylePrimaryButton("Recibir frascos", {
-            val parsedSize = selectedSize
-            val parsedQuantity = qty.toIntOrNull()
-            val parsedCost = costCents
-            val parsedSalePrice = saleCents
-            if (parsedSize != null && parsedQuantity != null && parsedCost != null && parsedSalePrice != null) {
-                onReceive(parsedSize, parsedQuantity, decimal(parsedCost), decimal(parsedSalePrice))
+    CheckoutStyleBottomSheet(
+        title = if (showVials) "Frascos vacíos" else "Opciones avanzadas",
+        onDismiss = onDismiss,
+        dismissEnabled = !showVials || !busy,
+        footer = if (showVials) ({
+            CheckoutStylePrimaryButton("Recibir frascos", {
+                val parsedSize = selectedSize
+                val parsedQuantity = qty.toIntOrNull()
+                val parsedCost = costCents
+                val parsedSalePrice = saleCents
+                if (parsedSize != null && parsedQuantity != null && parsedCost != null && parsedSalePrice != null) {
+                    onReceive(parsedSize, parsedQuantity, decimal(parsedCost), decimal(parsedSalePrice))
+                }
+            }, enabled = valid, busy = busy)
+        }) else null
+    ) {
+        if (!showVials) {
+            Text("Usa estas funciones para controlar manualmente aperturas, envases y ajustes de inventario.", color = BSPOSTheme.colors.textSecondary)
+            BSPOSOutlinedButton({ onOpen("vials") }, enabled = enabled, modifier = Modifier.fillMaxWidth()) {
+                Text("Frascos vacíos")
             }
-        }, enabled = valid, busy = busy)
-    }) {
-        Text("Administra tus envases por tamaño. La existencia se descuenta automáticamente cuando preparas un decant.")
-        error?.let { Text(it, color = BSPOSTheme.colors.error, style = MaterialTheme.typography.bodySmall) }
-        message?.let { Text(it, color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodySmall) }
-        Text("${workspace.emptyVials} vacíos · ${workspace.prepared} llenos"); workspace.vialInvestmentCents?.let { SummaryLine("Invertido en envases", money(it)) }
-        BSPOSSectionLabel("Tamaños rápidos")
-        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            BSPOSOutlinedButton({ onOpen("open") }, enabled = enabled, modifier = Modifier.fillMaxWidth()) {
+                Text("Abrir botella manualmente")
+            }
+            BSPOSOutlinedButton({ onOpen("prepare") }, enabled = enabled, modifier = Modifier.fillMaxWidth()) {
+                Text("Preparar manualmente")
+            }
+        } else {
+            Text("Administra tus envases por tamaño. La existencia se descuenta automáticamente cuando preparas un decant.")
+            error?.let { Text(it, color = BSPOSTheme.colors.error, style = MaterialTheme.typography.bodySmall) }
+            message?.let { Text(it, color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodySmall) }
+            Text("${workspace.emptyVials} vacíos · ${workspace.prepared} llenos"); workspace.vialInvestmentCents?.let { SummaryLine("Invertido en envases", money(it)) }
+            BSPOSSectionLabel("Tamaños rápidos")
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                standardSizes.forEach { option ->
+                    FilterChip(selected = size == option.toString(), onClick = { size = option.toString() }, label = { Text("$option ml") })
+                }
+                FilterChip(selected = standardSizes.none { it.toString() == size }, onClick = { size = "" }, label = { Text("Otro tamaño") })
+            }
             standardSizes.forEach { option ->
-                FilterChip(selected = size == option.toString(), onClick = { size = option.toString() }, label = { Text("$option ml") })
-            }
-            FilterChip(selected = standardSizes.none { it.toString() == size }, onClick = { size = "" }, label = { Text("Otro tamaño") })
-        }
-        standardSizes.forEach { option ->
-            val vial = workspace.vials.firstOrNull { it.volumeMl == option }
-            Surface(shape = BSPOSDesign.cardRadius, border = BorderStroke(1.dp, if (size == option.toString()) BSPOSTheme.colors.primary else BSPOSTheme.colors.outline)) {
-                Row(Modifier.fillMaxWidth().clickable { size = option.toString() }.padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    DecantMiniature(null, option)
-                    Column(Modifier.weight(1f)) {
-                        Text("Frasco decant $option ml", fontWeight = FontWeight.SemiBold)
-                        Text(if (vial == null) "Aún no recibido" else "${vial.empty} disponibles", fontSize = 12.sp, color = BSPOSTheme.colors.textSecondary)
-                        vial?.nextCostCents?.let { Text("Compra FIFO ${money(it)}", fontSize = 11.sp, color = BSPOSTheme.colors.textSecondary) }
-                    }
-                    Column(horizontalAlignment = Alignment.End) {
-                        vial?.salePriceCents?.let { Text("Venta ${money(it)}", fontSize = 11.sp, color = BSPOSTheme.colors.textSecondary) }
-                        if (vial != null) TextButton({ onActive(vial) }, enabled = enabled) { Text(if (vial.active) "Archivar" else "Activar") }
+                val vial = workspace.vials.firstOrNull { it.volumeMl == option }
+                Surface(shape = BSPOSDesign.cardRadius, border = BorderStroke(1.dp, if (size == option.toString()) BSPOSTheme.colors.primary else BSPOSTheme.colors.outline)) {
+                    Row(Modifier.fillMaxWidth().clickable { size = option.toString() }.padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        DecantMiniature(null, option)
+                        Column(Modifier.weight(1f)) {
+                            Text("Frasco decant $option ml", fontWeight = FontWeight.SemiBold)
+                            Text(if (vial == null) "Aún no recibido" else "${vial.empty} disponibles", fontSize = 12.sp, color = BSPOSTheme.colors.textSecondary)
+                            vial?.nextCostCents?.let { Text("Compra FIFO ${money(it)}", fontSize = 11.sp, color = BSPOSTheme.colors.textSecondary) }
+                        }
+                        Column(horizontalAlignment = Alignment.End) {
+                            vial?.salePriceCents?.let { Text("Venta ${money(it)}", fontSize = 11.sp, color = BSPOSTheme.colors.textSecondary) }
+                            if (vial != null) TextButton({ onActive(vial) }, enabled = enabled) { Text(if (vial.active) "Archivar" else "Activar") }
+                        }
                     }
                 }
             }
+            BSPOSSectionLabel("Recibir / nuevo tamaño")
+            if (standardSizes.none { it.toString() == size }) OutlinedTextField(size, { size = it.filter(Char::isDigit) }, label = { Text("Otro tamaño en ml") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(qty, { qty = it.filter(Char::isDigit) }, label = { Text("Cantidad de envases") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(cost, { cost = it.filter { character -> character.isDigit() || character == '.' || character == ',' } }, label = { Text("Precio de compra por envase") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(salePrice, { salePrice = it.filter { character -> character.isDigit() || character == '.' || character == ',' } }, label = { Text("Precio de venta por envase") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true, modifier = Modifier.fillMaxWidth())
         }
-        BSPOSSectionLabel("Recibir / nuevo tamaño")
-        if (standardSizes.none { it.toString() == size }) OutlinedTextField(size, { size = it.filter(Char::isDigit) }, label = { Text("Otro tamaño en ml") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(qty, { qty = it.filter(Char::isDigit) }, label = { Text("Cantidad de envases") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(cost, { cost = it.filter { character -> character.isDigit() || character == '.' || character == ',' } }, label = { Text("Precio de compra por envase") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(salePrice, { salePrice = it.filter { character -> character.isDigit() || character == '.' || character == ',' } }, label = { Text("Precio de venta por envase") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true, modifier = Modifier.fillMaxWidth())
     }
 }
 

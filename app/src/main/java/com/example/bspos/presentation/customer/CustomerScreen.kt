@@ -163,7 +163,13 @@ private fun CustomerForm(current: Customer?, showCredit: Boolean, onSave: (Custo
     var whatsapp by remember(current?.id) { mutableStateOf(current?.whatsapp.orEmpty()) }
     var address by remember(current?.id) { mutableStateOf(current?.address.orEmpty()) }
     var reference by remember(current?.id) { mutableStateOf(current?.reference.orEmpty()) }
-    var credit by remember(current?.id) { mutableStateOf(current?.creditLimit?.div(100)?.toString().orEmpty()) }
+    var credit by remember(current?.id) {
+        mutableStateOf(
+            current?.creditLimit?.let { cents ->
+                if (cents % 100L == 0L) (cents / 100L).toString() else String.format(Locale.US, "%.2f", cents / 100.0)
+            }.orEmpty()
+        )
+    }
     var notes by remember(current?.id) { mutableStateOf(current?.notes.orEmpty()) }
     var formError by remember(current?.id) { mutableStateOf(false) }
     AlertDialog(
@@ -181,7 +187,19 @@ private fun CustomerForm(current: Customer?, showCredit: Boolean, onSave: (Custo
                 OutlinedTextField(documentNumber, { documentNumber = it; formError = false }, label = { Text("Número de documento *") }, singleLine = true)
                 OutlinedTextField(phone, { phone = it; formError = false }, label = { Text("Teléfono *") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone))
                 OutlinedTextField(address, { address = it; formError = false }, label = { Text("Dirección *") }, minLines = 2)
-                if (showCredit) OutlinedTextField(credit, { credit = it.filter(Char::isDigit); formError = false }, label = { Text("Límite de crédito (${LocalCurrency.current.symbol}) *") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), isError = formError, supportingText = { if (formError) Text("Completa los campos obligatorios y verifica el límite") })
+                if (showCredit) OutlinedTextField(
+                    value = credit,
+                    onValueChange = { raw ->
+                        val filtered = raw.replace(',', '.').filter { c -> c.isDigit() || c == '.' }
+                        val parts = filtered.split('.')
+                        credit = if (parts.size <= 2) filtered else parts[0] + "." + parts.drop(1).joinToString("")
+                        formError = false
+                    },
+                    label = { Text("Límite de crédito (${LocalCurrency.current.symbol}) *") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    isError = formError,
+                    supportingText = { if (formError) Text("Completa los campos obligatorios y verifica el límite") }
+                )
                 OutlinedTextField(email, { email = it }, label = { Text("Correo electrónico") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email))
                 OutlinedTextField(whatsapp, { whatsapp = it }, label = { Text("WhatsApp") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone))
                 OutlinedTextField(reference, { reference = it }, label = { Text("Referencia") }, singleLine = true)
@@ -190,8 +208,12 @@ private fun CustomerForm(current: Customer?, showCredit: Boolean, onSave: (Custo
         },
         confirmButton = {
             TextButton({
-                val value = if (showCredit) MoneyUtils.parseWholeUnitsToCents(credit) else 0L
-                val valid = firstName.isNotBlank() && lastName.isNotBlank() && documentNumber.isNotBlank() && phone.isNotBlank() && address.isNotBlank() && value != null && value >= 0 && (current == null || value >= current.balance)
+                val value = if (showCredit) {
+                    if (credit.isBlank()) null else MoneyUtils.parseDecimalToCents(credit)
+                } else {
+                    current?.creditLimit ?: 0L
+                }
+                val valid = firstName.isNotBlank() && lastName.isNotBlank() && documentNumber.isNotBlank() && phone.isNotBlank() && address.isNotBlank() && value != null && value >= 0 && (current == null || !showCredit || value >= current.balance)
                 if (!valid) formError = true else onSave(CustomerInput(firstName, lastName, documentType, documentNumber, phone, address, value!!, email, whatsapp, reference, notes))
             }) { Text("Guardar") }
         },

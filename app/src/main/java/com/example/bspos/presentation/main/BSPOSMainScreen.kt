@@ -1,6 +1,7 @@
 package com.example.bspos.presentation.main
 
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.statusBarsPadding
 
 import android.content.Intent
 import android.net.Uri
@@ -227,7 +228,7 @@ private fun ShopScopedMainScreen(
     var shopMenuOpen by remember { mutableStateOf(false) }
     var storePreviewUrl by remember { mutableStateOf<String?>(null) }
     var menuQuery by remember { mutableStateOf("") }
-    var collapsedGroups by remember { mutableStateOf(drawerGroups.filter { it.id !in setOf("home", "sales", "account_help", "account_help_fallback") }.map { it.id }.toSet()) }
+    var collapsedGroups by remember { mutableStateOf(drawerGroups.filter { it.id !in setOf("home", "sales") }.map { it.id }.toSet()) }
     val currentBaseRoute = currentRoute.substringBefore('?')
     val currentScreen = drawerScreens.firstOrNull { it.route == currentBaseRoute } ?: when (currentBaseRoute) {
         Screen.CatalogCreate.route -> Screen.CatalogCreate
@@ -475,7 +476,8 @@ private fun ShopScopedMainScreen(
                             Spacer(Modifier.width(10.dp))
                             Column(Modifier.weight(1f)) {
                                 Text("MiCatalogo ${quota.planLabel}", fontWeight = FontWeight.ExtraBold, fontSize = 13.sp)
-                                Text("${quota.productCount} de ${quota.productLimit} productos", color = BSPOSTheme.colors.textSecondary, fontSize = 11.sp)
+                                val formattedLimit = java.text.NumberFormat.getIntegerInstance(java.util.Locale.US).format(quota.productLimit)
+                                Text("${quota.productCount} de $formattedLimit productos", color = BSPOSTheme.colors.textSecondary, fontSize = 11.sp)
                             }
                         }
                     }
@@ -584,14 +586,17 @@ private fun ShopScopedMainScreen(
                 }
             },
             topBar = {
-                Column {
-                // The application shell owns the context header for every regular
-                // module. Terminal and Cotizaciones intentionally keep their compact
-                // Puntto-style header; Support is a nested conversation screen.
-                 val usesCompactHeader = currentBaseRoute == Screen.POS.route
-                if (currentBaseRoute != Screen.Support.route &&
+                val usesCompactHeader = currentBaseRoute == Screen.POS.route
+                val showTopBar = currentBaseRoute != Screen.Support.route &&
                     (!usesCompactHeader || windowWidthSizeClass == WindowWidthSizeClass.Expanded)
-                 ) TopAppBar(
+                Column(
+                    modifier = if (!showTopBar) {
+                        Modifier.fillMaxWidth().background(BSPOSTheme.colors.surface).statusBarsPadding()
+                    } else {
+                        Modifier
+                    }
+                ) {
+                if (showTopBar) TopAppBar(
                     expandedHeight = 56.dp,
                     title = {
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1114,7 +1119,11 @@ fun BSPOSNavHost(
         composable(Screen.Team.route) {
             RestrictedMenuDestination(canSeeMenu("sellers"), navController) { SettingsScreen(teamOnly = true) }
         }
-        composable(Screen.Catalog.route) {
+        composable(Screen.Catalog.route) { entry ->
+            val editProductId = remember(entry) {
+                entry.savedStateHandle.remove<String>("edit_product_id")?.let { runCatching { java.util.UUID.fromString(it) }.getOrNull() }
+                    ?: navController.previousBackStackEntry?.savedStateHandle?.remove<String>("edit_product_id")?.let { runCatching { java.util.UUID.fromString(it) }.getOrNull() }
+            }
             RestrictedMenuDestination(canSeeMenu("products") || canSeeMenu("services"), navController) {
                 CatalogHomeScreen(
                     isTablet = isTablet,
@@ -1122,6 +1131,7 @@ fun BSPOSNavHost(
                     showCost = !sellerMode || canSeeMenu("finance"),
                     showProductCode = productFields.isEmpty() || "sku" in productFields || "barcode" in productFields,
                     initialServiceMode = !canSeeMenu("products"),
+                    initialEditProductId = editProductId,
                     onOpenProducts = if (canSeeMenu("products")) ({}) else null,
                     onOpenServices = if (canSeeMenu("services")) ({ navController.navigate(Screen.Services.route) { launchSingleTop = true } }) else null,
                     onOpenDecants = if (canSeeMenu("decants")) ({ sourceId ->
@@ -1181,6 +1191,11 @@ fun BSPOSNavHost(
             RestrictedMenuDestination(canSeeMenu("inventory"), navController) {
                 InventoryScreen(
                     onOpenProducts = if (canSeeMenu("products")) {{ navController.navigate(Screen.Catalog.route) }} else null,
+                    onOpenPhotos = if (canSeeMenu("photos")) {{ navController.navigate(Screen.Photos.route) }} else null,
+                    onEditProduct = if (canSeeMenu("products")) {{ productId ->
+                        navController.currentBackStackEntry?.savedStateHandle?.set("edit_product_id", productId.toString())
+                        navController.navigate(Screen.Catalog.route)
+                    }} else null,
                     onOpenQuickCreate = if (canSeeMenu("products")) {{ navController.navigate(Screen.CatalogCreate.route) }} else null,
                     onOpenPrices = if (canSeeMenu("pricing")) {{ navController.navigate(Screen.AutomaticPrices.route) }} else null,
                     onOpenImport = if (canSeeMenu("import")) {{ navController.navigate(Screen.Import.route) }} else null,

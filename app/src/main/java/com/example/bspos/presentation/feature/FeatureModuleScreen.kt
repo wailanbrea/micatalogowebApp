@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -246,20 +247,28 @@ private fun FeatureContent(
         }
         if (module.kpis.isNotEmpty()) {
             item {
-                val kpis = module.kpis.take(if (feature in setOf("price_health", "sales")) 4 else 3)
+                val kpis = module.kpis.take(if (feature in setOf("price_health", "sales", "reports")) 4 else 3)
                 if (isAuthorizationFeature) {
                     AuthorizationKpiGrid(kpis)
-                } else {
+                } else if (feature in setOf("price_health", "sales")) {
                     Row(
-                        Modifier.fillMaxWidth().then(if (feature in setOf("price_health", "sales")) Modifier.horizontalScroll(rememberScrollState()) else Modifier),
+                        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        kpis.forEachIndexed { index, kpi ->
-                            AnimatedVisibility(
-                                visible = true,
-                                enter = fadeIn(animationSpec = tween(180, delayMillis = index * 55)) + slideInHorizontally { it / 10 }
+                        kpis.forEach { kpi ->
+                            FeatureKpiCard(kpi, Modifier.widthIn(min = 156.dp))
+                        }
+                    }
+                } else {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        kpis.chunked(2).forEach { rowKpis ->
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
-                                FeatureKpiCard(kpi, if (feature in setOf("price_health", "sales")) Modifier.width(150.dp) else Modifier.weight(1f))
+                                rowKpis.forEach { kpi ->
+                                    FeatureKpiCard(kpi, Modifier.weight(1f))
+                                }
                             }
                         }
                     }
@@ -402,7 +411,7 @@ private fun FeatureContent(
                 if (section.kpis.isNotEmpty()) {
                     item {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            section.kpis.take(3).forEach { kpi -> FeatureKpiCard(kpi, Modifier.weight(1f)) }
+                        if (section.kpis.size >= 3) AuthorizationKpiGrid(section.kpis.take(4)) else Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) { section.kpis.forEach { kpi -> FeatureKpiCard(kpi, Modifier.weight(1f)) } }
                         }
                     }
                 }
@@ -863,7 +872,7 @@ internal fun FeatureKpiCard(kpi: FeatureKpiDto, modifier: Modifier = Modifier) {
                 kpi.label,
                 style = MaterialTheme.typography.labelSmall,
                 color = BSPOSTheme.colors.textSecondary,
-                maxLines = 2,
+                maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
             Spacer(Modifier.height(5.dp))
@@ -872,7 +881,8 @@ internal fun FeatureKpiCard(kpi: FeatureKpiDto, modifier: Modifier = Modifier) {
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.ExtraBold,
                 color = toneColor(kpi.tone),
-                maxLines = 2,
+                maxLines = 1,
+                softWrap = false,
                 overflow = TextOverflow.Ellipsis
             )
         }
@@ -881,15 +891,19 @@ internal fun FeatureKpiCard(kpi: FeatureKpiDto, modifier: Modifier = Modifier) {
 
 @Composable
 private fun FeatureRow(row: FeatureRowDto, onConfirm: () -> Unit = {}) {
+    val isZeroCostMargin = row.secondary.contains("Margen 100%") && row.status == "Con margen"
+    val displaySecondary = if (isZeroCostMargin) row.secondary.replace("Margen 100%", "Costo pendiente") else row.secondary
+    val displayValue = if (isZeroCostMargin) "Sin costo" else row.value
+    val displayStatus = if (isZeroCostMargin) "Costo pendiente" else row.status
     Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface)) {
         Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
+            Column(Modifier.weight(1f).padding(end = 10.dp)) {
                 Text(row.primary.ifBlank { "Registro" }, fontWeight = FontWeight.Bold, color = BSPOSTheme.colors.textPrimary)
-                if (row.secondary.isNotBlank()) Text(row.secondary, color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodySmall)
+                if (displaySecondary.isNotBlank()) Text(displaySecondary, color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodySmall)
             }
             Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                if (row.value.isNotBlank()) Text(row.value, fontWeight = FontWeight.ExtraBold, color = BSPOSTheme.colors.textPrimary)
-                if (row.status.isNotBlank()) Text(row.status, color = BSPOSTheme.colors.primary, style = MaterialTheme.typography.labelSmall)
+                if (displayValue.isNotBlank()) Text(displayValue, fontWeight = FontWeight.ExtraBold, color = BSPOSTheme.colors.textPrimary, maxLines = 1, softWrap = false)
+                if (displayStatus.isNotBlank()) Text(displayStatus, color = BSPOSTheme.colors.primary, style = MaterialTheme.typography.labelSmall, maxLines = 1, softWrap = false)
                 if (row.canConfirm) {
                     Button(
                         onClick = onConfirm,

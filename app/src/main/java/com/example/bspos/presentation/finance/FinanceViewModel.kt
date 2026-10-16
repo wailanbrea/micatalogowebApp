@@ -115,7 +115,9 @@ class FinanceViewModel @Inject constructor(
         readJobs.values.forEach { it.cancel() }; readJobs.clear()
         val old = _uiState.value
         _uiState.value = FinanceUiState(access = access, fromDate = old.fromDate, toDate = old.toDate,
-            periodFilter = old.periodFilter, shopName = old.shopName, expensesLoading = access.expenses)
+            periodFilter = old.periodFilter, shopName = old.shopName,
+            expenseCategories = if (access.expenses) old.expenseCategories else emptyList(),
+            expensesLoading = access.expenses)
     }
 
     fun selectPeriod(filter: FinancePeriodFilter) {
@@ -164,6 +166,7 @@ class FinanceViewModel @Inject constructor(
         val shopId = currentShopId ?: return
         fetchSummary(shopId)
         fetchExpenses(shopId)
+        fetchCategories(shopId)
         fetchCashSession(shopId)
         fetchDailyClose(shopId)
     }
@@ -328,7 +331,13 @@ class FinanceViewModel @Inject constructor(
             if (epoch != permissionEpoch || !_uiState.value.access.expenses || currentShopId != shopId || connectionRepository.activeShopId() != shopId) return@launch
             when (result) {
                 is MiCatalogoResult.Success -> {
-                    _uiState.value = _uiState.value.copy(expenses = result.value.data, expensesLoading = false)
+                    val from = _uiState.value.fromDate
+                    val to = _uiState.value.toDate
+                    val filtered = result.value.data.filter { expense ->
+                        val date = expense.occurredAt?.take(10)
+                        date == null || ((from.isBlank() || date >= from) && (to.isBlank() || date <= to))
+                    }
+                    _uiState.value = _uiState.value.copy(expenses = filtered, expensesLoading = false)
                 }
                 is MiCatalogoResult.Failure -> {
                     _uiState.value = _uiState.value.copy(expensesLoading = false, expensesError = result.message)

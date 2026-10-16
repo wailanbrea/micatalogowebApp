@@ -66,6 +66,7 @@ fun CollectionScreen(viewModel: CollectionViewModel = hiltViewModel()) {
     val sales by viewModel.sales.collectAsState()
     val customer by viewModel.customer.collectAsState()
     val collecting by viewModel.collecting.collectAsState()
+    val message by viewModel.message.collectAsState()
     var choosing by remember { mutableStateOf(false) }
     var method by remember { mutableStateOf(PaymentMethod.CASH) }
     var tab by remember { mutableStateOf("Por cobrar") }
@@ -177,7 +178,7 @@ fun CollectionScreen(viewModel: CollectionViewModel = hiltViewModel()) {
                 item { CreditEmptyState(tab) }
             } else {
                 items(filteredSales, key = { it.id }) { sale ->
-                    PaidSaleCard(sale, customer?.businessName ?: "Cliente")
+                    PaidSaleCard(sale, (sale.customerId?.let(customersById::get) ?: customer)?.fullName ?: "Cliente")
                 }
             }
         }
@@ -194,6 +195,7 @@ fun CollectionScreen(viewModel: CollectionViewModel = hiltViewModel()) {
             onDismiss = { choosing = false }
         )
     }
+    message?.let { text -> AlertDialog(onDismissRequest = viewModel::consumeMessage, title = { Text("Cobros") }, text = { Text(text) }, confirmButton = { TextButton(onClick = viewModel::consumeMessage) { Text("Aceptar") } }) }
 }
 
 @Composable
@@ -244,13 +246,13 @@ internal fun RemoteCustomerDebtCard(
 /** A single mobile layout for local invoices and authoritative remote balances. */
 @Composable
 private fun CollectionAmountForm(identity: String, balance: Long, busy: Boolean, allowed: Boolean, onCollect: (Long) -> Unit) {
-    var amount by remember(identity, balance) { mutableStateOf(MoneyUtils.formatCentsCompact(balance)) }
+    var amount by remember(identity, balance) { mutableStateOf(String.format(Locale.US, "%.2f", balance / 100.0)) }
     val value = MoneyUtils.parsePesosStringToCents(amount)
     val valid = value > 0L && value <= balance
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         OutlinedTextField(
             value = amount,
-            onValueChange = { amount = it.filter { char -> char.isDigit() || char == '.' } },
+            onValueChange = { raw -> val f = raw.replace(',', '.').filter { c -> c.isDigit() || c == '.' }; val p = f.split('.'); amount = if (p.size <= 2) f else p[0] + "." + p.drop(1).joinToString("") },
             modifier = Modifier.fillMaxWidth(),
             label = { Text("Monto a cobrar") },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),

@@ -63,8 +63,8 @@ class RemoteMutationRecorder @Inject constructor(private val transactor: AppData
         val photo = product.imagePath?.takeIf { previous?.imagePath != it }?.let {
             checkNotNull(images) { "No está disponible el procesamiento de fotos." }.capture(it)
         }
-        val captureCost = previous == null && includeInitialCost(product.miCatalogoSaleUnit, product.lastPurchaseCost,
-            catalogPolicy?.canReadCosts(shop) ?: true)
+        val captureCost = (previous == null || previous.lastPurchaseCost != product.lastPurchaseCost) &&
+            includeInitialCost(product.miCatalogoSaleUnit, product.lastPurchaseCost, catalogPolicy?.canReadCosts(shop) ?: true)
         enqueue(shop, listOf(remote), buildJsonObject {
             put("type", "product_upsert"); put("product_id", remote)
             if (previous == null || previous.name != product.name) put("name", product.name)

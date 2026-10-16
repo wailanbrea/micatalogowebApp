@@ -50,9 +50,9 @@ class ProductUseCases @Inject constructor(
 
     suspend fun update(current: Product, input: ProductInput): Boolean = products.update(
         build(current.id, input, current.createdAt, Instant.now()).copy(
-            averageCost = current.averageCost,
-            description = input.description ?: current.description,
-            wholesalePrice = input.wholesalePrice ?: current.wholesalePrice,
+            averageCost = if (input.purchasePrice > 0L) input.purchasePrice else current.averageCost,
+            description = input.description.cleanOptional(),
+            wholesalePrice = input.wholesalePrice,
             barcode = current.barcode,
             remoteShopId = current.remoteShopId,
             remoteProductId = current.remoteProductId,
@@ -64,7 +64,7 @@ class ProductUseCases @Inject constructor(
             remoteReservedDecantMl = current.remoteReservedDecantMl,
             remoteOpenedBottles = current.remoteOpenedBottles,
             remoteSourceProductId = if (input.remoteSaleUnit != null) input.remoteSourceProductId else current.remoteSourceProductId,
-            lastPurchaseCost = current.lastPurchaseCost,
+            lastPurchaseCost = if (input.purchasePrice > 0L) input.purchasePrice else current.lastPurchaseCost,
             imagePath = input.imagePath ?: current.imagePath,
             thumbnailPath = input.thumbnailPath ?: current.thumbnailPath,
             isActive = input.isActive,

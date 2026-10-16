@@ -59,6 +59,7 @@ internal fun CheckoutReviewSheet(
     onQuantity: (UUID, Long) -> Unit, onUnitPrice: (UUID, Long) -> Unit,
     onClear: () -> Unit, onDiscount: (Long) -> Unit, onDate: (LocalDate) -> Unit,
     onConfirm: (String?, String?, String?) -> Unit,
+    allowNegativeStock: Boolean = false,
     showCosts: Boolean = false,
     errorMessage: String? = null,
     onCreditConfirm: ((Long, String, String?, String?, String?) -> Unit)? = null
@@ -140,7 +141,7 @@ internal fun CheckoutReviewSheet(
                                     OutlinedIconButton(onClick = { onQuantity(line.product.id, line.quantity - 1) }, enabled = !isProcessing,
                                         modifier = Modifier.size(30.dp), shape = RoundedCornerShape(9.dp)) { Icon(Icons.Default.Remove, "Disminuir ${line.product.name}", Modifier.size(16.dp)) }
                                     Text(line.quantity.toString(), Modifier.widthIn(min = 28.dp).wrapContentWidth(Alignment.CenterHorizontally), fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                                    val canAdd = line.product.remoteSaleUnit == "service" || line.quantity < (quantities[line.product.id] ?: 0L)
+                                    val canAdd = line.product.remoteSaleUnit == "service" || allowNegativeStock || line.quantity < (quantities[line.product.id] ?: 0L)
                                     OutlinedIconButton(onClick = { onQuantity(line.product.id, line.quantity + 1) }, enabled = !isProcessing && canAdd,
                                         modifier = Modifier.size(30.dp), shape = RoundedCornerShape(9.dp)) { Icon(Icons.Default.Add, "Aumentar ${line.product.name}", Modifier.size(16.dp)) }
                                 }

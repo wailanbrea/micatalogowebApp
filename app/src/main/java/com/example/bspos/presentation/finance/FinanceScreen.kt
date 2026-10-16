@@ -81,6 +81,7 @@ fun FinanceScreen(
 
     LaunchedEffect(uiState.successMessage) {
         uiState.successMessage?.let {
+            showExpenseDialog = false
             snackbarHostState.showSnackbar(it)
             viewModel.dismissMessages()
         }
@@ -168,10 +169,9 @@ fun FinanceScreen(
         ExpenseCreateDialog(
             categories = uiState.expenseCategories,
             isSaving = uiState.isRegisteringExpense,
-            onDismiss = { showExpenseDialog = false },
+            onDismiss = { if (!uiState.isRegisteringExpense) showExpenseDialog = false },
             onConfirm = { desc, amt, catId, method, occurredAt, notes ->
                 viewModel.registerExpense(desc, amt, catId, method, occurredAt, notes)
-                showExpenseDialog = false
             }
         )
     }
@@ -402,16 +402,25 @@ fun FinanceSummaryTab(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Column(modifier = Modifier.weight(1f)) {
+                    Column(modifier = Modifier.weight(1f).padding(end = 12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Text(
                             text = "Flujo de Efectivo Neto",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = "Cobrado: ${formatPesos(cf.inflows.total)} · Pagado: ${formatPesos(cf.outflows.total)}",
+                            text = "Cobrado: ${formatPesos(cf.inflows.total)}",
                             style = MaterialTheme.typography.bodySmall,
-                            color = BSPOSTheme.colors.textSecondary
+                            color = BSPOSTheme.colors.textSecondary,
+                            maxLines = 1,
+                            softWrap = false
+                        )
+                        Text(
+                            text = "Pagado: ${formatPesos(cf.outflows.total)}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = BSPOSTheme.colors.textSecondary,
+                            maxLines = 1,
+                            softWrap = false
                         )
                     }
                     Text(
@@ -787,7 +796,11 @@ fun CashFlowTab(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("Entradas de Dinero (Cobros Reales)", fontWeight = FontWeight.Bold)
+                    Text(
+                        "Entradas de Dinero (Cobros Reales)",
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.weight(1f).padding(end = 12.dp)
+                    )
                     Text(
                         formatPesos(cashFlow.inflows.total),
                         fontWeight = FontWeight.ExtraBold,
@@ -804,6 +817,9 @@ fun CashFlowTab(
                 CashFlowItem("Ventas por Transferencia", formatPesos(cashFlow.inflows.salesTransfer))
                 CashFlowItem("Otros métodos de venta", formatPesos(cashFlow.inflows.salesOther))
                 CashFlowItem("Cobros de deudas (Cartera)", formatPesos(cashFlow.inflows.debtCollections))
+                if (cashFlow.inflows.otherInflows > 0.0) {
+                    CashFlowItem("Otros ingresos de caja", formatPesos(cashFlow.inflows.otherInflows))
+                }
             }
         }
 
@@ -819,7 +835,11 @@ fun CashFlowTab(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("Salidas de Dinero (Pagos Reales)", fontWeight = FontWeight.Bold)
+                    Text(
+                        "Salidas de Dinero (Pagos Reales)",
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.weight(1f).padding(end = 12.dp)
+                    )
                     Text(
                         formatPesos(cashFlow.outflows.total),
                         fontWeight = FontWeight.ExtraBold,
@@ -849,7 +869,7 @@ fun CashFlowTab(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
+                Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
                     Text("Flujo Neto de Efectivo", color = BSPOSTheme.colors.primary, fontWeight = FontWeight.Bold)
                     Text("Dinero real disponible generado", color = BSPOSTheme.colors.textOnNavy, style = MaterialTheme.typography.bodySmall)
                 }
@@ -1280,7 +1300,7 @@ private fun ExpenseCreateDialog(
 ) {
     var description by remember { mutableStateOf("") }
     var amount by remember { mutableStateOf("") }
-    var selectedCategoryId by remember { mutableStateOf<Int?>(categories.firstOrNull()?.id) }
+    var selectedCategoryId by remember(categories) { mutableStateOf<Int?>(categories.firstOrNull()?.id) }
     var paymentMethod by remember { mutableStateOf("cash") }
     var occurredAt by remember { mutableStateOf(LocalDate.now().toString()) }
     var notes by remember { mutableStateOf("") }
@@ -1294,7 +1314,8 @@ private fun ExpenseCreateDialog(
         text = {
             Column(
                 modifier = Modifier
-                    .fillMaxWidth(),
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 OutlinedTextField(

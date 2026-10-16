@@ -48,6 +48,35 @@ class DecantsWorkspaceTest {
         compose.onNodeWithText("Preparar 1 frasco(s)").assertIsNotEnabled()
     }
 
+    @Test fun advancedEmptyVialsActionKeepsItsDestinationAfterOutgoingSheetDismisses() {
+        var sheet by mutableStateOf<String?>("advanced")
+        var lateDismissFromAdvanced: (() -> Unit)? = null
+        compose.setContent { BSPOSTheme {
+            sheet?.let { destination -> DecantOperationsSheet(
+                destination = destination,
+                workspace = workspace,
+                enabled = true,
+                busy = false,
+                error = null,
+                message = null,
+                onDismiss = { sheet = dismissDecantSheetIfCurrent(sheet, destination) },
+                onOpen = { next ->
+                    lateDismissFromAdvanced = { sheet = dismissDecantSheetIfCurrent(sheet, "advanced") }
+                    sheet = next
+                },
+                onReceive = { _, _, _, _ -> },
+                onActive = {}
+            ) }
+        } }
+
+        compose.onNodeWithText("Frascos vacíos").performClick()
+        compose.runOnIdle { assertEquals("vials", sheet) }
+        compose.onNodeWithText("Frascos vacíos").assertExists()
+        compose.runOnIdle { lateDismissFromAdvanced?.invoke() }
+        compose.runOnIdle { assertEquals("vials", sheet) }
+        compose.onNodeWithText("Frascos vacíos").assertExists()
+    }
+
     @Test fun availableVialWithoutCatalogPresentationIsShownAsNewPreparationOption() {
         val groupWithoutPresentation = group.copy(sizes = emptyList())
         val workspaceWithoutPresentation = workspace.copy(

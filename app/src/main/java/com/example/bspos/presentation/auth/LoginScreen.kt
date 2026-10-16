@@ -121,6 +121,16 @@ fun LoginScreen(
 ) {
     val context = LocalContext.current
     val activity = context as? FragmentActivity
+    val view = androidx.compose.ui.platform.LocalView.current
+    androidx.compose.runtime.DisposableEffect(activity, view) {
+        val window = activity?.window
+        val controller = if (window != null) androidx.core.view.WindowCompat.getInsetsController(window, view) else null
+        val previous = controller?.isAppearanceLightStatusBars ?: true
+        controller?.isAppearanceLightStatusBars = false
+        onDispose {
+            controller?.isAppearanceLightStatusBars = previous
+        }
+    }
     val savedEmail = connection.rememberedEmail.ifBlank { connection.accountEmail }
     var email by remember(savedEmail) { mutableStateOf(savedEmail) }
     var password by remember { mutableStateOf("") }
@@ -315,7 +325,7 @@ internal fun LoginCard(
                             },
                         singleLine = true,
                         shape = RoundedCornerShape(8.dp),
-                        placeholder = { Text("Correo electronico") },
+                        placeholder = { Text("Correo electrónico") },
                         leadingIcon = { Icon(Icons.Default.Email, contentDescription = null) },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next),
                         colors = authTextFieldColors()
@@ -337,7 +347,7 @@ internal fun LoginCard(
                             },
                         singleLine = true,
                         shape = RoundedCornerShape(8.dp),
-                        placeholder = { Text("Contrasena") },
+                        placeholder = { Text("Contraseña") },
                         leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
                         trailingIcon = {
                             Row {
@@ -352,7 +362,7 @@ internal fun LoginCard(
                                 IconButton(onClick = { passwordVisible = !passwordVisible }) {
                                     Icon(
                                         imageVector = if (passwordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                                        contentDescription = if (passwordVisible) "Ocultar contrasena" else "Mostrar contrasena"
+                                        contentDescription = if (passwordVisible) "Ocultar contraseña" else "Mostrar contraseña"
                                     )
                                 }
                             }
@@ -366,7 +376,10 @@ internal fun LoginCard(
                         colors = authTextFieldColors()
                     )
                     Spacer(Modifier.height(8.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         Checkbox(
                             checked = rememberMe,
                             onCheckedChange = onRememberChange,
@@ -376,7 +389,12 @@ internal fun LoginCard(
                                 checkmarkColor = Color.White
                             )
                         )
-                        Text("Recordarme en este dispositivo", fontSize = 13.sp, color = Navy)
+                        androidx.compose.material3.TextButton(
+                            onClick = { onRememberChange(!rememberMe) },
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
+                        ) {
+                            Text("Recordarme en este dispositivo", fontSize = 13.sp, color = Navy)
+                        }
                     }
                     Spacer(Modifier.height(12.dp))
                     Button(
@@ -392,7 +410,7 @@ internal fun LoginCard(
                         if (state.isSubmitting) {
                             CircularProgressIndicator(modifier = Modifier.size(20.dp), color = Color.White, strokeWidth = 2.dp)
                         } else {
-                             Text("Iniciar sesion", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                             Text("Iniciar sesión", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                             Spacer(Modifier.size(12.dp))
                             Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null)
                         }

@@ -31,12 +31,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -66,6 +69,7 @@ fun CatalogHomeScreen(
     initialDecantMode: Boolean = false,
     initialServiceMode: Boolean = false,
     startWithForm: Boolean = false,
+    initialEditProductId: UUID? = null,
     onOpenProducts: (() -> Unit)? = null,
     onOpenServices: (() -> Unit)? = null,
     onOpenDecants: ((String?) -> Unit)? = null,
@@ -86,6 +90,16 @@ fun CatalogHomeScreen(
         if (uri != null && target != null) viewModel.updatePhoto(target, uri.toString())
     }
     val products by viewModel.products.collectAsState()
+    var handledInitialEdit by remember(initialEditProductId) { mutableStateOf(false) }
+    LaunchedEffect(initialEditProductId, products) {
+        if (!handledInitialEdit && initialEditProductId != null && products.isNotEmpty()) {
+            products.firstOrNull { it.id == initialEditProductId }?.let { target ->
+                editingProduct = target
+                showForm = true
+                handledInitialEdit = true
+            }
+        }
+    }
     val categories by viewModel.categories.collectAsState()
     val units by viewModel.units.collectAsState()
     val stock by viewModel.stock.collectAsState()
@@ -569,6 +583,7 @@ private fun DecantSummaryRow(label: String, value: String) {
 @Composable
 internal fun ProductForm(current: Product?, currentQuantity: Long, categories: List<Category>, units: List<UnitOfMeasure>, presentation: MiCatalogoBusinessPresentation, showCost: Boolean, showInventoryFields: Boolean, showProductCode: Boolean, onSave: (ProductInput, Long, Boolean) -> Unit, onDismiss: () -> Unit, shops: List<com.example.bspos.domain.model.MiCatalogoShop>, activeShopId: String?, decantMode: Boolean = false, serviceMode: Boolean = false, sourceProducts: List<Product> = emptyList(), initialSourceRemoteId: String? = null, comboComponentProducts: List<Product> = emptyList(), initialSaleUnit: String? = null, enableDecantPrompt: Boolean = false) {
     val context = LocalContext.current
+    val keyboardController = LocalSoftwareKeyboardController.current
     var name by remember(current?.id) { mutableStateOf(current?.name.orEmpty()) }
     var description by remember(current?.id) { mutableStateOf(current?.description.orEmpty()) }
     var code by remember(current?.id) { mutableStateOf(current?.internalCode.orEmpty()) }
@@ -711,8 +726,8 @@ internal fun ProductForm(current: Product?, currentQuantity: Long, categories: L
     }
     var comboMenuRow by remember { mutableStateOf<Int?>(null) }
     var comboError by remember { mutableStateOf(false) }
-    var askPrepareDecants by remember { mutableStateOf(false) }
-    var pendingDecantSave by remember { mutableStateOf<Pair<ProductInput, Long>?>(null) }
+    var prepareDecantsAfterSave by remember(current?.id) { mutableStateOf(false) }
+    var decantPreparationStockError by remember(current?.id) { mutableStateOf(false) }
     var published by remember(current?.id) { mutableStateOf(current?.isActive ?: true) }
     val imageLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri ?: return@rememberLauncherForActivityResult
@@ -938,9 +953,9 @@ internal fun ProductForm(current: Product?, currentQuantity: Long, categories: L
                 }
                 Spacer(Modifier.height(8.dp))
             }
-            if (!effectiveDecantMode && !serviceMode && current?.remoteSaleUnit != "service" && !comboMode) {
+            if (!effectiveDecantMode && !serviceMode && current?.remoteSaleUnit != "service" && !comboMode && saleUnitOptions.size > 1) {
                 Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                    Text("Cómo se vende", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = BSPOSTheme.colors.textPrimary)
+                    Text("Cómo se vende", modifier = Modifier.testTag("sale-unit-selector"), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = BSPOSTheme.colors.textPrimary)
                     saleUnitOptions.forEach { value ->
                         val label = productForm.saleUnitLabels[value] ?: when (value) {
                             "bottle" -> "Botella completa"
@@ -951,6 +966,7 @@ internal fun ProductForm(current: Product?, currentQuantity: Long, categories: L
                         Surface(
                             modifier = Modifier.fillMaxWidth().testTag("sale-unit-$value").clip(RoundedCornerShape(13.dp)).clickable {
                                 saleUnit = value
+                                if (value != "bottle") { prepareDecantsAfterSave = false; decantPreparationStockError = false }
                                 if (value == "unit") volumeMl = ""
                                 if (current == null) advancedUnitOverride = false
                             },
@@ -961,6 +977,7 @@ internal fun ProductForm(current: Product?, currentQuantity: Long, categories: L
                             Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                                 RadioButton(selected = selected, onClick = {
                                     saleUnit = value
+                                    if (value != "bottle") { prepareDecantsAfterSave = false; decantPreparationStockError = false }
                                     if (value == "unit") volumeMl = ""
                                 })
                                 Column(Modifier.padding(start = 4.dp)) {
@@ -1028,7 +1045,49 @@ internal fun ProductForm(current: Product?, currentQuantity: Long, categories: L
             if (showCost && !effectiveDecantMode && !comboMode) OutlinedTextField(purchasePrice, { value -> if (current == null) purchasePrice = value; purchaseChanged = true; priceError = false }, modifier = Modifier.fillMaxWidth().testTag("product-purchase-price"), label = { Text(when (saleUnit) { "bottle" -> "Costo de compra por botella (${LocalCurrency.current.symbol})"; "service" -> "Costo de insumos (${LocalCurrency.current.symbol})"; else -> "Precio de compra (${LocalCurrency.current.symbol})" }) }, enabled = current == null, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), isError = priceError, supportingText = { if (saleUnit == "bottle") Text("Obligatorio para calcular la ganancia y el costo recuperado por decants") else if (saleUnit == "service") Text("Opcional; se usa para calcular la ganancia del servicio") else if (current != null) Text("Se actualiza desde una entrada de inventario") })
             OutlinedTextField(price, { value -> price = value; priceChanged = true; priceError = false }, modifier = Modifier.fillMaxWidth().testTag("product-sale-price"), label = { Text(if (saleUnit == "service") "Precio del servicio (${LocalCurrency.current.symbol})" else "Precio de venta (${LocalCurrency.current.symbol})") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), isError = priceError, supportingText = { if (priceError) Text("Indica un precio válido, con hasta dos decimales") })
             if (!serviceMode && current?.remoteSaleUnit != "service") OutlinedTextField(wholesalePrice, { wholesalePrice = it; priceError = false }, label = { Text("Precio por mayor (${LocalCurrency.current.symbol})") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), supportingText = { Text("Opcional; habilita el modo mayorista en el POS") })
-            if (showInventoryFields && !effectiveDecantMode && saleUnit != "service" && !comboMode) OutlinedTextField(initialQuantity, { value -> if (current == null) initialQuantity = value.filter(Char::isDigit) }, modifier = Modifier.fillMaxWidth().testTag("product-initial-stock"), label = { Text("Stock inicial") }, enabled = current == null, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), supportingText = { Text(if (current == null) "Se registra en 0 si lo dejas así" else "Edita existencias desde Inventario") })
+            if (showInventoryFields && !effectiveDecantMode && saleUnit != "service" && !comboMode) OutlinedTextField(
+                initialQuantity,
+                { value -> if (current == null) initialQuantity = value.filter(Char::isDigit) },
+                modifier = Modifier.fillMaxWidth().testTag("product-initial-stock"),
+                label = { Text("Stock inicial") },
+                enabled = current == null,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { keyboardController?.hide() }),
+                supportingText = { Text(if (current == null) "Se registra en 0 si lo dejas así" else "Edita existencias desde Inventario") }
+            )
+            if (enableDecantPrompt && isPerfumyArchetype(presentation.archetype) && current == null && saleUnit == "bottle" && !comboMode) {
+                val hasInitialBottles = (initialQuantity.toLongOrNull() ?: 0L) > 0L
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp),
+                    color = if (prepareDecantsAfterSave) BSPOSTheme.colors.primaryLight else BSPOSTheme.colors.surface,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, if (prepareDecantsAfterSave) BSPOSTheme.colors.primary else BSPOSTheme.colors.outline)
+                ) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Preparar decants al guardar", fontWeight = FontWeight.Bold, color = BSPOSTheme.colors.textPrimary)
+                            Text(
+                                when {
+                                    decantPreparationStockError -> "Agrega al menos una botella al stock inicial para continuar a la preparación."
+                                    hasInitialBottles -> "Después de crear el perfume abrirás el flujo para elegir tamaños, precios y cantidades."
+                                    else -> "Puedes marcarlo ahora; agrega stock inicial antes de guardar."
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (decantPreparationStockError) BSPOSTheme.colors.error else BSPOSTheme.colors.textSecondary
+                            )
+                        }
+                        OutlinedButton(
+                            onClick = { prepareDecantsAfterSave = !prepareDecantsAfterSave },
+                            modifier = Modifier.testTag("product-prepare-decants")
+                        ) {
+                            Text(if (prepareDecantsAfterSave) "Preparación seleccionada" else "Preparar decants")
+                        }
+                    }
+                }
+            }
             if (!serviceMode && current?.remoteSaleUnit != "service") {
                 OutlinedTextField(minimumStock, { minimumStock = it.filter(Char::isDigit) }, label = { Text("Aviso de mínimo") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), supportingText = { Text("Te avisaremos al llegar a esta cantidad") })
                 Box(Modifier.fillMaxWidth()) {
@@ -1114,11 +1173,11 @@ internal fun ProductForm(current: Product?, currentQuantity: Long, categories: L
             } else {
                 val input = ProductInput(name, effectiveCode, category.id, effectiveInventoryUnitId, sale, purchasePrice = effectivePurchase, wholesalePrice = wholesale, description = description.trim().ifBlank { null }, imagePath = imagePath, thumbnailPath = imagePath, minimumStock = minimum, tracksExpiration = current?.tracksExpiration ?: false, remoteShopId = shopId, remoteSaleUnit = if (effectiveDecantMode) "decant" else if (comboMode) "unit" else saleUnit, remoteVolumeMl = if (effectiveDecantMode || saleUnit == "bottle" || saleUnit == "ml") selectedVolume else null, remoteSourceProductId = if (effectiveDecantMode) sourceProduct?.remoteProductId else null, isCombo = comboMode, comboItems = if (comboMode) selectedComboItems else emptyList(), isActive = if (serviceMode || current?.remoteSaleUnit == "service") published else (current?.isActive ?: true), inventoryUnitName = effectiveInventoryUnitName, inventoryUnitAbbreviation = effectiveInventoryUnitAbbreviation)
                 val quantityToSave = if (current == null && !comboMode) effectiveQuantity ?: 0L else 0L
-                pendingDecantSave = input to quantityToSave
-                if (enableDecantPrompt && isPerfumyArchetype(presentation.archetype) && current == null && !effectiveDecantMode && saleUnit == "bottle" && !comboMode && quantityToSave > 0) {
-                    askPrepareDecants = true
+                if (prepareDecantsAfterSave && quantityToSave <= 0L) {
+                    decantPreparationStockError = true
                 } else {
-                    onSave(input, pendingDecantSave!!.second, false)
+                    decantPreparationStockError = false
+                    onSave(input, quantityToSave, prepareDecantsAfterSave)
                 }
             }
                         },
@@ -1128,26 +1187,6 @@ internal fun ProductForm(current: Product?, currentQuantity: Long, categories: L
                 }
             }
         }
-    }
-    if (askPrepareDecants) {
-        val pending = pendingDecantSave
-        AlertDialog(
-            onDismissRequest = { askPrepareDecants = false },
-            title = { Text("¿Preparar decants ahora?") },
-            text = { Text("El perfume se guardará como botella completa. Luego elegirás tamaños, precios y cantidades. La botella solo se abrirá y descontará cuando confirmes la preparación.") },
-            confirmButton = {
-                TextButton(onClick = {
-                    askPrepareDecants = false
-                    pending?.let { (input, quantity) -> onSave(input, quantity, true) }
-                }) { Text("Guardar y preparar") }
-            },
-            dismissButton = {
-                TextButton(onClick = {
-                    askPrepareDecants = false
-                    pending?.let { (input, quantity) -> onSave(input, quantity, false) }
-                }) { Text("Guardar solamente") }
-            }
-        )
     }
 }
 

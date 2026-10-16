@@ -78,15 +78,19 @@ class ProductFormTest {
         compose.onNodeWithText("Código interno").assertDoesNotExist()
 
         compose.onNodeWithTag("sale-unit-bottle").performClick()
+        compose.onNodeWithTag("product-prepare-decants").assertIsEnabled()
+        compose.onNodeWithTag("product-prepare-decants").performScrollTo().performClick()
+        compose.onNodeWithText("Preparación seleccionada").assertExists()
         compose.onNodeWithTag("product-name-field").performTextInput("Perfume de prueba")
         compose.onNodeWithTag("product-volume-ml").performTextInput("100")
         compose.onNodeWithTag("product-purchase-price").performTextInput("1000")
         compose.onNodeWithTag("product-sale-price").performTextInput("2500")
+        compose.onNodeWithTag("product-initial-stock").performTextClearance()
         compose.onNodeWithTag("product-initial-stock").performTextInput("1")
+        compose.onNodeWithTag("product-initial-stock").performImeAction()
+        compose.onNodeWithText("Preparar decants al guardar").assertExists()
         compose.onNodeWithTag("product-save-button").performClick()
 
-        compose.onNodeWithText("¿Preparar decants ahora?").assertExists()
-        compose.onNodeWithText("Guardar y preparar").performClick()
         compose.runOnIdle {
             val result = saved ?: error("El formulario no guardó el producto")
             assertEquals("bottle", result.first.remoteSaleUnit)
@@ -134,6 +138,8 @@ class ProductFormTest {
         }
 
         compose.onNodeWithText("Nuevo electrodoméstico").assertExists()
+        compose.onNodeWithTag("sale-unit-selector").assertDoesNotExist()
+        compose.onNodeWithText("Cómo se vende").assertDoesNotExist()
         compose.onNodeWithTag("sale-unit-bottle").assertDoesNotExist()
         compose.onNodeWithTag("sale-unit-service").assertDoesNotExist()
         compose.onNodeWithTag("product-volume-ml").assertDoesNotExist()
