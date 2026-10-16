@@ -60,11 +60,11 @@ class EmulatorJourneyTest {
     @Test fun loginSharedCustomerCreditOrderCollectionAndShopSwitch() {
         requireLive()
         try {
-            waitFor("Iniciar sesion")
+            waitFor("Iniciar sesión")
             compose.onAllNodes(hasSetTextAction())[0].performTextReplacement(fixtureEmail())
             compose.onAllNodes(hasSetTextAction())[1].performTextReplacement(fixturePassword())
             Espresso.closeSoftKeyboard()
-            compose.onNodeWithText("Iniciar sesion").performClick()
+            compose.onNodeWithText("Iniciar sesión").performClick()
             waitFor("Buenas, QA Tienda A")
             dismissAutofill()
             evidence("01-login-a")
@@ -164,11 +164,11 @@ class EmulatorJourneyTest {
 
     @Test fun ownerSummaryReadsServerForEachShop() {
         requireLive()
-        waitFor("Iniciar sesion")
+        waitFor("Iniciar sesión")
         compose.onAllNodes(hasSetTextAction())[0].performTextReplacement(fixtureEmail())
         compose.onAllNodes(hasSetTextAction())[1].performTextReplacement(fixturePassword())
         Espresso.closeSoftKeyboard()
-        compose.onNodeWithText("Iniciar sesion").performClick()
+        compose.onNodeWithText("Iniciar sesión").performClick()
         waitFor("Buenas, QA Tienda A")
         dismissAutofill()
         waitFor("RD$ 600.00")
@@ -188,11 +188,11 @@ class EmulatorJourneyTest {
     }
     @Test fun ordersEntryAndReturnDoNotShowTheEmptyLandingForExistingOrders() {
         requireLive()
-        waitFor("Iniciar sesion")
+        waitFor("Iniciar sesión")
         compose.onAllNodes(hasSetTextAction())[0].performTextReplacement(fixtureEmail())
         compose.onAllNodes(hasSetTextAction())[1].performTextReplacement(fixturePassword())
         Espresso.closeSoftKeyboard()
-        compose.onNodeWithText("Iniciar sesion").performClick()
+        compose.onNodeWithText("Iniciar sesión").performClick()
         waitFor("Buenas, QA Tienda A")
         dismissAutofill()
         navigate("Pedidos")
@@ -212,11 +212,11 @@ class EmulatorJourneyTest {
 
     @Test fun compactCustomersOpenMovementsAndExplainTheirDebt() {
         requireLive()
-        waitFor("Iniciar sesion")
+        waitFor("Iniciar sesión")
         compose.onAllNodes(hasSetTextAction())[0].performTextReplacement(fixtureEmail())
         compose.onAllNodes(hasSetTextAction())[1].performTextReplacement(fixturePassword())
         Espresso.closeSoftKeyboard()
-        compose.onNodeWithText("Iniciar sesion").performClick()
+        compose.onNodeWithText("Iniciar sesión").performClick()
         compose.waitUntil(45_000) { compose.onAllNodesWithText("Buenas, QA Tienda A").fetchSemanticsNodes().isNotEmpty() || compose.onAllNodesWithText("Buenas, QA Tienda B").fetchSemanticsNodes().isNotEmpty() }
         dismissAutofill()
         if(compose.onAllNodesWithText("Buenas, QA Tienda B").fetchSemanticsNodes().isEmpty()) switchShop("QA Tienda B")
