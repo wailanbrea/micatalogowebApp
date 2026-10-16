@@ -11,6 +11,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.example.bspos.core.ui.theme.BSPOSTheme
 import com.example.bspos.domain.model.Category
 import com.example.bspos.domain.model.MiCatalogoBusinessPresentation
+import com.example.bspos.domain.model.MiCatalogoProductFormPresentation
 import com.example.bspos.domain.model.MiCatalogoShop
 import com.example.bspos.domain.model.Product
 import com.example.bspos.domain.model.UnitOfMeasure
@@ -30,6 +31,23 @@ class ProductFormTest {
         val now = Instant.now()
         val categories = listOf(Category(UUID.randomUUID(), "Perfumes", createdAt = now, updatedAt = now))
         val units = listOf(UnitOfMeasure(UUID.randomUUID(), "Unidad", "und", createdAt = now, updatedAt = now))
+        val shopId = "profile-shop"
+        val bottleUnitId = UUID.nameUUIDFromBytes("micatalogo:unit:$shopId:bottle".toByteArray())
+        val formPresentation = MiCatalogoProductFormPresentation(
+            schemaVersion = 1,
+            defaultSaleUnit = "bottle",
+            availableSaleUnits = listOf("unit", "bottle", "ml"),
+            saleUnitLabels = mapOf("unit" to "Producto completo", "bottle" to "Botella completa", "ml" to "Por mililitro (ml)"),
+            defaultInventoryUnitKey = "bottle",
+            saleUnitToInventoryUnit = mapOf("unit" to "unit", "bottle" to "bottle", "ml" to "ml"),
+            inventoryUnitLabels = mapOf("unit" to "Unidades", "bottle" to "Botellas", "ml" to "Mililitros (ml)"),
+            inventoryUnitUuids = mapOf(
+                "unit" to UUID.nameUUIDFromBytes("micatalogo:unit:$shopId:unit".toByteArray()).toString(),
+                "bottle" to bottleUnitId.toString(),
+                "ml" to UUID.nameUUIDFromBytes("micatalogo:unit:$shopId:ml".toByteArray()).toString()
+            ),
+            supportedFields = setOf("name", "category", "price", "stock", "volume_ml")
+        )
         var saved: Triple<ProductInput, Long, Boolean>? = null
 
         compose.setContent {
@@ -39,15 +57,14 @@ class ProductFormTest {
                     currentQuantity = 0,
                     categories = categories,
                     units = units,
-                    presentation = MiCatalogoBusinessPresentation(archetype = "fragrance"),
+                    presentation = MiCatalogoBusinessPresentation(archetype = "fragrance", productForm = formPresentation),
                     showCost = true,
                     showInventoryFields = true,
                     showProductCode = true,
                     onSave = { input, quantity, prepare -> saved = Triple(input, quantity, prepare) },
                     onDismiss = {},
-                    shops = emptyList(),
-                    activeShopId = null,
-                    initialSaleUnit = "unit",
+                    shops = listOf(MiCatalogoShop(shopId, "Perfumería QA", null)),
+                    activeShopId = shopId,
                     enableDecantPrompt = true
                 )
             }
@@ -56,7 +73,8 @@ class ProductFormTest {
         compose.onNodeWithTag("product-name-field").assertExists()
         compose.onNodeWithText("Nombre").assertExists()
         compose.onNodeWithTag("product-category-selector").assertExists()
-        compose.onNodeWithTag("product-unit-selector").assertExists()
+        compose.onNodeWithTag("product-auto-inventory-unit").assertExists()
+        compose.onNodeWithText("Botellas").assertExists()
         compose.onNodeWithText("Código interno").assertDoesNotExist()
 
         compose.onNodeWithTag("sale-unit-bottle").performClick()
@@ -73,9 +91,53 @@ class ProductFormTest {
             val result = saved ?: error("El formulario no guardó el producto")
             assertEquals("bottle", result.first.remoteSaleUnit)
             assertEquals(100, result.first.remoteVolumeMl)
+            assertEquals(bottleUnitId, result.first.unitId)
+            assertEquals("Botella", result.first.inventoryUnitName)
             assertEquals("Perfume de prueba", result.first.name)
             assertEquals(true, result.third)
         }
+    }
+
+    @Test fun applianceProfileDoesNotOfferFragranceModesOrVolume() {
+        val now = Instant.now()
+        val categories = listOf(Category(UUID.randomUUID(), "Neveras", createdAt = now, updatedAt = now))
+        val unitId = UUID.randomUUID()
+        val shopId = "appliance-qa"
+        compose.setContent {
+            BSPOSTheme {
+                ProductForm(
+                    current = null,
+                    currentQuantity = 0,
+                    categories = categories,
+                    units = listOf(UnitOfMeasure(unitId, "Unidad", "UND", createdAt = now, updatedAt = now)),
+                    presentation = MiCatalogoBusinessPresentation(
+                        archetype = "appliances",
+                        terminology = mapOf("new_product" to "Nuevo electrodoméstico"),
+                        productForm = MiCatalogoProductFormPresentation(
+                            schemaVersion = 1,
+                            defaultSaleUnit = "unit",
+                            availableSaleUnits = listOf("unit"),
+                            defaultInventoryUnitKey = "unit",
+                            saleUnitToInventoryUnit = mapOf("unit" to "unit"),
+                            inventoryUnitUuids = mapOf("unit" to UUID.nameUUIDFromBytes("micatalogo:unit:$shopId:unit".toByteArray()).toString())
+                        )
+                    ),
+                    showCost = true,
+                    showInventoryFields = true,
+                    showProductCode = true,
+                    onSave = { _, _, _ -> },
+                    onDismiss = {},
+                    shops = listOf(MiCatalogoShop(shopId, "Electrodomésticos QA", null)),
+                    activeShopId = shopId
+                )
+            }
+        }
+
+        compose.onNodeWithText("Nuevo electrodoméstico").assertExists()
+        compose.onNodeWithTag("sale-unit-bottle").assertDoesNotExist()
+        compose.onNodeWithTag("sale-unit-service").assertDoesNotExist()
+        compose.onNodeWithTag("product-volume-ml").assertDoesNotExist()
+        compose.onNodeWithTag("product-auto-inventory-unit").assertExists()
     }
 
     @Test fun comboCanSelectMultipleProductsAndSavesTheirComponentQuantities() {

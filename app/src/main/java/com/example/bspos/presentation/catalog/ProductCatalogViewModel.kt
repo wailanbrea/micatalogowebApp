@@ -40,7 +40,7 @@ import javax.inject.Inject
 class ProductCatalogViewModel @Inject constructor(
     private val productUseCases: ProductUseCases,
     categoryUseCases: CategoryUseCases,
-    unitUseCases: UnitOfMeasureUseCases,
+    private val unitUseCases: UnitOfMeasureUseCases,
     inventory: InventoryRepository,
     private val initialInventory: RegisterInitialInventoryUseCase,
     private val connection: MiCatalogoConnectionRepository,
@@ -136,6 +136,9 @@ class ProductCatalogViewModel @Inject constructor(
 
         viewModelScope.launch {
             runCatching {
+                if (remoteShopId != null && input.inventoryUnitName != null && input.inventoryUnitAbbreviation != null) {
+                    unitUseCases.ensure(input.unitId, input.inventoryUnitName, input.inventoryUnitAbbreviation)
+                }
                 transactor.runInTransaction {
                     val product = productUseCases.create(input)
                     if (initialQuantity > 0) initialInventory(product.id, initialQuantity, input.purchasePrice)

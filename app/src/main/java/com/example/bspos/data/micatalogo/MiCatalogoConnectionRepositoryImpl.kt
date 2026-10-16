@@ -194,7 +194,21 @@ class MiCatalogoConnectionRepositoryImpl @Inject constructor(
                         catalogShowStock = shop.presentation.catalog.showStock,
                         inventoryTitle = shop.presentation.inventory.title,
                         inventoryEnabled = shop.presentation.inventory.enabled,
-                        customersShowCredit = shop.presentation.customers.showCredit
+                        customersShowCredit = shop.presentation.customers.showCredit,
+                        productForm = com.example.bspos.domain.model.MiCatalogoProductFormPresentation(
+                            schemaVersion = shop.presentation.productForm.schemaVersion,
+                            defaultSaleUnit = shop.presentation.productForm.defaultSaleUnit,
+                            availableSaleUnits = shop.presentation.productForm.availableSaleUnits,
+                            saleUnitLabels = shop.presentation.productForm.saleUnitLabels,
+                            defaultInventoryUnitKey = shop.presentation.productForm.defaultInventoryUnitKey,
+                            saleUnitToInventoryUnit = shop.presentation.productForm.saleUnitToInventoryUnit,
+                            inventoryUnitLabels = shop.presentation.productForm.inventoryUnitLabels,
+                            inventoryUnitUuids = shop.presentation.productForm.inventoryUnitUuids,
+                            supportedFields = shop.presentation.productForm.supportedFields.toSet(),
+                            featureStates = shop.presentation.productForm.featureStates,
+                            allowAdvancedUnitOverride = shop.presentation.productForm.allowAdvancedUnitOverride,
+                            profileSource = shop.presentation.productForm.profileSource
+                        )
                     ),
                     menuPermissions = shop.menuPermissions,
                     enabledMenuKeys = shop.enabledMenuKeys,

@@ -29,7 +29,9 @@ data class ProductInput(
     val remoteSourceProductId: String? = null,
     val isCombo: Boolean = false,
     val comboItems: List<ProductComboComponent> = emptyList(),
-    val isActive: Boolean = true
+    val isActive: Boolean = true,
+    val inventoryUnitName: String? = null,
+    val inventoryUnitAbbreviation: String? = null
 )
 
 class ProductUseCases @Inject constructor(

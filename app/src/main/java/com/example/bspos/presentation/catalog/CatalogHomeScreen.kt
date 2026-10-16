@@ -103,7 +103,10 @@ fun CatalogHomeScreen(
         it.isActive && it.deletedAt == null && it.remoteShopId != null && it.remoteProductId != null &&
             !it.remoteIsCombo && it.remoteSaleUnit !in setOf("service", "decant")
     }
-    val formReady = categories.isNotEmpty() && units.isNotEmpty()
+    val hasContractUnit = activeShopId != null || shops.singleOrNull()?.id != null || presentation.productForm.inventoryUnitUuids.values.any { value ->
+        runCatching { UUID.fromString(value) }.isSuccess
+    }
+    val formReady = categories.isNotEmpty() && (units.isNotEmpty() || (activeShopId != null && hasContractUnit))
     var query by remember { mutableStateOf("") }
     val quantities = stock.associate { it.productId to it.quantity }
     val categoryNames = categories.associate { it.id to it.name }
@@ -581,32 +584,123 @@ internal fun ProductForm(current: Product?, currentQuantity: Long, categories: L
     var minimumStock by remember(current?.id) { mutableStateOf((current?.minimumStock ?: 0L).toString()) }
     var priceError by remember { mutableStateOf(false) }
     var category by remember(current?.id) { mutableStateOf(categories.firstOrNull { it.id == current?.categoryId } ?: categories.first()) }
-    val selectableUnits = remember(units, current?.unitId) {
+    val productForm = presentation.productForm
+    var shopId by remember(current?.id, shops, activeShopId) {
+        mutableStateOf(current?.remoteShopId ?: shops.singleOrNull()?.id ?: activeShopId)
+    }
+    val contractSaleUnit = current?.remoteSaleUnit
+        ?: initialSaleUnit
+        ?: if (serviceMode && current == null) "service" else productForm.defaultSaleUnit ?: "unit"
+    val contractUnitKey = productForm.saleUnitToInventoryUnit[contractSaleUnit]
+        ?: when (contractSaleUnit) {
+            "bottle" -> "bottle"
+            "ml" -> "ml"
+            "decant" -> "decant"
+            "service" -> "service"
+            else -> productForm.defaultInventoryUnitKey ?: "unit"
+        }
+    val contractUnitUuid = productForm.inventoryUnitUuids[contractUnitKey]
+        ?: shopId?.let { UUID.nameUUIDFromBytes("micatalogo:unit:$it:$contractUnitKey".toByteArray()).toString() }
+    val contractUnit = contractUnitUuid?.let { raw ->
+        runCatching { UUID.fromString(raw) }.getOrNull()?.let { id ->
+            UnitOfMeasure(
+                id = id,
+                name = when (contractUnitKey) {
+                    "bottle" -> "Botella"
+                    "ml" -> "Mililitro"
+                    "decant" -> "Decant"
+                    "service" -> "Servicio"
+                    else -> "Unidad"
+                },
+                abbreviation = when (contractUnitKey) {
+                    "bottle" -> "BOT"
+                    "ml" -> "ML"
+                    "decant" -> "DEC"
+                    "service" -> "SRV"
+                    else -> "UND"
+                },
+                createdAt = java.time.Instant.EPOCH,
+                updatedAt = java.time.Instant.EPOCH
+            )
+        }
+    }
+    val selectableUnits = remember(units, current?.unitId, contractUnit) {
         buildList {
             // Keep the current product's unit when old data contains duplicate
             // records, then show each user-facing unit only once.
             units.firstOrNull { it.id == current?.unitId }?.let(::add)
+            contractUnit?.takeIf { candidate -> none { it.id == candidate.id } }?.let(::add)
             addAll(units)
         }.distinctBy { it.name.trim().lowercase(Locale.ROOT) }
     }
     var unit by remember(current?.id, selectableUnits) {
         mutableStateOf(
             selectableUnits.firstOrNull { it.id == current?.unitId }
+                ?: contractUnit?.let { candidate -> selectableUnits.firstOrNull { it.id == candidate.id } }
                 ?: selectableUnits.firstOrNull { unitDisplayName(it) == "Unidad" }
-                ?: selectableUnits.first()
+                ?: selectableUnits.firstOrNull()
+                ?: UnitOfMeasure(UUID(0L, 1L), "Unidad", "UND", createdAt = java.time.Instant.EPOCH, updatedAt = java.time.Instant.EPOCH)
         )
     }
     var categoryOpen by remember { mutableStateOf(false) }
     var unitOpen by remember { mutableStateOf(false) }
     var imagePath by remember(current?.id) { mutableStateOf(current?.imagePath) }
-    var shopId by remember(current?.id, shops, activeShopId) {
-        mutableStateOf(current?.remoteShopId ?: shops.singleOrNull()?.id ?: activeShopId)
-    }
     var shopOpen by remember { mutableStateOf(false) }
     val effectiveDecantMode = decantMode || current?.remoteSaleUnit == "decant"
     var volumeMl by remember(current?.id, effectiveDecantMode) { mutableStateOf(current?.remoteVolumeMl?.toString().orEmpty()) }
     var saleUnit by remember(current?.id, effectiveDecantMode, initialSaleUnit) {
-        mutableStateOf(if (effectiveDecantMode) "decant" else if (serviceMode && current == null) "service" else (current?.remoteSaleUnit ?: initialSaleUnit ?: "unit"))
+        mutableStateOf(if (effectiveDecantMode) "decant" else if (serviceMode && current == null) "service" else (current?.remoteSaleUnit ?: initialSaleUnit ?: presentation.productForm.defaultSaleUnit ?: "unit"))
+    }
+    var advancedUnitOverride by remember(current?.id) { mutableStateOf(current != null) }
+    val saleUnitToInventoryUnit = productForm.saleUnitToInventoryUnit
+    val inventoryUnitKey = saleUnitToInventoryUnit[saleUnit]
+        ?: when (saleUnit) {
+            "bottle" -> "bottle"
+            "ml" -> "ml"
+            "decant" -> "decant"
+            "service" -> "service"
+            else -> productForm.defaultInventoryUnitKey ?: "unit"
+        }
+    val defaultInventoryUnitUuid = productForm.inventoryUnitUuids[inventoryUnitKey]
+        ?: shopId?.let { UUID.nameUUIDFromBytes("micatalogo:unit:$it:$inventoryUnitKey".toByteArray()).toString() }
+    val resolvedInventoryUnit = units.firstOrNull { it.id.toString().equals(defaultInventoryUnitUuid, ignoreCase = true) }
+    val useAutomaticInventoryUnit = current == null && !advancedUnitOverride && shopId != null &&
+        !defaultInventoryUnitUuid.isNullOrBlank()
+    val effectiveInventoryUnitId = when {
+        current != null && !advancedUnitOverride -> current.unitId
+        useAutomaticInventoryUnit -> runCatching { UUID.fromString(defaultInventoryUnitUuid) }.getOrElse { unit.id }
+        else -> unit.id
+    }
+    val effectiveInventoryUnitLabel = if (useAutomaticInventoryUnit) {
+        productForm.inventoryUnitLabels[inventoryUnitKey] ?: unitDisplayName(resolvedInventoryUnit ?: unit)
+    } else unitDisplayName(unit)
+    val effectiveInventoryUnitName = when (inventoryUnitKey) {
+        "unit" -> "Unidad"
+        "bottle" -> "Botella"
+        "ml" -> "Mililitro"
+        "decant" -> "Decant"
+        "service" -> "Servicio"
+        else -> null
+    }.takeIf { useAutomaticInventoryUnit }
+    val effectiveInventoryUnitAbbreviation = when (inventoryUnitKey) {
+        "unit" -> "UND"
+        "bottle" -> "BOT"
+        "ml" -> "ML"
+        "decant" -> "DEC"
+        "service" -> "SRV"
+        else -> null
+    }.takeIf { useAutomaticInventoryUnit }
+    val saleUnitOptions = remember(productForm.availableSaleUnits, saleUnit, serviceMode, effectiveDecantMode, current?.id) {
+        val safeFallback = when (presentation.archetype) {
+            "fragrance" -> listOf("unit", "bottle", "ml")
+            "service_retail" -> listOf("unit", "service")
+            else -> listOf("unit")
+        }
+        val configured = productForm.availableSaleUnits.filter { it in setOf("unit", "bottle", "ml", "service") }
+            .ifEmpty { safeFallback }
+        (configured + saleUnit.takeIf { it in setOf("unit", "bottle", "ml", "service") }.orEmpty())
+            .filter { if (serviceMode || effectiveDecantMode) it == saleUnit else it != "decant" }
+            .distinct()
     }
     var sourceProduct by remember(current?.id, sourceProducts, initialSourceRemoteId) { mutableStateOf(sourceProducts.firstOrNull { it.remoteProductId == (current?.remoteSourceProductId ?: initialSourceRemoteId) }) }
     var sourceOpen by remember { mutableStateOf(false) }
@@ -630,7 +724,8 @@ internal fun ProductForm(current: Product?, currentQuantity: Long, categories: L
     } else if (saleUnit == "service") {
         if (current == null) "Nuevo servicio" else "Editar servicio"
     } else {
-        if (current == null) "Nuevo producto" else "Editar producto"
+        val noun = presentation.term("new_product", "Nuevo producto")
+        if (current == null) noun else "Editar ${noun.removePrefix("Nuevo ").lowercase()}"
     }
     BSPOSModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -845,17 +940,19 @@ internal fun ProductForm(current: Product?, currentQuantity: Long, categories: L
             }
             if (!effectiveDecantMode && !serviceMode && current?.remoteSaleUnit != "service" && !comboMode) {
                 Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                    Text("Se vende como", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = BSPOSTheme.colors.textPrimary)
-                    listOf(
-                        "unit" to "Unidad",
-                        "bottle" to "Botella completa",
-                        "ml" to "Por mililitro (ml)"
-                    ).forEach { (value, label) ->
+                    Text("Cómo se vende", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = BSPOSTheme.colors.textPrimary)
+                    saleUnitOptions.forEach { value ->
+                        val label = productForm.saleUnitLabels[value] ?: when (value) {
+                            "bottle" -> "Botella completa"
+                            "ml" -> "Por mililitro (ml)"
+                            else -> "Artículo completo"
+                        }
                         val selected = saleUnit == value
                         Surface(
                             modifier = Modifier.fillMaxWidth().testTag("sale-unit-$value").clip(RoundedCornerShape(13.dp)).clickable {
                                 saleUnit = value
                                 if (value == "unit") volumeMl = ""
+                                if (current == null) advancedUnitOverride = false
                             },
                             shape = RoundedCornerShape(13.dp),
                             color = if (selected) BSPOSTheme.colors.primaryLight else BSPOSTheme.colors.surface,
@@ -872,6 +969,7 @@ internal fun ProductForm(current: Product?, currentQuantity: Long, categories: L
                                         when (value) {
                                             "bottle" -> "Controla botellas selladas y permite prepararlas para Decants."
                                             "ml" -> "El inventario y la venta se controlan directamente en mililitros."
+                                            "service" -> "Se vende como servicio y no descuenta existencias físicas."
                                             else -> "Cada unidad del inventario equivale a un artículo."
                                         },
                                         style = MaterialTheme.typography.bodySmall,
@@ -948,20 +1046,29 @@ internal fun ProductForm(current: Product?, currentQuantity: Long, categories: L
                     }
                 }
                 Box {
-                    OutlinedButton({ unitOpen = true }, modifier = Modifier.fillMaxWidth().testTag("product-unit-selector"), shape = RoundedCornerShape(13.dp)) {
-                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f), horizontalAlignment = Alignment.Start) {
-                                Text("Unidad de inventario", style = MaterialTheme.typography.labelSmall, color = BSPOSTheme.colors.textSecondary)
-                                Text(unitDisplayName(unit), fontWeight = FontWeight.SemiBold)
+                    Column(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(13.dp)).background(BSPOSTheme.colors.surface)
+                            .testTag("product-auto-inventory-unit").padding(horizontal = 13.dp, vertical = 10.dp)
+                    ) {
+                        Text("Inventario contado en", style = MaterialTheme.typography.labelSmall, color = BSPOSTheme.colors.textSecondary)
+                        Text(effectiveInventoryUnitLabel, fontWeight = FontWeight.SemiBold, color = BSPOSTheme.colors.textPrimary)
+                        if (productForm.schemaVersion == 0 && current == null && shopId != null) {
+                            Text("Unidad predeterminada guardada localmente; se sincronizará con el perfil de la tienda al recuperar conexión.", style = MaterialTheme.typography.bodySmall, color = BSPOSTheme.colors.textSecondary)
+                        }
+                        if (productForm.allowAdvancedUnitOverride || productForm.schemaVersion == 0) {
+                            TextButton(onClick = {
+                                advancedUnitOverride = true
+                                unitOpen = true
+                            }, modifier = Modifier.testTag("product-unit-advanced-override")) {
+                                Text(if (current != null || advancedUnitOverride) "Cambiar unidad (avanzado)" else "Otra unidad (avanzado)")
                             }
-                            Text("⌄", color = BSPOSTheme.colors.primary)
                         }
                     }
                     DropdownMenu(unitOpen, { unitOpen = false }, modifier = Modifier.fillMaxWidth(.92f)) {
                         selectableUnits.forEach { item ->
                             DropdownMenuItem(
                                 text = { Text(unitDisplayName(item)) },
-                                onClick = { unit = item; unitOpen = false }
+                                onClick = { unit = item; advancedUnitOverride = true; unitOpen = false }
                             )
                         }
                     }
@@ -1005,7 +1112,7 @@ internal fun ProductForm(current: Product?, currentQuantity: Long, categories: L
                 priceError = true
                 comboError = comboMode && !validCombo
             } else {
-                val input = ProductInput(name, effectiveCode, category.id, unit.id, sale, purchasePrice = effectivePurchase, wholesalePrice = wholesale, description = description.trim().ifBlank { null }, imagePath = imagePath, thumbnailPath = imagePath, minimumStock = minimum, tracksExpiration = current?.tracksExpiration ?: false, remoteShopId = shopId, remoteSaleUnit = if (effectiveDecantMode) "decant" else if (comboMode) "unit" else saleUnit, remoteVolumeMl = if (effectiveDecantMode || saleUnit == "bottle" || saleUnit == "ml") selectedVolume else null, remoteSourceProductId = if (effectiveDecantMode) sourceProduct?.remoteProductId else null, isCombo = comboMode, comboItems = if (comboMode) selectedComboItems else emptyList(), isActive = if (serviceMode || current?.remoteSaleUnit == "service") published else (current?.isActive ?: true))
+                val input = ProductInput(name, effectiveCode, category.id, effectiveInventoryUnitId, sale, purchasePrice = effectivePurchase, wholesalePrice = wholesale, description = description.trim().ifBlank { null }, imagePath = imagePath, thumbnailPath = imagePath, minimumStock = minimum, tracksExpiration = current?.tracksExpiration ?: false, remoteShopId = shopId, remoteSaleUnit = if (effectiveDecantMode) "decant" else if (comboMode) "unit" else saleUnit, remoteVolumeMl = if (effectiveDecantMode || saleUnit == "bottle" || saleUnit == "ml") selectedVolume else null, remoteSourceProductId = if (effectiveDecantMode) sourceProduct?.remoteProductId else null, isCombo = comboMode, comboItems = if (comboMode) selectedComboItems else emptyList(), isActive = if (serviceMode || current?.remoteSaleUnit == "service") published else (current?.isActive ?: true), inventoryUnitName = effectiveInventoryUnitName, inventoryUnitAbbreviation = effectiveInventoryUnitAbbreviation)
                 val quantityToSave = if (current == null && !comboMode) effectiveQuantity ?: 0L else 0L
                 pendingDecantSave = input to quantityToSave
                 if (enableDecantPrompt && isPerfumyArchetype(presentation.archetype) && current == null && !effectiveDecantMode && saleUnit == "bottle" && !comboMode && quantityToSave > 0) {

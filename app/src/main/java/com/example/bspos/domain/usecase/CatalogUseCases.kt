@@ -19,6 +19,17 @@ class CategoryUseCases @Inject constructor(private val repository:CategoryReposi
 class UnitOfMeasureUseCases @Inject constructor(private val repository:UnitOfMeasureRepository){
  fun observe():Flow<List<UnitOfMeasure>> = repository.observeAll()
  suspend fun create(name:String,abbreviation:String):UnitOfMeasure{val now=Instant.now();val unit=UnitOfMeasure(UUID.randomUUID(),name.clean("Unit name"),abbreviation.clean("Unit abbreviation").uppercase(),createdAt=now,updatedAt=now);repository.insert(unit);return unit}
+ suspend fun ensure(id:UUID,name:String,abbreviation:String):UnitOfMeasure {
+  val existing=repository.findById(id)
+  val now=Instant.now()
+  if(existing!=null){
+   if(existing.isActive && existing.deletedAt==null) return existing
+   val restored=existing.copy(name=name.clean("Unit name"),abbreviation=abbreviation.clean("Unit abbreviation").uppercase(),isActive=true,deletedAt=null,updatedAt=now)
+   repository.update(restored)
+   return restored
+  }
+  return UnitOfMeasure(id,name.clean("Unit name"),abbreviation.clean("Unit abbreviation").uppercase(),createdAt=now,updatedAt=now).also { repository.insert(it) }
+ }
  suspend fun update(current:UnitOfMeasure,name:String,abbreviation:String,isActive:Boolean=current.isActive):Boolean=repository.update(current.copy(name=name.clean("Unit name"),abbreviation=abbreviation.clean("Unit abbreviation").uppercase(),isActive=isActive,updatedAt=Instant.now()))
  suspend fun delete(id:UUID):Boolean=repository.softDelete(id,Instant.now())
 }

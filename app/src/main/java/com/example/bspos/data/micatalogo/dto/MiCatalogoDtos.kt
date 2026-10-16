@@ -800,7 +800,24 @@ data class BusinessPresentationDto(
     val pos: BusinessPosPresentationDto = BusinessPosPresentationDto(),
     val catalog: BusinessCatalogPresentationDto = BusinessCatalogPresentationDto(),
     val inventory: BusinessInventoryPresentationDto = BusinessInventoryPresentationDto(),
-    val customers: BusinessCustomersPresentationDto = BusinessCustomersPresentationDto()
+    val customers: BusinessCustomersPresentationDto = BusinessCustomersPresentationDto(),
+    @SerialName("product_form") val productForm: ProductFormPresentationDto = ProductFormPresentationDto()
+)
+
+@Serializable
+data class ProductFormPresentationDto(
+    @SerialName("schema_version") val schemaVersion: Int = 0,
+    @SerialName("default_sale_unit") val defaultSaleUnit: String? = null,
+    @SerialName("available_sale_units") val availableSaleUnits: List<String> = emptyList(),
+    @SerialName("sale_unit_labels") val saleUnitLabels: Map<String, String> = emptyMap(),
+    @SerialName("default_inventory_unit_key") val defaultInventoryUnitKey: String? = null,
+    @SerialName("sale_unit_to_inventory_unit") val saleUnitToInventoryUnit: Map<String, String> = emptyMap(),
+    @SerialName("inventory_unit_labels") val inventoryUnitLabels: Map<String, String> = emptyMap(),
+    @SerialName("inventory_unit_uuids") val inventoryUnitUuids: Map<String, String> = emptyMap(),
+    @SerialName("supported_fields") val supportedFields: List<String> = emptyList(),
+    @SerialName("feature_states") val featureStates: Map<String, String> = emptyMap(),
+    @SerialName("allow_advanced_unit_override") val allowAdvancedUnitOverride: Boolean = false,
+    @SerialName("profile_source") val profileSource: String? = null
 )
 
 @Serializable

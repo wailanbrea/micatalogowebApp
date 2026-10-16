@@ -35,10 +35,26 @@ data class MiCatalogoBusinessPresentation(
     val catalogShowStock: Boolean = true,
     val inventoryTitle: String = "Existencias y movimientos",
     val inventoryEnabled: Boolean = true,
-    val customersShowCredit: Boolean = false
+    val customersShowCredit: Boolean = false,
+    val productForm: MiCatalogoProductFormPresentation = MiCatalogoProductFormPresentation()
 ) {
     fun term(key: String, fallback: String): String = terminology[key].orEmpty().ifBlank { fallback }
 }
+
+data class MiCatalogoProductFormPresentation(
+    val schemaVersion: Int = 0,
+    val defaultSaleUnit: String? = null,
+    val availableSaleUnits: List<String> = emptyList(),
+    val saleUnitLabels: Map<String, String> = emptyMap(),
+    val defaultInventoryUnitKey: String? = null,
+    val saleUnitToInventoryUnit: Map<String, String> = emptyMap(),
+    val inventoryUnitLabels: Map<String, String> = emptyMap(),
+    val inventoryUnitUuids: Map<String, String> = emptyMap(),
+    val supportedFields: Set<String> = emptySet(),
+    val featureStates: Map<String, String> = emptyMap(),
+    val allowAdvancedUnitOverride: Boolean = false,
+    val profileSource: String? = null
+)
 
 data class MiCatalogoManagedShop(
     val id: String,
