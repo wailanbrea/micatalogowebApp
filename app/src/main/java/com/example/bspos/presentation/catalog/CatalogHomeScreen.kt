@@ -598,7 +598,9 @@ internal fun ProductForm(current: Product?, currentQuantity: Long, categories: L
     var initialQuantity by remember(current?.id) { mutableStateOf(if (current == null) "0" else currentQuantity.toString()) }
     var minimumStock by remember(current?.id) { mutableStateOf((current?.minimumStock ?: 0L).toString()) }
     var priceError by remember { mutableStateOf(false) }
-    var category by remember(current?.id) { mutableStateOf(categories.firstOrNull { it.id == current?.categoryId } ?: categories.first()) }
+    var category by remember(current?.id, categories) {
+        mutableStateOf(categories.firstOrNull { it.id == current?.categoryId } ?: categories.firstOrNull())
+    }
     val productForm = presentation.productForm
     var shopId by remember(current?.id, shops, activeShopId) {
         mutableStateOf(current?.remoteShopId ?: shops.singleOrNull()?.id ?: activeShopId)
@@ -1088,14 +1090,43 @@ internal fun ProductForm(current: Product?, currentQuantity: Long, categories: L
                     }
                 }
             }
-            if (!serviceMode && current?.remoteSaleUnit != "service") {
-                OutlinedTextField(minimumStock, { minimumStock = it.filter(Char::isDigit) }, label = { Text("Aviso de mínimo") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), supportingText = { Text("Te avisaremos al llegar a esta cantidad") })
+            if (category == null && !effectiveDecantMode) {
+                Text(
+                    "No hay categorías disponibles para esta tienda. Sincroniza o crea una categoría con los permisos correspondientes antes de guardar.",
+                    modifier = Modifier.testTag("product-category-empty-state"),
+                    color = BSPOSTheme.colors.error,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+            if ((serviceMode || current?.remoteSaleUnit == "service") && !effectiveDecantMode) {
                 Box(Modifier.fillMaxWidth()) {
-                    OutlinedButton({ categoryOpen = true }, modifier = Modifier.fillMaxWidth().testTag("product-category-selector"), shape = RoundedCornerShape(13.dp)) {
+                    OutlinedButton(
+                        onClick = { categoryOpen = true },
+                        enabled = categories.isNotEmpty(),
+                        modifier = Modifier.fillMaxWidth().testTag("product-category-selector"),
+                        shape = RoundedCornerShape(13.dp)
+                    ) {
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f), horizontalAlignment = Alignment.Start) {
                                 Text("Categoría", style = MaterialTheme.typography.labelSmall, color = BSPOSTheme.colors.textSecondary)
-                                Text(category.name, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(category?.name ?: "Sin categorías disponibles", fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                            Text("⌄", color = BSPOSTheme.colors.primary)
+                        }
+                    }
+                    DropdownMenu(categoryOpen, { categoryOpen = false }, modifier = Modifier.fillMaxWidth(.92f)) {
+                        categories.forEach { item -> DropdownMenuItem(text = { Text(item.name) }, onClick = { category = item; categoryOpen = false }) }
+                    }
+                }
+            }
+            if (!serviceMode && current?.remoteSaleUnit != "service") {
+                OutlinedTextField(minimumStock, { minimumStock = it.filter(Char::isDigit) }, label = { Text("Aviso de mínimo") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), supportingText = { Text("Te avisaremos al llegar a esta cantidad") })
+                Box(Modifier.fillMaxWidth()) {
+                    OutlinedButton({ categoryOpen = true }, enabled = categories.isNotEmpty(), modifier = Modifier.fillMaxWidth().testTag("product-category-selector"), shape = RoundedCornerShape(13.dp)) {
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f), horizontalAlignment = Alignment.Start) {
+                                Text("Categoría", style = MaterialTheme.typography.labelSmall, color = BSPOSTheme.colors.textSecondary)
+                                Text(category?.name ?: "Sin categorías disponibles", fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
                             Text("⌄", color = BSPOSTheme.colors.primary)
                         }
@@ -1162,7 +1193,7 @@ internal fun ProductForm(current: Product?, currentQuantity: Long, categories: L
             val selectedComboItems = comboRows.mapNotNull { row -> row.productId.takeIf { it.isNotBlank() }?.let { id -> row.quantity.toIntOrNull()?.takeIf { it > 0 }?.let { ProductComboComponent(id, it) } } }
             val validCombo = !comboMode || (shopId != null && selectedComboItems.isNotEmpty() && selectedComboItems.size == comboRows.size)
             val validVolume = comboMode || saleUnit == "unit" || saleUnit == "service" || (selectedVolume != null && selectedVolume > 0)
-            val validPresentation = if (effectiveDecantMode) {
+            val validPresentation = category != null && if (effectiveDecantMode) {
                 shopId != null && sourceProduct?.remoteProductId != null && (sourceCost > 0 || !showCost) && selectedVolume != null && selectedVolume > 0 && sourceVolume != null && selectedVolume <= sourceVolume
             } else {
                 validVolume && validCombo && (comboMode || saleUnit != "bottle" || !showInventoryFields || effectivePurchase?.let { it > 0 } == true)
@@ -1171,7 +1202,7 @@ internal fun ProductForm(current: Product?, currentQuantity: Long, categories: L
                 priceError = true
                 comboError = comboMode && !validCombo
             } else {
-                val input = ProductInput(name, effectiveCode, category.id, effectiveInventoryUnitId, sale, purchasePrice = effectivePurchase, wholesalePrice = wholesale, description = description.trim().ifBlank { null }, imagePath = imagePath, thumbnailPath = imagePath, minimumStock = minimum, tracksExpiration = current?.tracksExpiration ?: false, remoteShopId = shopId, remoteSaleUnit = if (effectiveDecantMode) "decant" else if (comboMode) "unit" else saleUnit, remoteVolumeMl = if (effectiveDecantMode || saleUnit == "bottle" || saleUnit == "ml") selectedVolume else null, remoteSourceProductId = if (effectiveDecantMode) sourceProduct?.remoteProductId else null, isCombo = comboMode, comboItems = if (comboMode) selectedComboItems else emptyList(), isActive = if (serviceMode || current?.remoteSaleUnit == "service") published else (current?.isActive ?: true), inventoryUnitName = effectiveInventoryUnitName, inventoryUnitAbbreviation = effectiveInventoryUnitAbbreviation)
+                val input = ProductInput(name, effectiveCode, requireNotNull(category).id, effectiveInventoryUnitId, sale, purchasePrice = effectivePurchase, wholesalePrice = wholesale, description = description.trim().ifBlank { null }, imagePath = imagePath, thumbnailPath = imagePath, minimumStock = minimum, tracksExpiration = current?.tracksExpiration ?: false, remoteShopId = shopId, remoteSaleUnit = if (effectiveDecantMode) "decant" else if (comboMode) "unit" else saleUnit, remoteVolumeMl = if (effectiveDecantMode || saleUnit == "bottle" || saleUnit == "ml") selectedVolume else null, remoteSourceProductId = if (effectiveDecantMode) sourceProduct?.remoteProductId else null, isCombo = comboMode, comboItems = if (comboMode) selectedComboItems else emptyList(), isActive = if (serviceMode || current?.remoteSaleUnit == "service") published else (current?.isActive ?: true), inventoryUnitName = effectiveInventoryUnitName, inventoryUnitAbbreviation = effectiveInventoryUnitAbbreviation)
                 val quantityToSave = if (current == null && !comboMode) effectiveQuantity ?: 0L else 0L
                 if (prepareDecantsAfterSave && quantityToSave <= 0L) {
                     decantPreparationStockError = true

@@ -18,6 +18,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Rule
 import org.junit.Test
+import org.junit.Assume.assumeTrue
 
 class NavigationLiveRevocationTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
@@ -41,8 +42,10 @@ class NavigationLiveRevocationTest {
     }
 
     @Test fun photoOnlyWorkspaceOpensImagePickerWithoutProductEditor() {
-        check(InstrumentationRegistry.getArguments().getString("navigationQa") == "true")
-        check(BuildConfig.APPLICATION_ID.contains(".offlinecheck") && BuildConfig.MICATALOGO_API_BASE_URL == "http://127.0.0.1:18768/")
+        assumeTrue("Requiere ejecución LIVE de navegación contra la instancia QA aislada 127.0.0.1:18768",
+            InstrumentationRegistry.getArguments().getString("navigationQa") == "true" &&
+                BuildConfig.APPLICATION_ID.contains(".offlinecheck") &&
+                BuildConfig.MICATALOGO_API_BASE_URL == "http://127.0.0.1:18768/")
         val identity = JSONObject(request("__qa/navigation/identity", "GET"))
         check(identity.getString("environment") == "testing" && identity.getString("driver") == "sqlite")
         check(identity.getString("database") == "C:/Users/waila/AppData/Local/Temp/opencode/micatalogo-navigation-20261014.sqlite")

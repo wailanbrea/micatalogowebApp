@@ -39,7 +39,7 @@ class LoginScreenTest {
         }
 
         composeRule.onNodeWithContentDescription("Desbloquear con huella").assertIsDisplayed()
-        composeRule.onNodeWithContentDescription("Mostrar contrasena").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Mostrar contraseña").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Desbloquear con huella").performClick()
         assertEquals(1, fingerprintClicks)
     }

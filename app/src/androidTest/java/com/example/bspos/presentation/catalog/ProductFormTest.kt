@@ -146,6 +146,66 @@ class ProductFormTest {
         compose.onNodeWithTag("product-auto-inventory-unit").assertExists()
     }
 
+    @Test fun emptyCategorySnapshotDoesNotCrashOrSaveProduct() {
+        val now = Instant.now()
+        val shopId = "empty-taxonomy-qa"
+        var saved = false
+        compose.setContent {
+            BSPOSTheme {
+                ProductForm(
+                    current = null,
+                    currentQuantity = 0,
+                    categories = emptyList(),
+                    units = emptyList(),
+                    presentation = MiCatalogoBusinessPresentation(archetype = "appliances"),
+                    showCost = true,
+                    showInventoryFields = true,
+                    showProductCode = true,
+                    onSave = { _, _, _ -> saved = true },
+                    onDismiss = {},
+                    shops = listOf(MiCatalogoShop(shopId, "Tienda sin categorías", null)),
+                    activeShopId = shopId
+                )
+            }
+        }
+
+        compose.onNodeWithTag("product-category-empty-state").assertExists()
+        compose.onNodeWithTag("product-category-selector").assertIsNotEnabled()
+        compose.onNodeWithTag("product-save-button").performClick()
+        compose.runOnIdle { assertEquals(false, saved) }
+    }
+
+    @Test fun serviceProductKeepsCategorySelectorVisibleWithoutPhysicalInventoryControls() {
+        val now = Instant.now()
+        val category = Category(UUID.randomUUID(), "Servicios", createdAt = now, updatedAt = now)
+        val shopId = "service-taxonomy-qa"
+        compose.setContent {
+            BSPOSTheme {
+                ProductForm(
+                    current = null,
+                    currentQuantity = 0,
+                    categories = listOf(category),
+                    units = emptyList(),
+                    presentation = MiCatalogoBusinessPresentation(archetype = "services"),
+                    showCost = true,
+                    showInventoryFields = true,
+                    showProductCode = true,
+                    onSave = { _, _, _ -> },
+                    onDismiss = {},
+                    shops = listOf(MiCatalogoShop(shopId, "Barbería QA", null)),
+                    activeShopId = shopId,
+                    serviceMode = true,
+                    initialSaleUnit = "service"
+                )
+            }
+        }
+
+        compose.onNodeWithTag("product-category-selector").assertExists()
+        compose.onNodeWithText("Servicios").assertExists()
+        compose.onNodeWithTag("product-initial-stock").assertDoesNotExist()
+        compose.onNodeWithTag("product-auto-inventory-unit").assertDoesNotExist()
+    }
+
     @Test fun comboCanSelectMultipleProductsAndSavesTheirComponentQuantities() {
         val now = Instant.now()
         val categoryId = UUID.randomUUID()

@@ -100,7 +100,7 @@ class DecantsWorkspaceTest {
             onRefresh = {}, onAction = {}, onPrepare = {}, onDiscard = { _, _ -> },
             onUndo = {}, onMode = { _, _ -> }, onNewSize = {}) } }
         compose.onNodeWithText("Perfume Demo 100ml").performScrollTo().assertExists()
-        compose.onNodeWithText("1 tamaños · 5 listos").assertExists()
+        compose.onNodeWithText("1 tamaño · 5 listos").assertExists()
         capture("style-decant-workspace")
     }
 
