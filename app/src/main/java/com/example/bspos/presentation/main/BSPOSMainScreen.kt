@@ -1101,7 +1101,7 @@ fun BSPOSNavHost(
         composable(Screen.Metrics.route) { FeatureDestination("metrics", canSeeMenu("metrics"), navController, canSeeMenu) }
         composable(Screen.PublicCatalog.route) { FeatureDestination("public_catalog", canSeeMenu("public_catalog"), navController, canSeeMenu) }
         composable(Screen.Categories.route) {
-            RestrictedMenuDestination(canSeeMenu("products"), navController) {
+            RestrictedMenuDestination(canSeeMenu("products") || canSeeMenu("services") || canSeeMenu("decants"), navController) {
                 CatalogSettingsScreen()
             }
         }
