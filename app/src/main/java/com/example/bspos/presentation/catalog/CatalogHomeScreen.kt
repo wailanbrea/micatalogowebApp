@@ -731,6 +731,54 @@ internal fun ProductForm(current: Product?, currentQuantity: Long, categories: L
     var prepareDecantsAfterSave by remember(current?.id) { mutableStateOf(false) }
     var decantPreparationStockError by remember(current?.id) { mutableStateOf(false) }
     var published by remember(current?.id) { mutableStateOf(current?.isActive ?: true) }
+    fun chooseSaleUnit(value: String) {
+        val changed = saleUnit != value
+        saleUnit = value
+        if (value != "bottle") { prepareDecantsAfterSave = false; decantPreparationStockError = false }
+        if (value == "unit") volumeMl = ""
+
+        // An edit must explicitly carry the canonical inventory unit that
+        // matches the newly selected sale presentation. Keeping the old
+        // "Unidad" UUID made the API reject (or silently misclassify) bottle
+        // configuration for legacy perfume products.
+        if (current != null && changed) {
+            val key = productForm.saleUnitToInventoryUnit[value] ?: when (value) {
+                "bottle" -> "bottle"
+                "ml" -> "ml"
+                "decant" -> "decant"
+                "service" -> "service"
+                else -> productForm.defaultInventoryUnitKey ?: "unit"
+            }
+            val mappedId = productForm.inventoryUnitUuids[key]?.let { runCatching { UUID.fromString(it) }.getOrNull() }
+            if (mappedId != null) {
+                val mappedName = productForm.inventoryUnitLabels[key] ?: when (key) {
+                    "bottle" -> "Botella"
+                    "ml" -> "Mililitro"
+                    "decant" -> "Decant"
+                    "service" -> "Servicio"
+                    else -> "Unidad"
+                }
+                val mappedAbbreviation = when (key) {
+                    "bottle" -> "BOT"
+                    "ml" -> "ML"
+                    "decant" -> "DEC"
+                    "service" -> "SRV"
+                    else -> "UND"
+                }
+                unit = selectableUnits.firstOrNull { it.id == mappedId }
+                    ?: UnitOfMeasure(
+                        id = mappedId,
+                        name = mappedName,
+                        abbreviation = mappedAbbreviation,
+                        createdAt = java.time.Instant.EPOCH,
+                        updatedAt = java.time.Instant.EPOCH
+                    )
+                advancedUnitOverride = true
+            }
+        } else if (current == null) {
+            advancedUnitOverride = false
+        }
+    }
     val imageLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri ?: return@rememberLauncherForActivityResult
         runCatching { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
@@ -967,10 +1015,7 @@ internal fun ProductForm(current: Product?, currentQuantity: Long, categories: L
                         val selected = saleUnit == value
                         Surface(
                             modifier = Modifier.fillMaxWidth().testTag("sale-unit-$value").clip(RoundedCornerShape(13.dp)).clickable {
-                                saleUnit = value
-                                if (value != "bottle") { prepareDecantsAfterSave = false; decantPreparationStockError = false }
-                                if (value == "unit") volumeMl = ""
-                                if (current == null) advancedUnitOverride = false
+                                chooseSaleUnit(value)
                             },
                             shape = RoundedCornerShape(13.dp),
                             color = if (selected) BSPOSTheme.colors.primaryLight else BSPOSTheme.colors.surface,
@@ -978,9 +1023,7 @@ internal fun ProductForm(current: Product?, currentQuantity: Long, categories: L
                         ) {
                             Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                                 RadioButton(selected = selected, onClick = {
-                                    saleUnit = value
-                                    if (value != "bottle") { prepareDecantsAfterSave = false; decantPreparationStockError = false }
-                                    if (value == "unit") volumeMl = ""
+                                    chooseSaleUnit(value)
                                 })
                                 Column(Modifier.padding(start = 4.dp)) {
                                     Text(label, fontWeight = FontWeight.SemiBold)

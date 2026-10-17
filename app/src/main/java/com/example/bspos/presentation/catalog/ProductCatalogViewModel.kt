@@ -173,7 +173,7 @@ class ProductCatalogViewModel @Inject constructor(
         }
     }
 
-    fun configureAsBottle(current: com.example.bspos.domain.model.Product, volumeMl: Int, onSaved: () -> Unit = {}) {
+    fun configureAsBottle(current: com.example.bspos.domain.model.Product, volumeMl: Int, bottleUnitId: UUID, onSaved: () -> Unit = {}) {
         if (!canEdit(current)) { reportReadOnly(); return }
         if (current.remoteShopId.isNullOrBlank() || current.remoteProductId.isNullOrBlank()) {
             val message = "Este producto todavía no está vinculado a una tienda sincronizada."
@@ -198,7 +198,7 @@ class ProductCatalogViewModel @Inject constructor(
             name = current.name,
             internalCode = current.internalCode,
             categoryId = current.categoryId,
-            unitId = current.unitId,
+            unitId = bottleUnitId,
             salePrice = current.salePrice,
             purchasePrice = current.lastPurchaseCost,
             wholesalePrice = current.wholesalePrice,

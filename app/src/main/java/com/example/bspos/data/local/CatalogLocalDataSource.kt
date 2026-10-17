@@ -39,11 +39,11 @@ class CatalogLocalDataSource @Inject constructor(
         val existing = products.findById(product.id, product.tenant.shopId) ?: return false
         return products.update(product.copy(miCatalogoShopId = existing.miCatalogoShopId,
             miCatalogoProductId = existing.miCatalogoProductId,
-            miCatalogoSourceProductId = existing.miCatalogoSourceProductId,
-            miCatalogoVolumeMl = existing.miCatalogoVolumeMl,
+            miCatalogoSourceProductId = product.miCatalogoSourceProductId ?: existing.miCatalogoSourceProductId,
+            miCatalogoVolumeMl = if (product.miCatalogoSaleUnit != null) product.miCatalogoVolumeMl else existing.miCatalogoVolumeMl,
             miCatalogoAvailableMl = existing.miCatalogoAvailableMl,
             miCatalogoOpenedBottles = existing.miCatalogoOpenedBottles,
-            miCatalogoSaleUnit = existing.miCatalogoSaleUnit, tenant=existing.tenant)) == 1
+            miCatalogoSaleUnit = product.miCatalogoSaleUnit ?: existing.miCatalogoSaleUnit, tenant=existing.tenant)) == 1
     }
     suspend fun deleteProduct(id: UUID, at: Instant, shopId: String? = null) = products.softDelete(id, at, shopId) == 1
 

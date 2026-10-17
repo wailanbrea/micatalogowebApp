@@ -195,6 +195,37 @@ class CatalogDatabaseTest {
     }
 
     @Test
+    fun productPresentationEditsPersistWhileServerOwnedInventorySnapshotsStayIntact() = runTest {
+        val bottleUnit = UnitOfMeasure(
+            id = UUID.randomUUID(), name = "Botella", abbreviation = "BOT", createdAt = at, updatedAt = at
+        )
+        categories.insert(category.copy(name = "Perfumes"))
+        units.insert(unit)
+        units.insert(bottleUnit)
+        val legacy = product.copy(
+            remoteSaleUnit = "unit", remoteVolumeMl = null, remoteAvailableMl = 0,
+            remoteOpenedBottles = 0, remoteProductId = com.example.bspos.data.micatalogo.RemoteMutationRecorder.productId(product.id)
+        )
+        products.insert(legacy)
+
+        val configured = legacy.copy(
+            unitId = bottleUnit.id,
+            remoteSaleUnit = "bottle",
+            remoteVolumeMl = 200,
+            updatedAt = at.plusSeconds(1)
+        )
+        assertTrue(products.update(configured))
+
+        val saved = products.findById(product.id)!!
+        assertEquals(bottleUnit.id, saved.unitId)
+        assertEquals("bottle", saved.remoteSaleUnit)
+        assertEquals(200, saved.remoteVolumeMl)
+        assertEquals(0, saved.remoteAvailableMl)
+        assertEquals(0, saved.remoteOpenedBottles)
+        assertEquals(legacy.remoteProductId, saved.remoteProductId)
+    }
+
+    @Test
     fun missingRecordUpdatesReportFailureWithoutCreatingRows() = runTest {
         assertFalse(categories.update(category))
         assertFalse(units.update(unit))

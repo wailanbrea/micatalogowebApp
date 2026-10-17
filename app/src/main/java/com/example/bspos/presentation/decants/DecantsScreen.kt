@@ -29,6 +29,7 @@ import coil.compose.AsyncImage
 import com.example.bspos.core.money.MoneyUtils
 import com.example.bspos.core.ui.theme.BSPOSTheme
 import com.example.bspos.data.micatalogo.dto.*
+import com.example.bspos.domain.model.Category
 import com.example.bspos.domain.model.CurrencyUnit
 import com.example.bspos.domain.model.MiCatalogoBusinessPresentation
 import com.example.bspos.domain.model.Product
@@ -37,6 +38,7 @@ import com.example.bspos.presentation.catalog.ProductForm
 import com.example.bspos.presentation.common.*
 import kotlinx.serialization.json.*
 import java.math.BigDecimal
+import java.text.Normalizer
 import java.util.UUID
 
 private fun operation(type: String, block: JsonObjectBuilder.() -> Unit = {}) = buildJsonObject { put("type", type); block() }
@@ -52,7 +54,43 @@ internal fun finishBottleConfiguration(onDismiss: () -> Unit, onRefreshWorkspace
 internal fun dismissDecantSheetIfCurrent(current: String?, closing: String): String? =
     current.takeUnless { it == closing }
 
+internal data class DecantPrepareSelectionState(
+    val groupId: String? = null,
+    val openingId: String? = null,
+    val sealedSelected: Boolean = false,
+    val sizeKey: String? = null
+) {
+    fun selectSource(groupId: String, openingId: String?) = copy(
+        groupId = groupId,
+        openingId = openingId,
+        sealedSelected = openingId == null,
+        sizeKey = null
+    )
+}
+
 private fun DecantFragranceDto.isBottleSource(): Boolean = sourceSaleUnit.trim().equals("bottle", ignoreCase = true)
+
+internal fun unconfiguredBottleSources(
+    products: List<Product>,
+    categories: List<Category>,
+    activeShopId: String?
+): List<Product> {
+    val perfumeCategoryIds = categories.asSequence()
+        .filter { category ->
+            val normalized = Normalizer.normalize(category.name, Normalizer.Form.NFD)
+                .replace("\\p{Mn}+".toRegex(), "").lowercase()
+            listOf("perfume", "fragancia", "fragrance", "parfum", "colonia")
+                .any(normalized::contains)
+        }
+        .map { it.id }
+        .toSet()
+
+    return products.filter { product ->
+        product.isActive && product.deletedAt == null && product.remoteShopId == activeShopId &&
+            product.remoteProductId != null && !product.remoteIsCombo && product.categoryId in perfumeCategoryIds &&
+            (product.remoteSaleUnit == null || product.remoteSaleUnit == "unit")
+    }
+}
 
 private fun DecantFragranceDto.hasAvailableBottleStock(): Boolean =
     sealed > 0 || openings.any { it.remainingMl > 0 }
@@ -87,6 +125,11 @@ fun DecantsScreen(presentation: MiCatalogoBusinessPresentation, showCost: Boolea
     val shops by catalog.shops.collectAsState()
     val activeShop by catalog.activeShopId.collectAsState()
     val stock by catalog.stock.collectAsState()
+    val bottleUnitKey = presentation.productForm.saleUnitToInventoryUnit["bottle"] ?: "bottle"
+    val bottleUnitId = presentation.productForm.inventoryUnitUuids[bottleUnitKey]
+        ?.let { raw -> runCatching { UUID.fromString(raw) }.getOrNull() }
+        ?: activeShop?.let { UUID.nameUUIDFromBytes("micatalogo:unit:$it:bottle".toByteArray()) }
+    val bottleUnitReady = bottleUnitId != null && units.any { it.id == bottleUnitId && it.isActive && it.deletedAt == null }
     var sheet by remember { mutableStateOf<String?>(null) }
     var focus by remember { mutableStateOf<DecantFragranceDto?>(null) }
     var focusSize by remember { mutableStateOf<String?>(null) }
@@ -97,11 +140,7 @@ fun DecantsScreen(presentation: MiCatalogoBusinessPresentation, showCost: Boolea
     var configureBottle by remember { mutableStateOf<Product?>(null) }
     var showTutorial by remember { mutableStateOf(false) }
     val quantities = stock.associate { it.productId to it.quantity }
-    val unconfiguredBottleSources = products.filter {
-        it.isActive && it.deletedAt == null && it.remoteShopId == activeShop &&
-            it.remoteProductId != null && !it.remoteIsCombo &&
-            (it.remoteSaleUnit == null || it.remoteSaleUnit == "unit")
-    }
+    val unconfiguredBottleSources = unconfiguredBottleSources(products, categories, activeShop)
     LaunchedEffect(Unit) { viewModel.load() }
     LaunchedEffect(prepareSourceRemoteId) {
         if (!prepareSourceRemoteId.isNullOrBlank()) viewModel.refreshAfterCatalogMutation()
@@ -206,7 +245,7 @@ fun DecantsScreen(presentation: MiCatalogoBusinessPresentation, showCost: Boolea
                 viewModel.command(operation("open_bottle") { put("product_id", group.id); put("quantity", 1); put("expected_stock", group.sealed); put("track_decants", true) }, listOf(group.id))
             }
             sheet == "prepare" -> DecantPrepareSheet(workspace, focus, enabled, { sheet = dismissDecantSheetIfCurrent(sheet, "prepare") },
-                { createSource = it.id; sheet = null }, initialSizeId = focusSize) { group, opening, size, qty, price ->
+                { createSource = it.id; sheet = null }) { group, opening, size, qty, price ->
                 if (size.productId == null) {
                     // An empty vial can exist before its catalog presentation. Configure
                     // that presentation and prepare its first batch atomically on the server.
@@ -290,16 +329,19 @@ fun DecantsScreen(presentation: MiCatalogoBusinessPresentation, showCost: Boolea
             product = configureBottle!!,
             stock = quantities[configureBottle!!.id] ?: 0L,
             enabled = workspace?.enabled == true && workspace.canManage && !state.busy,
+            bottleUnitReady = bottleUnitReady,
             onDismiss = { configureBottle = null },
             onConfirm = { volumeMl ->
-                catalog.configureAsBottle(configureBottle!!, volumeMl) {
-                    // Product edits are written through the durable outbox.
-                    // Wait for server acknowledgement and pull the authoritative
-                    // workspace; an immediate GET races the queued mutation.
-                    finishBottleConfiguration(
-                        onDismiss = { configureBottle = null },
-                        onRefreshWorkspace = viewModel::refreshAfterCatalogMutation
-                    )
+                bottleUnitId?.let { canonicalBottleUnitId ->
+                    catalog.configureAsBottle(configureBottle!!, volumeMl, canonicalBottleUnitId) {
+                        // Product edits are written through the durable outbox.
+                        // Wait for server acknowledgement and pull the authoritative
+                        // workspace; an immediate GET races the queued mutation.
+                        finishBottleConfiguration(
+                            onDismiss = { configureBottle = null },
+                            onRefreshWorkspace = viewModel::refreshAfterCatalogMutation
+                        )
+                    }
                 }
             }
         )
@@ -310,7 +352,7 @@ fun DecantsScreen(presentation: MiCatalogoBusinessPresentation, showCost: Boolea
 }
 
 @Composable
-internal fun ConfigureBottleDialog(product: Product, stock: Long, enabled: Boolean, onDismiss: () -> Unit, onConfirm: (Int) -> Unit) {
+internal fun ConfigureBottleDialog(product: Product, stock: Long, enabled: Boolean, onDismiss: () -> Unit, onConfirm: (Int) -> Unit, bottleUnitReady: Boolean = true) {
     var volumeText by remember(product.id) { mutableStateOf("") }
     val volume = volumeText.toIntOrNull()
     val valid = volume != null && volume in 1..100_000
@@ -340,10 +382,13 @@ internal fun ConfigureBottleDialog(product: Product, stock: Long, enabled: Boole
                 if (product.lastPurchaseCost <= 0L) {
                     Text("Registra primero el costo de compra en Inventario. Se necesita para calcular la recuperación de la botella.", color = BSPOSTheme.colors.warning, style = MaterialTheme.typography.bodySmall)
                 }
+                if (!bottleUnitReady) {
+                    Text("Sincroniza las unidades de la tienda para poder guardar la botella completa.", color = BSPOSTheme.colors.warning, style = MaterialTheme.typography.bodySmall)
+                }
             }
         },
         dismissButton = { BSPOSOutlinedButton(onClick = onDismiss) { Text("Cancelar") } },
-        confirmButton = { BSPOSButton(onClick = { if (valid) onConfirm(volume!!) }, enabled = enabled && valid && product.lastPurchaseCost > 0L) { Text("Guardar y usar en Decants") } }
+        confirmButton = { BSPOSButton(onClick = { if (valid) onConfirm(volume!!) }, enabled = enabled && bottleUnitReady && valid && product.lastPurchaseCost > 0L) { Text("Guardar y usar en Decants") } }
     )
 }
 
@@ -695,12 +740,13 @@ private fun DecantQuickSetupSheet(
 }
 
 @Composable internal fun DecantPrepareSheet(workspace: DecantWorkspaceDto, focus: DecantFragranceDto?, enabled: Boolean, onDismiss: () -> Unit,
-    onNewSize: (DecantFragranceDto) -> Unit, initialSizeId: String? = null,
+    onNewSize: (DecantFragranceDto) -> Unit,
     onPrepare: (DecantFragranceDto, DecantOpeningDto?, DecantPrepareSizeOption, Int, String) -> Unit) {
-    var groupId by remember { mutableStateOf(focus?.id) }
-    var openingId by remember { mutableStateOf(focus?.openings?.singleOrNull { it.remainingMl > 0 }?.id) }
-    var sealedSelected by remember { mutableStateOf(false) }
-    var sizeKey by remember { mutableStateOf(initialSizeId ?: focus?.sizes?.firstOrNull()?.id) }
+    var selection by remember(focus?.id) { mutableStateOf(DecantPrepareSelectionState(groupId = focus?.id)) }
+    val groupId = selection.groupId
+    val openingId = selection.openingId
+    val sealedSelected = selection.sealedSelected
+    val sizeKey = selection.sizeKey
     var quantity by remember { mutableIntStateOf(1) }
     val eligibleGroups = workspace.groups.filter { it.isBottleSource() }
     val group = eligibleGroups.firstOrNull { it.id == groupId }
@@ -723,16 +769,13 @@ private fun DecantQuickSetupSheet(
     val priceCents = MoneyUtils.parseDecimalToCents(price)
     val valid = enabled && selected && size != null && quantity in 1..max && priceCents != null && priceCents >= 0
     fun selectSource(source: DecantFragranceDto, bottle: DecantOpeningDto?) {
-        groupId = source.id; openingId = bottle?.id; sealedSelected = bottle == null
-        val first = source.sizes.firstOrNull { it.id == initialSizeId }?.id
-            ?: source.sizes.firstOrNull()?.id
-            ?: workspace.vials.firstOrNull { it.active && it.empty > 0 && it.volumeMl <= source.volumeMl }?.let { "vial:${it.volumeMl}" }
-        sizeKey = first; quantity = 1
+        selection = selection.selectSource(source.id, bottle?.id)
+        quantity = 1
     }
     CheckoutStyleBottomSheet("Preparar decants", onDismiss,
         subtitle = if (!selected) "Elige la botella de origen." else "${group?.name.orEmpty()} · ${if (sealedSelected) "botella nueva" else "botella abierta"}", footer = {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            BSPOSOutlinedButton({ if (selected) { openingId = null; sealedSelected = false; sizeKey = null } else onDismiss() }) { Text(if (selected) "Atrás" else "Cancelar") }
+            BSPOSOutlinedButton({ if (selected) { selection = selection.copy(openingId = null, sealedSelected = false, sizeKey = null) } else onDismiss() }) { Text(if (selected) "Atrás" else "Cancelar") }
             CheckoutStylePrimaryButton("${if (sealedSelected) "Abrir y preparar" else "Preparar"} $quantity frasco(s)", {
                 if (group != null && size != null && valid) onPrepare(group, opening, size, quantity, decimal(priceCents!!))
             }, enabled = valid, modifier = Modifier.weight(1f))
@@ -763,7 +806,7 @@ private fun DecantQuickSetupSheet(
                     sizeKey == item.id,
                     imageUrl = item.imageUrl,
                     trailing = item.priceCents?.let(::money) ?: "Precio pendiente"
-                ) { sizeKey = item.id; quantity = 1 }
+                ) { selection = selection.copy(sizeKey = item.id); quantity = 1 }
             }
             BSPOSOutlinedButton({ onNewSize(group) }) { Text("Nueva presentación") }
             if (size != null) {

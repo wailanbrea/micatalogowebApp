@@ -102,6 +102,67 @@ class ProductFormTest {
         }
     }
 
+    @Test fun editingLegacyPerfumeAsBottleSendsCanonicalBottleUnitAndVolume() {
+        val now = Instant.now()
+        val shopId = "legacy-perfume-shop"
+        val categoryId = UUID.randomUUID()
+        val oldUnitId = UUID.randomUUID()
+        val bottleUnitId = UUID.randomUUID()
+        val product = Product(
+            id = UUID.randomUUID(), name = "212 Men NYC", internalCode = "212-MEN",
+            categoryId = categoryId, unitId = oldUnitId, salePrice = 280000,
+            averageCost = 150000, lastPurchaseCost = 150000,
+            createdAt = now, updatedAt = now, remoteShopId = shopId,
+            remoteProductId = "product-212-men", remoteSaleUnit = "unit"
+        )
+        val form = MiCatalogoProductFormPresentation(
+            schemaVersion = 1,
+            defaultSaleUnit = "unit",
+            availableSaleUnits = listOf("unit", "bottle", "ml"),
+            saleUnitLabels = mapOf("unit" to "Producto completo", "bottle" to "Botella completa", "ml" to "Por mililitro (ml)"),
+            defaultInventoryUnitKey = "unit",
+            saleUnitToInventoryUnit = mapOf("unit" to "unit", "bottle" to "bottle", "ml" to "ml"),
+            inventoryUnitLabels = mapOf("unit" to "Unidades", "bottle" to "Botellas", "ml" to "Mililitros (ml)"),
+            inventoryUnitUuids = mapOf(
+                "unit" to oldUnitId.toString(),
+                "bottle" to bottleUnitId.toString(),
+                "ml" to UUID.randomUUID().toString()
+            ),
+            supportedFields = setOf("name", "category", "price", "stock", "volume_ml")
+        )
+        var saved: ProductInput? = null
+        compose.setContent {
+            BSPOSTheme {
+                ProductForm(
+                    current = product,
+                    currentQuantity = 7,
+                    categories = listOf(Category(categoryId, "Perfumes", createdAt = now, updatedAt = now)),
+                    units = listOf(UnitOfMeasure(oldUnitId, "Unidad", "UND", createdAt = now, updatedAt = now)),
+                    presentation = MiCatalogoBusinessPresentation(archetype = "fragrance", productForm = form),
+                    showCost = true,
+                    showInventoryFields = true,
+                    showProductCode = true,
+                    onSave = { input, _, _ -> saved = input },
+                    onDismiss = {},
+                    shops = listOf(MiCatalogoShop(shopId, "Perfumería QA", null)),
+                    activeShopId = shopId
+                )
+            }
+        }
+
+        compose.onNodeWithTag("sale-unit-bottle").performClick()
+        compose.onNodeWithText("Botellas").assertExists()
+        compose.onNodeWithTag("product-volume-ml").performTextInput("100")
+        compose.onNodeWithTag("product-save-button").performClick()
+
+        compose.runOnIdle {
+            val result = saved ?: error("El formulario de edición no guardó el producto")
+            assertEquals("bottle", result.remoteSaleUnit)
+            assertEquals(100, result.remoteVolumeMl)
+            assertEquals(bottleUnitId, result.unitId)
+        }
+    }
+
     @Test fun applianceProfileDoesNotOfferFragranceModesOrVolume() {
         val now = Instant.now()
         val categories = listOf(Category(UUID.randomUUID(), "Neveras", createdAt = now, updatedAt = now))
