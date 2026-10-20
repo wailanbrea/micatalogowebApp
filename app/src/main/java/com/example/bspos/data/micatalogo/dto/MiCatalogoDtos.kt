@@ -172,7 +172,8 @@ data class FeatureModuleDto(
     @SerialName("bottleSources") val bottleSources: List<FeatureBottleSourceDto> = emptyList(),
     @SerialName("quoteProducts") val quoteProducts: List<FeatureProductDto> = emptyList(),
     @SerialName("pendingRequests") val pendingRequests: List<AuthorizationRequestDto> = emptyList(),
-    val note: String? = null
+    val note: String? = null,
+    @SerialName("report_context") val reportContext: OperationalReportContextDto? = null
 )
 
 @Serializable
@@ -214,7 +215,17 @@ data class FeatureSectionDto(
     val label: String = "",
     val kpis: List<FeatureKpiDto> = emptyList(),
     val rows: List<FeatureRowDto> = emptyList(),
-    val note: String? = null
+    val note: String? = null,
+    val scope: String = ""
+)
+
+@Serializable
+data class OperationalReportContextDto(
+    @SerialName("shop_name") val shopName: String = "",
+    val from: String = "",
+    val to: String = "",
+    val timezone: String = "America/Santo_Domingo",
+    @SerialName("generated_at") val generatedAt: String = ""
 )
 
 @Serializable

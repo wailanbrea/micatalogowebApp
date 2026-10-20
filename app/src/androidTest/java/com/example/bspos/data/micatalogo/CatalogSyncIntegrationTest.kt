@@ -648,7 +648,7 @@ class CatalogSyncIntegrationTest {
         override suspend fun shopSettings(shopId: String): Response<ShopSettingsDto> = error("Unused")
         override suspend fun updateShopSettings(shopId: String, request: ShopSettingsUpdateDto): Response<ShopSettingsDto> = error("Unused")
         override suspend fun uploadShopLogo(shopId: String, logo: okhttp3.MultipartBody.Part): Response<ShopLogoUploadResponseDto> = error("Unused")
-        override suspend fun exportReport(shopId: String, format: String): Response<okhttp3.ResponseBody> = error("Unused")
+        override suspend fun exportReport(shopId: String, format: String, from: String?, to: String?): Response<okhttp3.ResponseBody> = error("Unused")
         override suspend fun purchases(shopId: String): Response<PurchaseWorkspaceDto> = error("Unused")
         override suspend fun suppliers(shopId: String): Response<PurchaseWorkspaceDto> = error("Unused")
         override suspend fun createSupplier(shopId: String, request: SupplierCreateRequestDto): Response<SupplierActionResponseDto> = error("Unused")

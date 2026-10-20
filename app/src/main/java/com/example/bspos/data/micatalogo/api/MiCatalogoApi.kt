@@ -235,7 +235,9 @@ interface MiCatalogoApi {
     @GET("api/v1/shops/{shopId}/reports/export")
     suspend fun exportReport(
         @Path("shopId") shopId: String,
-        @Query("format") format: String
+        @Query("format") format: String,
+        @Query("from") from: String? = null,
+        @Query("to") to: String? = null
     ): Response<ResponseBody>
 
     @GET("api/v1/shops/{shopId}/purchases")

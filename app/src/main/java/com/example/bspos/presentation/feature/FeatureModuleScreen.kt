@@ -76,13 +76,16 @@ fun FeatureModuleScreen(
     onAction: (String) -> Boolean = { false }
 ) {
     val state by viewModel.state.collectAsState()
+    val reportUiState = androidx.compose.runtime.saveable.rememberSaveableStateHolder()
     var commissionPeriod by remember(feature) { mutableStateOf("current_fortnight") }
     var salesPeriod by remember(feature) { mutableStateOf("today") }
+    var reportPeriod by androidx.compose.runtime.saveable.rememberSaveable(feature) { mutableStateOf("month") }
     var salesStatus by remember(feature) { mutableStateOf("Todos") }
-    LaunchedEffect(feature, commissionPeriod, salesPeriod, salesStatus) {
+    LaunchedEffect(feature, commissionPeriod, salesPeriod, salesStatus, reportPeriod) {
         val period = when (feature) {
             "commissions" -> commissionPeriod
             "sales" -> salesPeriod
+            "reports" -> reportPeriod
             else -> null
         }
         val status = when (salesStatus) {
@@ -98,7 +101,16 @@ fun FeatureModuleScreen(
     Box(modifier.fillMaxSize().background(BSPOSTheme.colors.background)) {
         when {
             state.loading -> CircularProgressIndicator(Modifier.align(Alignment.Center), color = BSPOSTheme.colors.primary)
-            state.error != null -> FeatureError(state.error!!, onRetry = { viewModel.load(feature) })
+            state.error != null -> FeatureError(state.error!!, onRetry = { viewModel.load(feature, if (feature == "reports") reportPeriod else null) })
+            state.response != null && feature == "reports" -> reportUiState.SaveableStateProvider("operational") {
+                com.example.bspos.presentation.reports.OperationalReportsScreen(
+                module = state.response!!.module,
+                period = reportPeriod,
+                onPeriodChange = { reportPeriod = it },
+                onRefresh = { viewModel.load(feature, reportPeriod) },
+                onExport = { viewModel.exportReport(feature, it) }
+                )
+            }
             state.response != null -> FeatureContent(
                 feature = feature,
                 definition = state.response!!.feature,

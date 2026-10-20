@@ -1,0 +1,33 @@
+<resources>
+    <string name="reports_title">Reportes operativos</string>
+    <string name="reports_eyebrow">REPORTES</string>
+    <string name="reports_intro">Los resultados de tu negocio, listos para compartir.</string>
+    <string name="reports_refresh">Actualizar reportes</string>
+    <string name="reports_today">Hoy</string>
+    <string name="reports_week">Últimos 7 días</string>
+    <string name="reports_month">Este mes</string>
+    <string name="reports_search">Buscar en el detalle</string>
+    <string name="reports_detail">Detalle</string>
+    <plurals name="reports_records">
+        <item quantity="one">%1$d registro</item>
+        <item quantity="other">%1$d registros</item>
+    </plurals>
+    <string name="reports_empty">Sin registros</string>
+    <string name="reports_empty_hint">Prueba otro periodo o una búsqueda diferente.</string>
+    <string name="reports_info">Cómo se calcula</string>
+    <string name="reports_print">Imprimir</string>
+    <string name="reports_whatsapp">WhatsApp</string>
+    <string name="reports_share">Compartir PDF</string>
+    <string name="reports_export">Exportar</string>
+    <string name="reports_csv">Hoja CSV</string>
+    <string name="reports_excel">Excel</string>
+    <string name="reports_preparing">Preparando documento…</string>
+    <string name="reports_pdf_error">No se pudo preparar el PDF. Inténtalo nuevamente.</string>
+    <string name="reports_share_error">No hay una aplicación disponible para abrir esta acción.</string>
+    <string name="reports_filter">Búsqueda: %1$s</string>
+    <string name="reports_total_note">Los indicadores resumen todo el periodo; la búsqueda solo filtra el detalle.</string>
+    <string name="reports_generated">Generado: %1$s</string>
+    <string name="reports_page">Página %1$d</string>
+    <string name="reports_default_scope">Datos del mes · Estado actual de la tienda</string>
+    <string name="reports_print_error">No se pudo imprimir el documento.</string>
+</resources>

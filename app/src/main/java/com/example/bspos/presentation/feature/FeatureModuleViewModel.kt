@@ -83,7 +83,8 @@ class FeatureModuleViewModel @Inject constructor(
             runCatching {
                 val shopId = connection.activeShopId().orEmpty()
                 check(shopId.isNotBlank()) { "Selecciona una tienda activa para exportar el reporte." }
-                val response = withContext(Dispatchers.IO) { api.get().exportReport(shopId, format) }
+                val reportContext = _state.value.response?.module?.reportContext
+                val response = withContext(Dispatchers.IO) { api.get().exportReport(shopId, format, reportContext?.from, reportContext?.to) }
                 check(response.isSuccessful) { "No se pudo exportar el reporte." }
                 val body = response.body() ?: error("La exportación llegó vacía.")
                 saveExport(body, format)
