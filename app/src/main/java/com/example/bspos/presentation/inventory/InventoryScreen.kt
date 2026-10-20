@@ -2,6 +2,8 @@ package com.example.bspos.presentation.inventory
 
 import android.content.Context
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import android.net.Uri
 import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -153,6 +155,8 @@ fun InventoryScreen(
         val matchesLow = !lowStockFilter || (product.minimumStock > 0L && quantity > 0L && quantity <= product.minimumStock)
         matchesQuery && matchesStock && matchesPhoto && matchesLow
     }
+    val activeFilterCount = (if (filter != 0) 1 else 0) + (if (lowStockFilter) 1 else 0) + (if (photoFilter) 1 else 0)
+    val hasSearchOrFilters = query.isNotBlank() || activeFilterCount > 0
     val unavailable = activeProducts.count { (quantityByProductId[it.id] ?: 0L) <= 0L }
     val productsWithStock = activeProducts.count { (quantityByProductId[it.id] ?: 0L) > 0L }
     val lowStock = activeProducts.count { product -> val qty = quantityByProductId[product.id] ?: 0L; product.minimumStock > 0L && qty > 0L && qty <= product.minimumStock }
@@ -297,7 +301,38 @@ fun InventoryScreen(
                 OutlinedButton(onClick = { showFilters = !showFilters }, shape = RoundedCornerShape(14.dp)) {
                     Icon(Icons.Default.FilterList, null)
                     Spacer(Modifier.width(4.dp))
-                    Text("Filtros")
+                    Text(if (activeFilterCount > 0) "Filtros ($activeFilterCount)" else "Filtros")
+                }
+            }
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                FilterChip(
+                    selected = filter == 0 && !lowStockFilter,
+                    onClick = { filter = 0; lowStockFilter = false },
+                    label = { Text("Todos (${productsForTab.size})") }
+                )
+                FilterChip(
+                    selected = filter == 2 && !lowStockFilter,
+                    onClick = { filter = 2; lowStockFilter = false },
+                    label = { Text("Con existencia (${productsForTab.count { (quantityByProductId[it.id] ?: 0L) > 0L }})") }
+                )
+                FilterChip(
+                    selected = filter == 1 && !lowStockFilter,
+                    onClick = { filter = 1; lowStockFilter = false },
+                    label = { Text("Agotados (${productsForTab.count { (quantityByProductId[it.id] ?: 0L) <= 0L }})") }
+                )
+                FilterChip(
+                    selected = lowStockFilter && filter != 1,
+                    onClick = { filter = 0; lowStockFilter = true },
+                    label = { Text("Bajo mínimo (${productsForTab.count { val qty = quantityByProductId[it.id] ?: 0L; it.minimumStock > 0L && qty > 0L && qty <= it.minimumStock }})") }
+                )
+            }
+            Text("Los conteos corresponden a esta pestaña, antes de aplicar búsqueda y foto.", style = MaterialTheme.typography.bodySmall, color = BSPOSTheme.colors.textSecondary)
+            if (hasSearchOrFilters) {
+                TextButton({ query = ""; filter = 0; lowStockFilter = false; photoFilter = false }) {
+                    Text("Limpiar búsqueda y filtros")
                 }
             }
         }
@@ -362,11 +397,11 @@ fun InventoryScreen(
     ) {
         com.example.bspos.presentation.common.BSPOSSectionLabel("Existencia")
         listOf(0 to "Todos", 1 to "Agotados", 2 to "Con existencia").forEach { (value, label) ->
-            Row(Modifier.fillMaxWidth().clickable { filter = value }.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                androidx.compose.material3.RadioButton(filter == value, { filter = value }); Text(label)
+            Row(Modifier.fillMaxWidth().clickable { filter = value; if (value == 1) lowStockFilter = false }.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                androidx.compose.material3.RadioButton(filter == value, { filter = value; if (value == 1) lowStockFilter = false }); Text(label)
             }
         }
-        Row(verticalAlignment = Alignment.CenterVertically) { androidx.compose.material3.Checkbox(lowStockFilter, { lowStockFilter = it }); Text("Nivel bajo") }
+        Row(verticalAlignment = Alignment.CenterVertically) { androidx.compose.material3.Checkbox(lowStockFilter, { lowStockFilter = it; if (it) filter = 0 }); Text("Nivel bajo") }
         Row(verticalAlignment = Alignment.CenterVertically) { androidx.compose.material3.Checkbox(photoFilter, { photoFilter = it }); Text("Con foto") }
     }
     if (initialForm) InitialInventoryForm(productsWithoutStock, { id, quantity, cost -> viewModel.initialize(id, quantity, cost); initialForm = false }, { initialForm = false })

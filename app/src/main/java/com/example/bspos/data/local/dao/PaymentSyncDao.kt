@@ -7,6 +7,8 @@ import androidx.room.OnConflictStrategy
 import com.example.bspos.data.local.entity.PaymentSyncEntity
 
 @Dao interface PaymentSyncDao {
+    @Query("SELECT * FROM payment_sync_outbox WHERE shopId=:shopId ORDER BY rowid DESC")
+    fun observeAllForShop(shopId: String): kotlinx.coroutines.flow.Flow<List<PaymentSyncEntity>>
     @Query("SELECT * FROM payment_sync_outbox WHERE state IN ('PENDING','BLOCKED') ORDER BY rowid")
     fun observeOutstanding(): kotlinx.coroutines.flow.Flow<List<PaymentSyncEntity>>
     @Query("UPDATE payment_sync_outbox SET state='PENDING', error=NULL WHERE id=:id AND state='BLOCKED'")

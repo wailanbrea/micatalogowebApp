@@ -78,7 +78,9 @@ class CheckoutReviewSheetTest {
         compose.onNodeWithTag("checkout-confirm").assertIsDisplayed()
         compose.onNodeWithText("Descuento o nota").performScrollTo().performClick()
         compose.onNodeWithText("Descuento (RD$)").performTextReplacement("100")
+        androidx.test.espresso.Espresso.closeSoftKeyboard()
         compose.onNodeWithText("Aplicar").performClick()
+        compose.waitForIdle()
         compose.onNodeWithTag("checkout-total").assertTextEquals("RD$ 19,600.00")
         compose.onNodeWithTag("checkout-confirm").assertIsDisplayed()
     }

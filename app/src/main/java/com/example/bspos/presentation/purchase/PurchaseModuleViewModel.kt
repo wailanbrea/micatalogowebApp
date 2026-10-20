@@ -45,6 +45,7 @@ data class PurchaseModuleUiState(
     val saving: Boolean = false,
     val workspace: PurchaseWorkspaceDto? = null,
     val preview: PurchaseInvoicePreviewDto? = null,
+    val photoReview: InvoicePhotoReview? = null,
     val message: String? = null,
     val error: String? = null
 )
@@ -109,7 +110,7 @@ class PurchaseModuleViewModel @Inject constructor(
         val version = ++loadVersion
         if (!permissionsResolved) return
         if (!_state.value.access.reads(feature)) {
-            _state.value = _state.value.copy(loading = false, workspace = null, preview = null, error = "No tienes permiso para este módulo de Compras.")
+            _state.value = _state.value.copy(loading = false, workspace = null, preview = null, photoReview = null, error = "No tienes permiso para este módulo de Compras.")
             return
         }
         val epoch = permissionEpoch
@@ -208,7 +209,18 @@ class PurchaseModuleViewModel @Inject constructor(
         val epoch = permissionEpoch
         previewJob = viewModelScope.launch {
             val shopId = connection.activeShopId() ?: return@launch
-            _state.value = _state.value.copy(saving = true, error = null, message = null)
+            _state.value = _state.value.copy(saving = true, error = null, message = null, preview = null, photoReview = null)
+            if (context.contentResolver.getType(uri)?.startsWith("image/") == true) {
+                try {
+                    val text = InvoicePhotoReader.read(context, uri)
+                    if (current(shopId, epoch)) _state.value = _state.value.copy(saving = false,
+                        photoReview = InvoicePhotoReview(text, photoInvoiceSuggestions(text, _state.value.workspace?.products.orEmpty())))
+                } catch (cancelled: CancellationException) { throw cancelled }
+                catch (failure: Exception) {
+                    if (current(shopId, epoch)) _state.value = _state.value.copy(saving = false, error = failure.message ?: "No se pudo leer la foto.")
+                }
+                return@launch
+            }
             runCatching {
                 val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
                     ?: error("No se pudo leer el archivo seleccionado.")
@@ -229,6 +241,8 @@ class PurchaseModuleViewModel @Inject constructor(
             }
         }
     }
+
+    fun dismissPhotoReview() { _state.value = _state.value.copy(photoReview = null) }
 
     fun receive(documentId: String, feature: String = "containers") {
         val document = _state.value.workspace?.documents?.firstOrNull { it.id == documentId }

@@ -768,6 +768,7 @@ data class ShopDto(
     val id: String? = null,
     val name: String? = null,
     val slug: String? = null,
+    @SerialName("business_timezone") val businessTimezone: String = "America/Santo_Domingo",
     @SerialName("business_type") val businessType: String? = null,
     @SerialName("business_type_label") val businessTypeLabel: String? = null,
     val capabilities: Map<String, String> = emptyMap(),
@@ -1324,7 +1325,24 @@ data class DailyCloseDto(
     @SerialName("sales_other") val salesOther: Double = 0.0,
     @SerialName("debt_collections_total") val debtCollectionsTotal: Double = 0.0,
     @SerialName("expenses_paid_total") val expensesPaidTotal: Double = 0.0,
-    val closure: DailyClosureRecordDto? = null
+    val closure: DailyClosureRecordDto? = null,
+    @SerialName("can_adjust") val canAdjust: Boolean = false,
+    val adjustments: List<DailyClosureAdjustmentDto> = emptyList()
+)
+
+@Serializable
+data class DailyClosureAdjustmentDto(
+    val id: String,
+    @SerialName("closure_id") val closureId: String,
+    @SerialName("user_id") val userId: String,
+    @SerialName("user_name") val userName: String? = null,
+    val reason: String,
+    @SerialName("created_at") val createdAt: String,
+    @SerialName("previous_id") val previousId: String? = null,
+    @SerialName("expected_cash") val expectedCash: String,
+    @SerialName("counted_cash") val countedCash: String? = null,
+    val difference: String? = null,
+    @SerialName("change_from_original") val changeFromOriginal: String
 )
 
 @Serializable

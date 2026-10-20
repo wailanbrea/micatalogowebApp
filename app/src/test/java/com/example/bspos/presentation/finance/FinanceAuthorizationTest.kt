@@ -27,6 +27,20 @@ import kotlin.coroutines.resume
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class FinanceAuthorizationTest {
+    @Test fun delegatedDayCloseReadsOnlyItsReconciliationWithoutRequiringProfitAccess() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        try {
+            val calls = mutableListOf<String>()
+            val viewModel = model(listOf("day_close"), calls)
+            viewModel.selectPeriod(FinancePeriodFilter.TODAY)
+            advanceUntilIdle()
+            assertEquals(listOf("getDailyClose"), calls)
+            viewModel.setMenuCeiling(setOf("day_close"))
+            advanceUntilIdle()
+            assertFalse(viewModel.uiState.value.access.finance)
+            assertTrue(viewModel.uiState.value.access.dayClose)
+        } finally { Dispatchers.resetMain() }
+    }
     private inline fun <reified T> proxy(noinline call: (String) -> Any?): T =
         Proxy.newProxyInstance(T::class.java.classLoader, arrayOf(T::class.java)) { _, method, _ -> call(method.name) } as T
 

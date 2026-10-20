@@ -22,7 +22,7 @@ data class FinanceAccess(
         finance = finance && "finance" in keys,
         expenses = expenses && "expenses" in keys,
         cash = cash && "cash" in keys,
-        dayClose = dayClose && "day_close" in keys && "finance" in keys,
+        dayClose = dayClose && "day_close" in keys,
         mutateExpenses = mutateExpenses && "expenses" in keys,
         mutateCash = mutateCash && "cash" in keys,
         mutateDayClose = mutateDayClose && "day_close" in keys
@@ -35,7 +35,7 @@ data class FinanceAccess(
             )
             val readOnly = actorRole == "accountant"
             return FinanceAccess(allowed("finance"), allowed("expenses"), allowed("cash"),
-                allowed("finance") && allowed("day_close"),
+                allowed("day_close"),
                 allowed("expenses") && !readOnly, allowed("cash") && !readOnly, allowed("day_close") && !readOnly)
         }
     }

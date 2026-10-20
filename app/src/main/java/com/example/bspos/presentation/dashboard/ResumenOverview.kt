@@ -191,7 +191,20 @@ internal fun ResumenOverview(
             }
         }
         if (showSupport) item { SupportSummaryCard(onSupport = onSupport, onHide = onHideSupport) }
-        if(remoteSummaryError!=null) item { Text(remoteSummaryError,color=ResumenMuted,fontSize=12.sp) }
+        if (remoteSummaryError != null) item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.warningLight)
+            ) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Resumen con datos locales", fontWeight = FontWeight.Bold, color = ResumenInk)
+                    Text(remoteSummaryError, color = ResumenMuted, fontSize = 12.sp)
+                    TextButton(onClick = { onRangeChanged(range.from.toString(), range.to.toString()) }) {
+                        Text("Actualizar resumen")
+                    }
+                }
+            }
+        }
         if (offline) item {
             Card(
                 modifier = Modifier.fillMaxWidth(),

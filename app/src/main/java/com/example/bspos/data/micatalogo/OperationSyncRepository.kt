@@ -87,6 +87,19 @@ class OperationSyncRepository @Inject constructor(private val api: MiCatalogoOpe
             "partner_transaction" -> nestedId("transaction") != null && nestedId("partner") == resource && resource != null
             "inventory_import_confirm" -> (ack["imported"]?.jsonPrimitive?.longOrNull ?: -1) >= 0
             "day_close" -> (ack["closure"] as? JsonObject)?.get("id") != null
+            "day_close_adjustment" -> {
+                val adjustment = ack["adjustment"] as? JsonObject
+                val request = body["request"] as? JsonObject
+                val expectedCount = request?.get("counted_cash")?.jsonPrimitive?.contentOrNull
+                val confirmedCount = adjustment?.get("counted_cash")?.jsonPrimitive?.contentOrNull
+                !resource.isNullOrBlank() && adjustment != null && nestedId("adjustment") != null &&
+                    adjustment?.get("closure_id")?.jsonPrimitive?.contentOrNull == resource &&
+                    adjustment.containsKey("counted_cash") &&
+                    adjustment["expected_cash"]?.jsonPrimitive?.contentOrNull?.let { MiCatalogoImportMapper.cents(it); true } == true &&
+                    (if (expectedCount == null) confirmedCount == null else confirmedCount != null && MiCatalogoImportMapper.cents(expectedCount) == MiCatalogoImportMapper.cents(confirmedCount)) &&
+                    !request?.get("reason")?.jsonPrimitive?.contentOrNull.isNullOrBlank() &&
+                    adjustment["reason"]?.jsonPrimitive?.contentOrNull == request?.get("reason")?.jsonPrimitive?.contentOrNull?.trim()
+            }
             else -> true
         }
     }

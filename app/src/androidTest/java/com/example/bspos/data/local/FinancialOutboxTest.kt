@@ -15,6 +15,39 @@ import retrofit2.Response
 import java.time.Instant
 
 class FinancialOutboxTest {
+    @Test fun reconciliationAckRequiresTheRequestedClosureCountAndReason() = runTest {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
+        try {
+            val id = java.util.UUID.randomUUID().toString()
+            val row = OperationOutboxEntity(id, "shop-1", "",
+                """{"type":"day_close_adjustment","resource_id":"closure-1","client_operation_uuid":"$id","request":{"reason":"QA count","counted_cash":"125.00"}}""", Instant.now())
+            val dao = db.operationOutboxDao()
+            dao.insert(row)
+            var closure = "wrong"
+            var count = "125.00"
+            var reason = "QA count"
+            val api = object : MiCatalogoOperationApi {
+                override suspend fun submitAccount(payload: JsonObject): Response<JsonObject> = error("Not an account operation")
+                override suspend fun submit(shopId: String, payload: JsonObject): Response<JsonObject> = Response.success(buildJsonObject {
+                    put("client_operation_uuid", id)
+                    put("adjustment", buildJsonObject { put("id", "adjustment-1"); put("closure_id", closure)
+                        put("expected_cash", "120.00"); put("counted_cash", count); put("reason", reason) })
+                })
+            }
+            val sync = OperationSyncRepository(api, dao, Json)
+            assertEquals(OperationSubmission.RETRY, sync.submit(dao.find(id)!!))
+            closure = "closure-1"; count = "126.00"
+            assertEquals(OperationSubmission.RETRY, sync.submit(dao.find(id)!!))
+            count = "125.00"; reason = "wrong reason"
+            assertEquals(OperationSubmission.RETRY, sync.submit(dao.find(id)!!))
+            reason = "QA count"
+            assertEquals(OperationSubmission.SENT, sync.submit(dao.find(id)!!))
+            assertEquals(row.payload, dao.find(id)!!.payload)
+            assertEquals(1, dao.pendingRefreshes().size)
+        } finally { db.close() }
+    }
+
     @Test fun financialRetryPreservesPayloadAndAckConflictBlocks() = runTest {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()

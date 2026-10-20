@@ -62,11 +62,11 @@ class NavigationBaselineTest {
             for (role in listOf("owner", "manager", "sales", "accountant", "barber", "grocery", "cash", "expenses", "services", "reports")) {
                 runBlocking { connection.logout() }
                 compose.activityRule.scenario.recreate()
-                compose.waitUntil(45000) { compose.onAllNodesWithText("Iniciar sesion").fetchSemanticsNodes().isNotEmpty() }
+                compose.waitUntil(45000) { compose.onAllNodesWithText("Iniciar sesión").fetchSemanticsNodes().isNotEmpty() }
                 compose.onAllNodes(hasSetTextAction())[0].performTextReplacement("qa-nav-$role@example.test")
                 compose.onAllNodes(hasSetTextAction())[1].performTextReplacement("QA-NAV-2026!")
                 androidx.test.espresso.Espresso.closeSoftKeyboard()
-                compose.onNodeWithText("Iniciar sesion").performClick()
+                compose.onNodeWithText("Iniciar sesión").performClick()
                 compose.waitUntil(45000) { compose.onAllNodes(hasContentDescription("Abrir menu") or hasContentDescription("Abrir menú")).fetchSemanticsNodes().isNotEmpty() }
                 compose.onAllNodes(hasContentDescription("Abrir menu") or hasContentDescription("Abrir menú"))[0].performClick()
                 compose.waitForIdle()

@@ -68,11 +68,11 @@ class NavigationLiveRevocationTest {
             shell("settings put secure autofill_service null")
             runBlocking { connection.logout() }
             compose.activityRule.scenario.recreate()
-            compose.waitUntil(45000) { compose.onAllNodesWithText("Iniciar sesion").fetchSemanticsNodes().isNotEmpty() }
+            compose.waitUntil(45000) { compose.onAllNodesWithText("Iniciar sesión").fetchSemanticsNodes().isNotEmpty() }
             compose.onAllNodes(hasSetTextAction())[0].performTextReplacement("qa-nav-services@example.test")
             compose.onAllNodes(hasSetTextAction())[1].performTextReplacement("QA-NAV-2026!")
             androidx.test.espresso.Espresso.closeSoftKeyboard()
-            compose.onNodeWithText("Iniciar sesion").performClick()
+            compose.onNodeWithText("Iniciar sesión").performClick()
             compose.waitUntil(45000) { compose.onAllNodesWithContentDescription("Abrir menu").fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithContentDescription("Abrir menu").performClick()
             compose.onNodeWithText("Buscar en el menú…").performTextReplacement("Fotos")
@@ -137,11 +137,11 @@ class NavigationLiveRevocationTest {
         try {
             runBlocking { connection.logout() }
             compose.activityRule.scenario.recreate()
-            compose.waitUntil(45000) { compose.onAllNodesWithText("Iniciar sesion").fetchSemanticsNodes().isNotEmpty() }
+            compose.waitUntil(45000) { compose.onAllNodesWithText("Iniciar sesión").fetchSemanticsNodes().isNotEmpty() }
             compose.onAllNodes(hasSetTextAction())[0].performTextReplacement("qa-nav-services@example.test")
             compose.onAllNodes(hasSetTextAction())[1].performTextReplacement("QA-NAV-2026!")
             androidx.test.espresso.Espresso.closeSoftKeyboard()
-            compose.onNodeWithText("Iniciar sesion").performClick()
+            compose.onNodeWithText("Iniciar sesión").performClick()
             compose.waitUntil(45000) { compose.onAllNodesWithContentDescription("Abrir menu").fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithContentDescription("Abrir menu").performClick()
             compose.onNodeWithText("Buscar en el menú…").performTextReplacement("Servicios")

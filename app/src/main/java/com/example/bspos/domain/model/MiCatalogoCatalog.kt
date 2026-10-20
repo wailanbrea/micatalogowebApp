@@ -4,6 +4,7 @@ data class MiCatalogoShop(
     val id: String,
     val name: String,
     val slug: String?,
+    val businessTimezone: String = "America/Santo_Domingo",
     val businessType: String? = null,
     val businessTypeLabel: String? = null,
     val capabilities: Map<String, String> = emptyMap(),

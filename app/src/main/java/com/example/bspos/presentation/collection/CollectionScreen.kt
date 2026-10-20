@@ -1,6 +1,7 @@
 package com.example.bspos.presentation.collection
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -15,11 +16,14 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.filled.AccountBalanceWallet
-import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.CheckCircle
 import com.example.bspos.presentation.common.BSPOSButton as Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -29,6 +33,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -54,6 +59,10 @@ import com.example.bspos.domain.model.Sale
 import com.example.bspos.presentation.common.BSPOSAlertDialog as AlertDialog
 import com.example.bspos.presentation.common.UiErrorBus
 import java.util.Locale
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 @Composable
 fun CollectionScreen(viewModel: CollectionViewModel = hiltViewModel()) {
@@ -65,20 +74,41 @@ fun CollectionScreen(viewModel: CollectionViewModel = hiltViewModel()) {
     val customers by viewModel.customers.collectAsState()
     val sales by viewModel.sales.collectAsState()
     val customer by viewModel.customer.collectAsState()
+    val history by viewModel.paymentHistory.collectAsState()
     val collecting by viewModel.collecting.collectAsState()
     val message by viewModel.message.collectAsState()
-    var choosing by remember { mutableStateOf(false) }
     var method by remember { mutableStateOf(PaymentMethod.CASH) }
     var tab by remember { mutableStateOf("Por cobrar") }
-    val filteredSales = sales
-        .filter { customer == null || it.customerId == customer?.id }
-        .filter { sale -> if (tab == "Por cobrar") sale.pendingAmount > 0 else sale.pendingAmount <= 0 }
+    var query by remember(tab) { mutableStateOf("") }
+    var period by remember { mutableStateOf("Hoy") }
+    var historyMethod by remember { mutableStateOf("Todos") }
+    var selectedReceipt by remember { mutableStateOf<CollectionPaymentHistoryItem?>(null) }
+    val pendingSales = sales.filter { it.pendingAmount > 0 && it.customerId != null }
     val customersById = customers.associateBy { it.id }
-    val customersWithBalance = customers
-        .filter { it.isActive && it.deletedAt == null && it.balance > 0L && (customer == null || it.id == customer?.id) }
+    val debtorIds = (customers.filter { it.isActive && it.deletedAt == null && it.balance > 0L }.map { it.id } + pendingSales.mapNotNull { it.customerId }).toSet()
+    val debtorCustomers = customers.filter { it.id in debtorIds }
         .sortedByDescending { it.balance }
-    val localSaleCustomerIds = filteredSales.mapNotNull { it.customerId }.toSet()
-    val remoteOnlyCustomers = customersWithBalance.filterNot { it.id in localSaleCustomerIds }
+    val dueByCustomer = debtorCustomers.associate { debtor ->
+        debtor.id to maxOf(debtor.balance, pendingSales.filter { it.customerId == debtor.id }.sumOf { it.pendingAmount })
+    }
+    val visibleDebtors = debtorCustomers.filter { debtor ->
+        query.isBlank() || listOf(debtor.fullName, debtor.businessName, debtor.taxId.orEmpty(), debtor.phone.orEmpty())
+            .any { it.contains(query.trim(), ignoreCase = true) }
+    }
+    val today = LocalDate.now()
+    val filteredHistory = history.filter { row ->
+        val day = row.at.atZone(ZoneId.systemDefault()).toLocalDate()
+        val periodMatches = when (period) {
+            "Hoy" -> day == today
+            "Esta semana" -> !day.isBefore(today.minusDays((today.dayOfWeek.value - 1).toLong()))
+            "Este mes" -> day.year == today.year && day.month == today.month
+            else -> true
+        }
+        periodMatches && (historyMethod == "Todos" || row.method == historyMethod) &&
+            (query.isBlank() || listOf(row.customerName, row.customerTaxId.orEmpty(), row.receipt, row.reference.orEmpty(), row.notes.orEmpty())
+                .any { it.contains(query.trim(), ignoreCase = true) })
+    }
+    val groupedHistory = filteredHistory.groupBy { it.at.atZone(ZoneId.systemDefault()).toLocalDate() }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize().background(BSPOSTheme.colors.background).imePadding(),
@@ -86,116 +116,211 @@ fun CollectionScreen(viewModel: CollectionViewModel = hiltViewModel()) {
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf("Por cobrar", "Pagados").forEach { option ->
-                    FilterChip(
-                        selected = tab == option,
-                        onClick = { tab = option },
-                        label = { Text(option, fontWeight = FontWeight.Bold) },
-                        colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = if (tab == option) BSPOSTheme.colors.secondaryNavy else BSPOSTheme.colors.surface,
-                            selectedLabelColor = if (tab == option) androidx.compose.ui.graphics.Color.White else BSPOSTheme.colors.textPrimary,
-                            containerColor = BSPOSTheme.colors.surface
-                        )
-                    )
-                }
-            }
-        }
-        item {
-            Card(
-                onClick = { choosing = true },
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(18.dp),
-                colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface)
-            ) {
-                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Person, null, tint = BSPOSTheme.colors.primary, modifier = Modifier.size(24.dp))
-                    Spacer(Modifier.width(10.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(customer?.fullName ?: "Seleccionar cliente", fontWeight = FontWeight.ExtraBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                        Text(customer?.let { "Saldo: ${money(it.balance)}" } ?: "Elige un cliente con saldo pendiente", color = BSPOSTheme.colors.textSecondary)
+            Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(BSPOSTheme.colors.surface).padding(4.dp)) {
+                listOf("Por cobrar", "Historial Pagados").forEach { option ->
+                    val selected = tab == option
+                    Surface(
+                        onClick = { tab = option; query = "" },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp),
+                        color = if (selected) BSPOSTheme.colors.background else androidx.compose.ui.graphics.Color.Transparent,
+                        shadowElevation = if (selected) 1.dp else 0.dp
+                    ) {
+                        Text(option, Modifier.padding(horizontal = 8.dp, vertical = 12.dp),
+                            color = if (selected) BSPOSTheme.colors.textPrimary else BSPOSTheme.colors.textSecondary,
+                            fontWeight = FontWeight.Bold, textAlign = TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
-                    Text("Cambiar", modifier = Modifier.padding(start = 8.dp), color = BSPOSTheme.colors.primary, fontWeight = FontWeight.Bold)
                 }
             }
         }
         if (tab == "Por cobrar") {
+            val dueTotal = dueByCustomer.values.sum()
             item {
-                CollectionPaymentMethods(method, onSelect = { method = it })
+                CollectionDueSummary(debtorCustomers.size, dueTotal)
             }
             item {
-                Text("Cuentas por cobrar", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold)
+                OutlinedTextField(query, { query = it }, Modifier.fillMaxWidth(), singleLine = true,
+                    placeholder = { Text("Buscar cliente por nombre o RNC…") }, leadingIcon = { Icon(Icons.Default.Search, null) })
             }
-            if (filteredSales.isEmpty()) {
-                if (remoteOnlyCustomers.isEmpty()) {
-                    item { CreditEmptyState(tab) }
-                } else {
-                    item { Text("Clientes con saldo pendiente", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold) }
-                    items(remoteOnlyCustomers, key = { "customer-${it.id}" }) { debtor ->
-                        RemoteCustomerDebtCard(
-                            customer = debtor,
-                            method = method,
-                            busy = collecting,
-                            onCollect = { amount -> viewModel.collectRemote(debtor, amount, method) }
-                        )
-                    }
+            item {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Seleccionar cliente", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold, modifier = Modifier.weight(1f))
+                    Text("${visibleDebtors.size} pendientes", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelMedium)
                 }
+            }
+            if (visibleDebtors.isEmpty()) {
+                item { CreditEmptyState(tab) }
             } else {
-                items(filteredSales, key = { it.id }) { sale ->
-                    val saleCustomer = sale.customerId?.let(customersById::get)
-                    PendingSaleCard(
-                        sale = sale,
-                        customer = saleCustomer,
-                        method = method,
-                        busy = collecting,
-                        onCollect = { amount ->
-                            if (saleCustomer == null) {
-                                UiErrorBus.show("Esta venta no tiene un cliente asociado para registrar el abono.")
-                            } else {
-                                viewModel.select(saleCustomer)
-                                viewModel.collect(sale.id, amount, method)
+                items(visibleDebtors, key = { "debtor-${it.id}" }) { debtor ->
+                    val selected = customer?.id == debtor.id
+                    DebtorSelectorCard(debtor, dueByCustomer[debtor.id] ?: debtor.balance, selected, onClick = {
+                        viewModel.select(if (selected) null else debtor)
+                    })
+                    if (selected) {
+                        CollectionPaymentMethods(method, onSelect = { method = it })
+                        val invoices = pendingSales.filter { it.customerId == debtor.id }
+                        if (invoices.isEmpty()) {
+                            RemoteCustomerDebtCard(debtor, method, collecting) { amount -> viewModel.collectRemote(debtor, amount, method) }
+                        } else {
+                            invoices.forEach { sale ->
+                                PendingSaleCard(sale, debtor, method, collecting) { amount ->
+                                    viewModel.collect(sale.id, amount, method)
+                                }
                             }
                         }
-                    )
-                }
-                if (remoteOnlyCustomers.isNotEmpty()) {
-                    item { Text("Otros clientes con saldo", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold) }
-                    items(remoteOnlyCustomers, key = { "customer-${it.id}" }) { debtor ->
-                        RemoteCustomerDebtCard(
-                            customer = debtor,
-                            method = method,
-                            busy = collecting,
-                            onCollect = { amount -> viewModel.collectRemote(debtor, amount, method) }
-                        )
                     }
                 }
             }
         } else {
             item {
-                Text("Ventas pagadas", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold)
+                OutlinedTextField(query, { query = it }, Modifier.fillMaxWidth(), singleLine = true,
+                    placeholder = { Text("Buscar cliente, recibo o RNC…") }, leadingIcon = { Icon(Icons.Default.Search, null) })
             }
-            if (filteredSales.isEmpty()) {
-                item { CreditEmptyState(tab) }
+            item {
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("Hoy", "Esta semana", "Este mes").forEach { label ->
+                        FilterChip(selected = period == label, onClick = { period = label }, label = { Text(label) })
+                    }
+                    listOf("Todos", "Efectivo", "Transferencia", "Tarjeta", "Cheque").forEach { label ->
+                        FilterChip(selected = historyMethod == label, onClick = { historyMethod = label }, label = { Text(label) })
+                    }
+                }
+            }
+            item { CollectionHistorySummary(filteredHistory) }
+            if (groupedHistory.isEmpty()) {
+                item { CreditEmptyState("Historial Pagados") }
             } else {
-                items(filteredSales, key = { it.id }) { sale ->
-                    PaidSaleCard(sale, (sale.customerId?.let(customersById::get) ?: customer)?.fullName ?: "Cliente")
+                groupedHistory.toSortedMap(compareByDescending { it }).forEach { (day, rows) ->
+                    item(key = "day-$day") {
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Text(day.format(DateTimeFormatter.ofPattern("EEEE · d 'de' MMMM", Locale.forLanguageTag("es"))).replaceFirstChar { it.uppercase() },
+                                modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                            Text("${rows.size} cobros", color = BSPOSTheme.colors.textSecondary)
+                        }
+                    }
+                    items(rows, key = { "payment-${it.id}" }) { payment ->
+                        PaymentHistoryCard(payment) { selectedReceipt = payment }
+                    }
                 }
             }
         }
     }
 
-    if (choosing) {
-        CustomerPicker(
-            customers = customers.filter { it.isActive && it.deletedAt == null },
-            selectedId = customer?.id,
-            onSelect = { selected ->
-                viewModel.select(selected)
-                choosing = false
-            },
-            onDismiss = { choosing = false }
-        )
+    selectedReceipt?.let { receipt ->
+        AlertDialog(onDismissRequest = { selectedReceipt = null }, title = { Text("Recibo ${receipt.receipt}") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(receipt.customerName, fontWeight = FontWeight.Bold)
+                    Text("${receipt.at.atZone(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("d MMM yyyy · h:mm a", Locale.forLanguageTag("es")))} · ${receipt.method}")
+                    Text("Monto recibido", color = BSPOSTheme.colors.textSecondary)
+                    Text(money(receipt.amount), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
+                    receipt.reference?.takeIf(String::isNotBlank)?.let { Text("Referencia: $it") }
+                    receipt.notes?.takeIf(String::isNotBlank)?.let { Text(it, color = BSPOSTheme.colors.textSecondary) }
+                }
+            }, confirmButton = { TextButton(onClick = { selectedReceipt = null }) { Text("Cerrar") } })
     }
     message?.let { text -> AlertDialog(onDismissRequest = viewModel::consumeMessage, title = { Text("Cobros") }, text = { Text(text) }, confirmButton = { TextButton(onClick = viewModel::consumeMessage) { Text("Aceptar") } }) }
+}
+
+@Composable
+private fun CollectionDueSummary(customers: Int, total: Long) {
+    Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.secondaryNavy)) {
+        Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("SALDOS POR COBRAR", color = androidx.compose.ui.graphics.Color.White.copy(alpha = .78f),
+                    style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                Text("$customers clientes", color = BSPOSTheme.colors.success, fontWeight = FontWeight.Bold)
+            }
+            Text(money(total), color = androidx.compose.ui.graphics.Color.White,
+                style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold)
+        }
+    }
+}
+
+@Composable
+private fun DebtorSelectorCard(customer: Customer, balance: Long, selected: Boolean, onClick: () -> Unit) {
+    Card(onClick = onClick, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = if (selected) BSPOSTheme.colors.primary.copy(alpha = .07f) else BSPOSTheme.colors.surface),
+        border = androidx.compose.foundation.BorderStroke(if (selected) 1.5.dp else 1.dp,
+            if (selected) BSPOSTheme.colors.primary else BSPOSTheme.colors.outline.copy(alpha = .35f))) {
+        Row(Modifier.fillMaxWidth().padding(13.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(11.dp)) {
+            Surface(shape = RoundedCornerShape(12.dp), color = if (selected) BSPOSTheme.colors.primary else BSPOSTheme.colors.background) {
+                Text(customer.fullName.trim().take(2).uppercase(), Modifier.padding(11.dp),
+                    color = if (selected) androidx.compose.ui.graphics.Color.White else BSPOSTheme.colors.textSecondary,
+                    fontWeight = FontWeight.ExtraBold)
+            }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(customer.fullName, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(customer.taxId?.takeIf(String::isNotBlank)?.let { "RNC: $it" } ?: customer.phone.orEmpty(),
+                    style = MaterialTheme.typography.bodySmall, color = BSPOSTheme.colors.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            Column(horizontalAlignment = Alignment.End) {
+                Text("SALDO", style = MaterialTheme.typography.labelSmall, color = BSPOSTheme.colors.textSecondary)
+                Text(money(balance), color = if (balance > 0) BSPOSTheme.colors.error else BSPOSTheme.colors.textPrimary,
+                    fontWeight = FontWeight.ExtraBold, maxLines = 1)
+            }
+            if (selected) Icon(Icons.Default.CheckCircle, null, tint = BSPOSTheme.colors.primary, modifier = Modifier.size(19.dp))
+        }
+    }
+}
+
+@Composable
+private fun CollectionHistorySummary(rows: List<CollectionPaymentHistoryItem>) {
+    val total = rows.sumOf { it.amount }
+    val cash = rows.filter { it.method == "Efectivo" }.sumOf { it.amount }
+    val transfer = rows.filter { it.method == "Transferencia" }.sumOf { it.amount }
+    val card = rows.filter { it.method == "Tarjeta" }.sumOf { it.amount }
+    Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.secondaryNavy)) {
+        Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("COBROS DEL PERÍODO", color = androidx.compose.ui.graphics.Color.White.copy(alpha = .78f),
+                    style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                Text("${rows.size} registrados", color = BSPOSTheme.colors.success, fontWeight = FontWeight.Bold)
+            }
+            Text(money(total), color = androidx.compose.ui.graphics.Color.White,
+                style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold)
+            androidx.compose.material3.HorizontalDivider(color = androidx.compose.ui.graphics.Color.White.copy(alpha = .12f))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf("Efectivo" to cash, "Transferencia" to transfer, "Tarjeta" to card).forEach { (label, amount) ->
+                    Column(Modifier.weight(1f)) {
+                        Text(label, style = MaterialTheme.typography.labelSmall, color = androidx.compose.ui.graphics.Color.White.copy(alpha = .65f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(money(amount), style = MaterialTheme.typography.labelLarge, color = androidx.compose.ui.graphics.Color.White, fontWeight = FontWeight.Bold, maxLines = 1)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+internal fun PaymentHistoryCard(payment: CollectionPaymentHistoryItem, onOpen: () -> Unit) {
+    Card(onClick = onOpen, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(17.dp),
+        colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface)) {
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Text(payment.customerName, fontWeight = FontWeight.ExtraBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    val identity = payment.customerTaxId?.takeIf(String::isNotBlank)?.let { "RNC: $it · " }.orEmpty()
+                    Text("$identity${payment.receipt} · ${payment.at.atZone(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("h:mm a", Locale.forLanguageTag("es")))}",
+                            style = MaterialTheme.typography.bodySmall, color = BSPOSTheme.colors.textSecondary)
+                }
+                Surface(shape = RoundedCornerShape(50), color = BSPOSTheme.colors.success.copy(alpha = .12f)) {
+                    Text("✓ Cobrado", Modifier.padding(horizontal = 10.dp, vertical = 6.dp), color = BSPOSTheme.colors.success, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelMedium)
+                }
+            }
+            Text("+${money(payment.amount)}", modifier = Modifier.align(Alignment.End), color = BSPOSTheme.colors.success,
+                style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
+            androidx.compose.material3.HorizontalDivider(color = BSPOSTheme.colors.outline.copy(alpha = .28f))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Surface(shape = RoundedCornerShape(9.dp), color = BSPOSTheme.colors.background) {
+                    Text(payment.method, Modifier.padding(horizontal = 10.dp, vertical = 7.dp), color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+                }
+                Spacer(Modifier.weight(1f))
+                Text("Ver recibo", color = BSPOSTheme.colors.primary, fontWeight = FontWeight.Bold)
+                Icon(Icons.AutoMirrored.Filled.ReceiptLong, null, tint = BSPOSTheme.colors.primary, modifier = Modifier.padding(start = 8.dp).size(19.dp))
+            }
+        }
+    }
 }
 
 @Composable

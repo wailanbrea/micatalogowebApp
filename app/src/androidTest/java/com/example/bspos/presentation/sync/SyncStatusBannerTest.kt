@@ -16,7 +16,7 @@ class SyncStatusBannerTest {
         var resolutions = 0
         compose.setContent { BSPOSTheme { SyncStatusBanner(state.value, onRetry = { attempts++ }, onResolve = { resolutions++ }) } }
         compose.onNodeWithText("Verificando sincronización…").assertExists()
-        compose.onNodeWithText("Sincronizado").assertDoesNotExist()
+        compose.onNodeWithText("Sin operaciones pendientes").assertDoesNotExist()
         compose.runOnIdle { state.value = SyncStatus(SyncPhase.PENDING, 2) }
         compose.onNodeWithText("Pendiente de sincronización · 2").assertExists()
         compose.runOnIdle { state.value = SyncStatus(SyncPhase.BLOCKED, 1, "La cantidad cambió; revisa el conteo.") }
@@ -29,7 +29,30 @@ class SyncStatusBannerTest {
         compose.runOnIdle { assertEquals(1, attempts); assertEquals(0, resolutions); state.value = SyncStatus(SyncPhase.RETRY, 1) }
         compose.onNodeWithText("Reintentando · 1").assertExists()
         compose.runOnIdle { state.value = SyncStatus(SyncPhase.SYNCED) }
-        compose.onNodeWithText("Sincronizado").assertExists()
+        compose.onNodeWithText("Sin operaciones pendientes").assertDoesNotExist()
+        compose.onNodeWithText("Detalles").assertDoesNotExist()
         compose.onNodeWithText("Reintentar").assertDoesNotExist()
+    }
+
+    @Test fun detailsKeepBlockedWorkVisibleAndRequireAnExplicitRetry() {
+        var attempts = 0
+        compose.setContent { BSPOSTheme {
+            SyncStatusBanner(
+                SyncStatus(SyncPhase.BLOCKED, count = 6, error = "Revisa la cantidad disponible.",
+                    operationCount = 2, saleCount = 1, paymentCount = 2, refreshCount = 1, blockedCount = 1),
+                onRetry = { attempts++ }
+            )
+        } }
+        compose.onNodeWithText("Detalles").performClick()
+        compose.onNodeWithText("Sincronización de esta tienda").assertExists()
+        compose.onNodeWithText("Ventas").assertExists()
+        compose.onNodeWithText("Cobros").assertExists()
+        compose.onNodeWithText("Total pendiente").assertExists()
+        compose.onNodeWithText("1 requieren revisión antes de enviarse.").assertExists()
+        compose.runOnIdle { assertEquals(0, attempts) }
+        compose.onNodeWithText("Revisar").performClick()
+        compose.onNodeWithText("Operación detenida").assertExists()
+        compose.onNodeWithText("Reintentar").performClick()
+        compose.runOnIdle { assertEquals(1, attempts) }
     }
 }

@@ -190,6 +190,7 @@ class DecantsWorkspaceTest {
         compose.onNodeWithText("3 botella(s) · costo", substring = true).assertExists()
         compose.onNodeWithText("Guardar y usar en Decants").assertIsNotEnabled()
         compose.onNodeWithText("Contenido de la botella (ml)").performTextInput("100")
+        androidx.test.espresso.Espresso.closeSoftKeyboard()
         compose.onNodeWithText("Guardar y usar en Decants").assertIsEnabled().performClick()
         compose.runOnIdle { assertEquals(100, configured) }
     }

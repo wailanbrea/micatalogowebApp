@@ -53,6 +53,7 @@ class DayCloseContentTest {
         compose.onNodeWithTag("day-close-list").performScrollToNode(hasTestTag("day-close-save"))
         compose.onNodeWithTag("day-close-save").performClick()
         compose.onNodeWithTag("day-close-counted").performTextInput("1..2")
+        androidx.test.espresso.Espresso.closeSoftKeyboard()
         compose.onNodeWithText("Guardar", substring = false).performClick()
         compose.onNodeWithText("Indica un monto válido con hasta dos decimales.").assertExists()
         assertFalse(saved)
@@ -69,5 +70,47 @@ class DayCloseContentTest {
         show(stale = true)
         compose.onNodeWithText("VENTAS COBRADAS").assertDoesNotExist()
         compose.onNodeWithTag("day-close-save").assertDoesNotExist()
+    }
+    @Test fun reconciliationKeepsCurrentCashSeparateFromTheRecordedSnapshot() {
+        val record = DailyClosureRecordDto("closure", date, expectedCash = 100.0, countedCash = 95.0, difference = -5.0,
+            closedAt = "2026-10-08T03:13:35Z")
+        val state = FinanceUiState(fromDate = date, toDate = date,
+            dailyClose = DailyCloseDto(date, salesCash = 200.0, debtCollectionsCash = 25.0, expectedCash = 225.0, closure = record))
+        compose.setContent { BSPOSTheme { DayCloseContent(state, {}, { _, _ -> saved = true }, {}) } }
+        val currentCash = com.example.bspos.core.money.MoneyUtils.formatCents(22500, com.example.bspos.domain.model.CurrencyUnit.DOP)
+        val originalCash = com.example.bspos.core.money.MoneyUtils.formatCents(10000, com.example.bspos.domain.model.CurrencyUnit.DOP)
+        compose.onNodeWithTag("day-close-list").performScrollToNode(hasTestTag("day-close-live-cash"))
+        val liveValues = hasText(currentCash) and hasAnyAncestor(hasTestTag("day-close-live-cash"))
+        compose.onAllNodes(liveValues).assertCountEquals(2)
+        compose.onAllNodes(liveValues)[0].assertIsDisplayed()
+        compose.onNodeWithTag("day-close-list").performScrollToNode(hasText("Conciliación registrada:", substring = true))
+        compose.onNodeWithText("Conciliación registrada:", substring = true).assertIsDisplayed()
+        compose.onNodeWithTag("day-close-list").performScrollToNode(hasTestTag("day-close-recorded-snapshot"))
+        compose.onNode(hasText(originalCash) and hasAnyAncestor(hasTestTag("day-close-recorded-snapshot"))).assertIsDisplayed()
+        compose.onNodeWithTag("day-close-save").assertDoesNotExist()
+        assertFalse(saved)
+    }
+    @Test fun auditedAdjustmentRequiresReasonAndSendsAnExplicitNewCount() {
+        var received: Pair<String?, String>? = null
+        val record = DailyClosureRecordDto("closure", date, expectedCash = 100.0, countedCash = 95.0)
+        val state = FinanceUiState(fromDate = date, toDate = date, access = com.example.bspos.presentation.finance.FinanceAccess(dayClose = true, mutateDayClose = true),
+            dailyClose = DailyCloseDto(date, expectedCash = 120.0, closure = record, canAdjust = true))
+        compose.setContent { BSPOSTheme { DayCloseContent(state, {}, { _, _ -> error("Original must not be overwritten") }, {}, { count, reason -> received = count to reason }) } }
+        compose.onNodeWithTag("day-close-list").performScrollToNode(hasTestTag("day-close-adjust"))
+        compose.onNodeWithTag("day-close-adjust").performClick()
+        compose.onNodeWithTag("day-close-adjust-confirm").assertIsNotEnabled()
+        compose.onNodeWithTag("day-close-adjust-reason").performTextInput("QA nuevo arqueo revisado")
+        compose.onNodeWithTag("day-close-adjust-count").performTextReplacement("1..2")
+        compose.onNodeWithTag("day-close-adjust-confirm").assertIsNotEnabled()
+        compose.onNodeWithTag("day-close-adjust-count").performTextReplacement("125.00")
+        androidx.test.espresso.Espresso.closeSoftKeyboard()
+        compose.onNodeWithTag("day-close-adjust-confirm").assertIsEnabled().performClick()
+        compose.runOnIdle { assertEquals("125.00" to "QA nuevo arqueo revisado", received) }
+    }
+    @Test fun readOnlyAccessCannotMountAdjustmentEvenWithASpoofedCapability() {
+        val state = FinanceUiState(fromDate = date, toDate = date,
+            dailyClose = DailyCloseDto(date, closure = DailyClosureRecordDto("closure", date), canAdjust = true))
+        compose.setContent { BSPOSTheme { DayCloseContent(state, {}, { _, _ -> }, {}, { _, _ -> error("Read-only") }) } }
+        compose.onNodeWithTag("day-close-adjust").assertDoesNotExist()
     }
 }

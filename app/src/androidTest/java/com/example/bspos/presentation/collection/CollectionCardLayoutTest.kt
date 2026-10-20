@@ -76,6 +76,23 @@ class CollectionCardLayoutTest {
         compose.runOnIdle { assertEquals(0, calls) }
     }
 
+    @Test fun paymentHistoryCardExposesReceiptActionAndAmount() {
+        var opened = false
+        val payment = CollectionPaymentHistoryItem(
+            id = "payment-1", customerId = customer.id.toString(), customerName = "Cliente de prueba",
+            receipt = "REC-00104", amount = 1_550_000, method = "Efectivo", at = Instant.parse("2026-10-17T16:30:00Z")
+        )
+        compose.setContent { BSPOSTheme {
+            Box(Modifier.width(360.dp).padding(16.dp)) { PaymentHistoryCard(payment) { opened = true } }
+        } }
+
+        screenshot("payment-history-card")
+        compose.onNodeWithText("Cliente de prueba").assertIsDisplayed()
+        compose.onNodeWithText("REC-00104", substring = true).assertIsDisplayed()
+        compose.onNodeWithText("Ver recibo").performClick()
+        compose.runOnIdle { assertTrue("Receipt must open from the payment history", opened) }
+    }
+
     @Test fun allPaymentMethodsFitTwoColumnsOnSmallPhone() {
         var selected: PaymentMethod? = null
         compose.setContent { BSPOSTheme {

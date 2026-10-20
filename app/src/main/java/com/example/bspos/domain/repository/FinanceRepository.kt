@@ -46,6 +46,8 @@ interface FinanceRepository {
         notes: String? = null
     ): MiCatalogoResult<DailyCloseDto>
 
+    suspend fun adjustDailyClose(shopId: String, closureId: String, countedCash: String?, reason: String): MiCatalogoResult<DailyCloseDto>
+
     suspend fun getCurrentCashSession(
         shopId: String
     ): MiCatalogoResult<CashCurrentSessionResponseDto>

@@ -1092,7 +1092,11 @@ fun BSPOSNavHost(
                 )
             }
         }
-        composable(Screen.Practice.route) { FeatureDestination("practice", canSeeMenu("practice"), navController, canSeeMenu) }
+        composable(Screen.Practice.route) {
+            RestrictedMenuDestination(canSeeMenu("practice"), navController) {
+                com.example.bspos.presentation.practice.PracticeScreen()
+            }
+        }
         composable(Screen.Support.route) {
             RestrictedMenuDestination(canOpenSupport, navController) {
                 SupportChatScreen(onNavigateBack = { navController.popBackStack() })

@@ -173,6 +173,7 @@ class MiCatalogoConnectionRepositoryImpl @Inject constructor(
                     id = id,
                     name = shop.name?.ifBlank { id } ?: id,
                     slug = shop.slug,
+                    businessTimezone = shop.businessTimezone,
                     businessType = shop.businessType,
                     businessTypeLabel = shop.businessTypeLabel,
                     capabilities = shop.capabilities,

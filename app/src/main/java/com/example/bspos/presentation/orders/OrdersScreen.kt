@@ -318,6 +318,11 @@ private fun OrdersContent(
                 }
             }
 
+            if (search.isNotBlank() || status != "all") item {
+                TextButton(onClick = { search = ""; status = "all"; onApplyFilters("", "all") }, enabled = !state.refreshing) {
+                    Text("Limpiar búsqueda y filtros")
+                }
+            }
             if (state.rows.isEmpty()) {
                 item {
                     if (isOrders && showPunttoEmptyState) {
@@ -327,8 +332,9 @@ private fun OrdersContent(
                             Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                                 Icon(Icons.Outlined.ReceiptLong, null, tint = BSPOSTheme.colors.primary, modifier = Modifier.width(42.dp).height(42.dp))
                                 Spacer(Modifier.height(10.dp))
-                                Text(emptyTitle, fontWeight = FontWeight.Bold, color = BSPOSTheme.colors.textPrimary)
-                                Text(emptyDescription, color = BSPOSTheme.colors.textSecondary)
+                                val filtered = state.search.isNotBlank() || state.status != "all"
+                                Text(if (filtered) "No hay resultados para estos filtros" else emptyTitle, fontWeight = FontWeight.Bold, color = BSPOSTheme.colors.textPrimary)
+                                Text(if (filtered) "Limpia la búsqueda y los filtros para ver todos los registros." else emptyDescription, color = BSPOSTheme.colors.textSecondary)
                             }
                         }
                     }

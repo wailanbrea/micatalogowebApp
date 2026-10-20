@@ -336,6 +336,26 @@ fun PosScreen(
                             PunttoRecentGrid(recentProducts.filter { !wholesaleMode || (it.wholesalePrice ?: 0L) > 0L }, quantities, selectedQuantities, settings.allowNegativeStock, sourceProductNames, { viewModel.add(it) }, wholesaleMode)
                         }
                         Spacer(Modifier.height(8.dp))
+                        if (mobileCatalog.isEmpty()) {
+                            Column(
+                                Modifier.weight(1f).fillMaxWidth().padding(20.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center
+                            ) {
+                                Text("No encontramos coincidencias", fontWeight = FontWeight.Bold)
+                                Text(
+                                    if (wholesaleMode) "Revisa la búsqueda y los productos con precio por mayor."
+                                    else "Prueba otro nombre, código o tipo de producto.",
+                                    color = BSPOSTheme.colors.textSecondary
+                                )
+                                if (query.isNotBlank() || selectedCategoryId != null) {
+                                    TextButton(onClick = { query = ""; selectedCategoryId = null }) { Text("Limpiar búsqueda y categoría") }
+                                }
+                                if (wholesaleMode) {
+                                    TextButton(onClick = { viewModel.setWholesaleMode(false) }, enabled = !isProcessing) { Text("Ver precios de detalle") }
+                                }
+                            }
+                        } else {
                         PunttoProductList(
                             products = mobileCatalog,
                             quantities = quantities,
@@ -347,6 +367,7 @@ fun PosScreen(
                             onChangeQuantity = { product, quantity -> viewModel.change(product.id, quantity) },
                             modifier = Modifier.weight(1f).fillMaxWidth()
                         )
+                        }
                     }
             }
         }

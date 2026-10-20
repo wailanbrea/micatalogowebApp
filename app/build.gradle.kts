@@ -84,8 +84,8 @@ android {
         applicationId = "com.bsolutions.micatalogo"
         minSdk = 26
         targetSdk = 37
-        versionCode = 122
-        versionName = "1.0.121"
+        versionCode = 126
+        versionName = "1.0.125"
         buildConfigField("String", "MICATALOGO_API_BASE_URL", "\"${miCatalogoApiBaseUrl.get()}\"")
 
         testInstrumentationRunner = if (qaProfile != null) "com.example.bspos.qa.IsolatedQaRunner" else "androidx.test.runner.AndroidJUnitRunner"
@@ -218,6 +218,7 @@ dependencies {
     implementation(libs.androidx.camera.lifecycle)
     implementation(libs.androidx.camera.view)
     implementation(libs.google.mlkit.barcode)
+    implementation(libs.google.mlkit.text)
 
     // Coroutines
     implementation(libs.kotlinx.coroutines.core)

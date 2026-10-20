@@ -29,6 +29,44 @@ class QuoteTerminalContentTest {
     }
     private var savedItems = 0
     private var savedCustomerId: String? = null
+    @Test fun savedQuoteErrorOffersExplicitRetryWithoutConvertingOrSaving() {
+        var retries = 0
+        compose.setContent { BSPOSTheme {
+            QuoteTerminalContent(QuoteUiState(loading = false, error = "Sin conexión de prueba"),
+                onAdd = {}, onRemove = {}, onClear = {}, onSave = { _, _, _, _, _ -> error("Must not save") },
+                onConvert = { error("Must not convert") }, onOpenSales = {}, onOpenTerminal = {},
+                onNavigateBack = {}, initialSavedTab = true, onReload = { retries++ })
+        } }
+        compose.onNodeWithText("Sin conexión de prueba").assertExists()
+        compose.onNodeWithText("Actualizar cotizaciones").performScrollTo().performClick()
+        compose.runOnIdle { assertEquals(1, retries) }
+    }
+    @Test fun savedQuotesFilterByCapturedStatusAndSearchWithoutHidingNewProducts() {
+        val rows = listOf(
+            FeatureRowDto(id = "q1", primary = "COT-VENCIDA", secondary = "Cliente Uno", status = "Vencida"),
+            FeatureRowDto(id = "q2", primary = "COT-CONVERTIDA", secondary = "Cliente Dos", status = "Convertida"),
+            FeatureRowDto(id = "q3", primary = "COT-BORRADOR", secondary = "Cliente Tres", status = "Borrador")
+        )
+        compose.setContent { BSPOSTheme {
+            QuoteTerminalContent(QuoteUiState(loading = false, products = products, rows = rows),
+                onAdd = {}, onRemove = {}, onClear = {}, onSave = { _, _, _, _, _ -> }, onConvert = {},
+                onOpenSales = {}, onOpenTerminal = {}, onNavigateBack = {}, initialSavedTab = true)
+        } }
+        compose.onNodeWithText("Convertida (1)").performScrollTo().performClick()
+        compose.onNodeWithTag("saved-quotes").performScrollToNode(hasText("COT-CONVERTIDA"))
+        compose.onNodeWithText("COT-CONVERTIDA").assertExists()
+        compose.onNodeWithText("COT-VENCIDA").assertDoesNotExist()
+        compose.onNodeWithTag("saved-quotes").performScrollToNode(hasText("Limpiar búsqueda y estado"))
+        compose.onNodeWithText("Limpiar búsqueda y estado").performClick()
+        compose.onNode(hasSetTextAction()).performTextReplacement("NO-EXISTE")
+        compose.onNodeWithTag("saved-quotes").performScrollToNode(hasText("No hay cotizaciones que coincidan con la búsqueda y el estado."))
+        compose.onNodeWithText("No hay cotizaciones que coincidan con la búsqueda y el estado.").assertExists()
+        compose.onNodeWithTag("saved-quotes").performScrollToNode(hasText("Nueva cotización"))
+        compose.onNodeWithText("Nueva cotización").performClick()
+        compose.onNodeWithText("Perfume de muestra 1").assertExists()
+        compose.onNodeWithText("Guardadas").performClick()
+        compose.onNode(hasSetTextAction()).assertTextContains("NO-EXISTE")
+    }
     private fun show(cart: Map<FeatureProductDto, Int> = emptyMap()) {
         compose.setContent {
             var state by remember { mutableStateOf(QuoteUiState(loading = false, products = products, cart = cart,
@@ -95,10 +133,14 @@ class QuoteTerminalContentTest {
         compose.onNodeWithTag("quote-customer-selector").performClick()
         compose.onNodeWithText("Cliente genérico").performClick()
         compose.onNodeWithText("Nombre (opcional)").assertIsDisplayed().performTextReplacement("Cliente de mostrador")
+        androidx.test.espresso.Espresso.closeSoftKeyboard()
         compose.onNodeWithTag("quote-customer-selector").performClick()
         compose.onNodeWithText("María Gómez").performClick()
-        compose.onNodeWithTag("quote-save").performClick()
-        assertEquals("customer-1", savedCustomerId)
+        compose.onNodeWithText("Nombre (opcional)").assertDoesNotExist()
+        androidx.test.espresso.Espresso.closeSoftKeyboard()
+        compose.onNodeWithTag("quote-save").assertIsDisplayed().assertIsEnabled().performClick()
+        compose.onNodeWithText("Cotización guardada.").assertIsDisplayed()
+        compose.runOnIdle { assertEquals("customer-1", savedCustomerId) }
     }
 
     @Test fun savedQuoteShowsItsCapturedDetailsWithoutConvertingIt() {

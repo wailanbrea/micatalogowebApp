@@ -69,6 +69,14 @@ class FinanceRepositoryImpl @Inject constructor(
         json.decodeFromJsonElement(DailyCloseDto.serializer(), ack)
     }.toMiCatalogoResult("No se pudo guardar el cierre diario.")
 
+    override suspend fun adjustDailyClose(shopId: String, closureId: String, countedCash: String?, reason: String): MiCatalogoResult<DailyCloseDto> = runCatching {
+        val ack = durable.submit(shopId, "day_close_adjustment", kotlinx.serialization.json.buildJsonObject {
+            put("reason", kotlinx.serialization.json.JsonPrimitive(reason.trim()))
+            put("counted_cash", countedCash?.let { kotlinx.serialization.json.JsonPrimitive(it) } ?: kotlinx.serialization.json.JsonNull)
+        }, closureId)
+        json.decodeFromJsonElement(DailyCloseDto.serializer(), ack)
+    }.toMiCatalogoResult("No se pudo confirmar el ajuste de conciliación.")
+
     override suspend fun getCurrentCashSession(shopId: String): MiCatalogoResult<CashCurrentSessionResponseDto> = runCatching {
         val response = api.currentCashSession(shopId)
         if (!response.isSuccessful) error(response.apiErrorMessage("No se pudo consultar la sesión de caja."))

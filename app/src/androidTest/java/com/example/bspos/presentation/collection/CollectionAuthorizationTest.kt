@@ -77,7 +77,7 @@ class CollectionAuthorizationTest {
             db.cashSessionDao(), db.paymentSyncDao(), db.posSaleOutboxDao(), scheduler, Json, scope, permissions)
         val store = ViewModelStore()
         val model = CollectionViewModel(fake<CustomerRepository> { flowOf(emptyList<Customer>()) }, fake<SaleRepository> { flowOf(emptyList<Sale>()) },
-            record, Lazy { api }, connection, db.customerRouteDao(), catalog, scope, db.paymentSyncDao(),
+            record, Lazy { api }, connection, db.customerRouteDao(), catalog, scope, db.paymentSyncDao(), db.paymentDao(),
             PaymentSyncRepository(db.paymentSyncDao(), db.posSaleOutboxDao(), db.customerRouteDao(), api, Json), recorder, permissions)
             .also { store.put("collection", it) }
         suspend fun prepare() {

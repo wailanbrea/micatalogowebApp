@@ -115,6 +115,7 @@ class EmulatorJourneyTest {
 
             navigate("Cobros y abonos")
             waitFor(newCustomer)
+            compose.onNodeWithText(newCustomer).performScrollTo().performClick()
             compose.onNodeWithText("Monto a cobrar").performTextReplacement("600")
             Espresso.closeSoftKeyboard()
             compose.onNodeWithText("Cobrar").performScrollTo().performClick()

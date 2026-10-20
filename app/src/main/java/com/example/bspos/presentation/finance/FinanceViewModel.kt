@@ -16,7 +16,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.temporal.TemporalAdjusters
 import java.util.UUID
@@ -38,6 +40,7 @@ data class FinanceUiState(
     val expensesError: String? = null,
     val expenseCategories: List<ExpenseCategoryDto> = emptyList(),
     val periodFilter: FinancePeriodFilter = FinancePeriodFilter.THIS_MONTH,
+    val businessTimezone: String = DEFAULT_BUSINESS_TIME_ZONE,
     val fromDate: String = "",
     val toDate: String = "",
     val errorMessage: String? = null,
@@ -71,7 +74,7 @@ class FinanceViewModel @Inject constructor(
     private var actorRole = ""
 
     init {
-        val (from, to) = computeDates(FinancePeriodFilter.THIS_MONTH)
+        val (from, to) = financeDateRange(FinancePeriodFilter.THIS_MONTH, DEFAULT_BUSINESS_TIME_ZONE)
         _uiState.value = _uiState.value.copy(fromDate = from, toDate = to)
         viewModelScope.launch {
             connectionRepository.observeConnection().collectLatest { state ->
@@ -87,7 +90,9 @@ class FinanceViewModel @Inject constructor(
                     currentShopId = selected
                     resolvedAccess = FinanceAccess()
                     permissionEpoch++
-                    _uiState.value = FinanceUiState(fromDate = _uiState.value.fromDate, toDate = _uiState.value.toDate, periodFilter = _uiState.value.periodFilter)
+                    val old = _uiState.value
+                    _uiState.value = FinanceUiState(fromDate = old.fromDate, toDate = old.toDate,
+                        periodFilter = old.periodFilter, businessTimezone = old.businessTimezone)
                     pendingCashOperationIds.clear(); pendingExpenseOperation = null
                 }
                 if (state.isConfigured && selected != null && (_uiState.value.shopName.isBlank() || roleChanged)) {
@@ -115,7 +120,7 @@ class FinanceViewModel @Inject constructor(
         readJobs.values.forEach { it.cancel() }; readJobs.clear()
         val old = _uiState.value
         _uiState.value = FinanceUiState(access = access, fromDate = old.fromDate, toDate = old.toDate,
-            periodFilter = old.periodFilter, shopName = old.shopName,
+            periodFilter = old.periodFilter, businessTimezone = old.businessTimezone, shopName = old.shopName,
             expenseCategories = if (access.expenses) old.expenseCategories else emptyList(),
             expensesLoading = access.expenses)
     }
@@ -162,6 +167,28 @@ class FinanceViewModel @Inject constructor(
         }
     }
 
+    fun adjustDailyClose(countedCash: String?, reason: String) {
+        val state = _uiState.value
+        val day = state.dailyClose?.takeIf { it.businessDate == state.fromDate && state.fromDate == state.toDate } ?: return
+        val closure = day.closure ?: return
+        if (!state.access.mutateDayClose || !day.canAdjust || state.isDailyCloseBusy) return
+        if (reason.isBlank()) { _uiState.value = state.copy(errorMessage = "Indica el motivo del ajuste."); return }
+        val shop = currentShopId ?: return
+        val epoch = permissionEpoch
+        _uiState.value = state.copy(isDailyCloseBusy = true, errorMessage = null, successMessage = null)
+        viewModelScope.launch {
+            if (currentShopId != shop || connectionRepository.activeShopId() != shop || permissionEpoch != epoch) return@launch
+            val result = financeRepository.adjustDailyClose(shop, closure.id, countedCash?.trim()?.takeIf { it.isNotEmpty() }, reason.trim())
+            if (currentShopId != shop || connectionRepository.activeShopId() != shop || permissionEpoch != epoch) return@launch
+            when (result) {
+                is MiCatalogoResult.Success -> if (result.value.businessDate == day.businessDate && result.value.closure?.id == closure.id) {
+                    _uiState.value = _uiState.value.copy(isDailyCloseBusy = false, dailyClose = result.value, successMessage = "Ajuste de conciliación confirmado.")
+                } else _uiState.value = _uiState.value.copy(isDailyCloseBusy = false, errorMessage = "La respuesta no corresponde a esta conciliación.")
+                is MiCatalogoResult.Failure -> _uiState.value = _uiState.value.copy(isDailyCloseBusy = false, errorMessage = result.message)
+            }
+        }
+    }
+
     fun refresh() {
         val shopId = currentShopId ?: return
         fetchSummary(shopId)
@@ -183,6 +210,13 @@ class FinanceViewModel @Inject constructor(
                     val firstShop = shopsResult.value.firstOrNull { it.id == selectedShopId }
                     if (firstShop != null) {
                         currentShopId = firstShop.id
+                        val timezone = normalizeBusinessTimezone(firstShop.businessTimezone)
+                        val oldState = _uiState.value
+                        if (timezone != oldState.businessTimezone) {
+                            val (from, to) = financeDateRange(oldState.periodFilter, timezone)
+                            _uiState.value = oldState.copy(businessTimezone = timezone, fromDate = from, toDate = to,
+                                summary = null, dailyClose = null)
+                        }
                         resolvedAccess = FinanceAccess.forShop(firstShop, actorRole)
                         updateAccess(resolvedAccess.limitedTo(menuCeiling))
                         _uiState.value = _uiState.value.copy(shopName = firstShop.name, isLoading = false, expensesLoading = _uiState.value.access.expenses)
@@ -422,24 +456,36 @@ class FinanceViewModel @Inject constructor(
     }
 
     private fun computeDates(filter: FinancePeriodFilter): Pair<String, String> {
-        val today = LocalDate.now()
-        val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd")
-        return when (filter) {
-            FinancePeriodFilter.TODAY -> Pair(today.format(formatter), today.format(formatter))
-            FinancePeriodFilter.THIS_WEEK -> {
-                val start = today.minusDays((today.dayOfWeek.value - 1).toLong())
-                Pair(start.format(formatter), today.format(formatter))
-            }
-            FinancePeriodFilter.THIS_MONTH -> {
-                val start = today.withDayOfMonth(1)
-                Pair(start.format(formatter), today.format(formatter))
-            }
-            FinancePeriodFilter.LAST_MONTH -> {
-                val lastMonth = today.minusMonths(1)
-                val start = lastMonth.withDayOfMonth(1)
-                val end = lastMonth.with(TemporalAdjusters.lastDayOfMonth())
-                Pair(start.format(formatter), end.format(formatter))
-            }
+        return financeDateRange(filter, _uiState.value.businessTimezone)
+    }
+}
+
+internal const val DEFAULT_BUSINESS_TIME_ZONE = "America/Santo_Domingo"
+
+internal fun normalizeBusinessTimezone(timezone: String?): String =
+    timezone?.takeIf { runCatching { ZoneId.of(it) }.isSuccess } ?: DEFAULT_BUSINESS_TIME_ZONE
+
+internal fun financeToday(timezone: String, now: Instant = Instant.now()): LocalDate =
+    LocalDate.ofInstant(now, runCatching { ZoneId.of(timezone) }.getOrElse { ZoneId.of(DEFAULT_BUSINESS_TIME_ZONE) })
+
+internal fun financeDateRange(filter: FinancePeriodFilter, timezone: String, now: Instant = Instant.now()): Pair<String, String> {
+    val today = financeToday(timezone, now)
+    val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd")
+    return when (filter) {
+        FinancePeriodFilter.TODAY -> Pair(today.format(formatter), today.format(formatter))
+        FinancePeriodFilter.THIS_WEEK -> {
+            val start = today.minusDays((today.dayOfWeek.value - 1).toLong())
+            Pair(start.format(formatter), today.format(formatter))
+        }
+        FinancePeriodFilter.THIS_MONTH -> {
+            val start = today.withDayOfMonth(1)
+            Pair(start.format(formatter), today.format(formatter))
+        }
+        FinancePeriodFilter.LAST_MONTH -> {
+            val lastMonth = today.minusMonths(1)
+            val start = lastMonth.withDayOfMonth(1)
+            val end = lastMonth.with(TemporalAdjusters.lastDayOfMonth())
+            Pair(start.format(formatter), end.format(formatter))
         }
     }
 }

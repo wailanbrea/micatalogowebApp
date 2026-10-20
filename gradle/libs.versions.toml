@@ -20,6 +20,7 @@ biometric = "1.1.0"
 coil = "2.7.0"
 cameraX = "1.4.2"
 mlkitBarcode = "17.3.0"
+mlkitText = "16.0.1"
 coroutines = "1.10.1"
 retrofit = "2.11.0"
 okhttp = "4.12.0"
@@ -76,6 +77,7 @@ androidx-camera-camera2 = { group = "androidx.camera", name = "camera-camera2", 
 androidx-camera-lifecycle = { group = "androidx.camera", name = "camera-lifecycle", version.ref = "cameraX" }
 androidx-camera-view = { group = "androidx.camera", name = "camera-view", version.ref = "cameraX" }
 google-mlkit-barcode = { group = "com.google.mlkit", name = "barcode-scanning", version.ref = "mlkitBarcode" }
+google-mlkit-text = { group = "com.google.mlkit", name = "text-recognition", version.ref = "mlkitText" }
 
 # Coroutines
 kotlinx-coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "coroutines" }

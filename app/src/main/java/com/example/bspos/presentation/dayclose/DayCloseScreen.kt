@@ -31,6 +31,8 @@ import com.example.bspos.presentation.common.BSPOSAlertDialog as AlertDialog
 import com.example.bspos.presentation.finance.FinancePeriodFilter
 import com.example.bspos.presentation.finance.FinanceUiState
 import com.example.bspos.presentation.finance.FinanceViewModel
+import com.example.bspos.presentation.finance.financeToday
+import com.example.bspos.presentation.finance.normalizeBusinessTimezone
 import java.math.BigDecimal
 import java.math.RoundingMode
 import java.time.Instant
@@ -43,22 +45,26 @@ import java.time.format.DateTimeFormatter
 fun DayCloseScreen(viewModel: FinanceViewModel = hiltViewModel()) {
     val state by viewModel.uiState.collectAsState()
     LaunchedEffect(Unit) { viewModel.selectPeriod(FinancePeriodFilter.TODAY) }
-    DayCloseContent(state, { viewModel.setCustomPeriod(it, it) }, viewModel::closeDaily, viewModel::refresh)
+    DayCloseContent(state, { viewModel.setCustomPeriod(it, it) }, viewModel::closeDaily, viewModel::refresh, viewModel::adjustDailyClose)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun DayCloseContent(state: FinanceUiState, onDate: (String) -> Unit,
-    onClose: (String?, String?) -> Unit, onRefresh: () -> Unit) {
+    onClose: (String?, String?) -> Unit, onRefresh: () -> Unit, onAdjust: (String?, String) -> Unit = { _, _ -> }) {
     var dialog by rememberSaveable { mutableStateOf(false) }
     var datePicker by rememberSaveable { mutableStateOf(false) }
-    val date = state.fromDate.ifBlank { LocalDate.now().toString() }
+    val date = state.fromDate.ifBlank { financeToday(state.businessTimezone).toString() }
     // Do not display a previous day's response under the selected date.
     val close = state.dailyClose?.takeIf { it.businessDate == date }
     val summary = state.summary?.takeIf { it.from == date && it.to == date }
     val closure = close?.closure
+    var adjustmentDialog by rememberSaveable(date, closure?.id) { mutableStateOf(false) }
+    val mayAdjust = closure != null && close?.canAdjust == true && state.access.mutateDayClose
+    LaunchedEffect(mayAdjust) { if (!mayAdjust) adjustmentDialog = false }
     LaunchedEffect(state.successMessage, state.isDailyCloseBusy) {
         if (!state.isDailyCloseBusy && state.successMessage == "Cierre diario guardado.") dialog = false
+        if (!state.isDailyCloseBusy && state.successMessage == "Ajuste de conciliación confirmado.") adjustmentDialog = false
     }
     LazyColumn(Modifier.fillMaxSize().background(BSPOSTheme.colors.background).testTag("day-close-list"),
         contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -94,7 +100,7 @@ internal fun DayCloseContent(state: FinanceUiState, onDate: (String) -> Unit,
             item { MetricCard("Devoluciones", summary?.period?.returns,
                 when (summary?.period?.returns) { null -> "Resumen de devoluciones no disponible."; 0.0 -> "No hubo devoluciones."; else -> "Importe de devoluciones del día." }) }
             item {
-                CloseCard {
+                CloseCard(modifier = Modifier.testTag("day-close-live-cash")) {
                     Caption("Efectivo en caja")
                     AmountBlock("Entró", close.salesCash + close.debtCollectionsCash + close.otherInflowsCash)
                     AmountBlock("Salió", close.expensesCash + close.cashOut)
@@ -117,7 +123,7 @@ internal fun DayCloseContent(state: FinanceUiState, onDate: (String) -> Unit,
                         Text(if (closure != null) "Cerrado" else "Pendiente", Modifier.padding(horizontal = 10.dp, vertical = 4.dp), fontSize = 11.sp)
                     }
                     closure?.closedAt?.let { timestamp ->
-                        val local = runCatching { Instant.parse(timestamp).atZone(ZoneId.systemDefault())
+                        val local = runCatching { Instant.parse(timestamp).atZone(ZoneId.of(normalizeBusinessTimezone(state.businessTimezone)))
                             .format(DateTimeFormatter.ofPattern("dd/MM/yyyy · HH:mm")) }.getOrDefault(timestamp)
                         Text("Registrado: $local", fontSize = 12.sp, color = BSPOSTheme.colors.textSecondary)
                     }
@@ -131,11 +137,16 @@ internal fun DayCloseContent(state: FinanceUiState, onDate: (String) -> Unit,
                         modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("day-close-save"), shape = RoundedCornerShape(12.dp)) {
                         Text("Guardar cierre diario")
                     }
-                    else Text("Cierre registrado. La reapertura no está disponible en la API actual.", fontSize = 11.sp, color = BSPOSTheme.colors.textSecondary)
+                    else {
+                        Text("Conciliación registrada: las ventas y los cobros posteriores siguen permitidos. El registro original no se recalcula.", fontSize = 11.sp, color = BSPOSTheme.colors.textSecondary)
+                        Text("Los ajustes de arqueo necesitan un registro auditado; no se aplican reenviando el cierre.", fontSize = 11.sp, color = BSPOSTheme.colors.textSecondary)
+                        if (mayAdjust) OutlinedButton(onClick = { adjustmentDialog = true }, enabled = !state.isDailyCloseBusy,
+                            modifier = Modifier.fillMaxWidth().testTag("day-close-adjust")) { Text("Registrar ajuste auditado") }
+                    }
                 }
             }
             if (closure != null) item {
-                CloseCard {
+                CloseCard(modifier = Modifier.testTag("day-close-recorded-snapshot")) {
                     Caption("Cierre registrado")
                     Text(closure.businessDate, fontWeight = FontWeight.Bold)
                     AmountBlock("Esperado", closure.expectedCash)
@@ -143,9 +154,26 @@ internal fun DayCloseContent(state: FinanceUiState, onDate: (String) -> Unit,
                     AmountBlock("Diferencia", closure.difference)
                 }
             }
+            if (close.adjustments.isNotEmpty()) item {
+                CloseCard {
+                    Caption("Últimos ajustes auditados")
+                    Text("Cada registro conserva su autor y motivo. No sustituye el cierre original ni crea movimientos de caja.", fontSize = 11.sp)
+                    close.adjustments.forEach { adjustment ->
+                        HorizontalDivider()
+                        Text("${adjustment.createdAt} · ${adjustment.userName ?: "Usuario ${adjustment.userId}"}", fontSize = 11.sp)
+                        Text(adjustment.reason, fontWeight = FontWeight.Bold)
+                        DecimalAmount("Esperado al registrar", adjustment.expectedCash)
+                        DecimalAmount("Nuevo contado", adjustment.countedCash)
+                        DecimalAmount("Diferencia del ajuste", adjustment.difference)
+                        DecimalAmount("Cambio frente al cierre original", adjustment.changeFromOriginal)
+                    }
+                }
+            }
         }
     }
     if (dialog) DailyCloseDialog(state.isDailyCloseBusy, { if (!state.isDailyCloseBusy) dialog = false }, onClose)
+    if (adjustmentDialog && mayAdjust) ReconciliationAdjustmentDialog(state.isDailyCloseBusy,
+        { if (!state.isDailyCloseBusy) adjustmentDialog = false }, onAdjust)
     if (datePicker) {
         val initial = runCatching { LocalDate.parse(date).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli() }.getOrNull()
         val picker = rememberDatePickerState(initialSelectedDateMillis = initial)
@@ -158,8 +186,8 @@ internal fun DayCloseContent(state: FinanceUiState, onDate: (String) -> Unit,
 }
 
 @Composable
-private fun CloseCard(content: @Composable ColumnScope.() -> Unit) {
-    Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), border = BorderStroke(1.dp, BSPOSTheme.colors.outline),
+private fun CloseCard(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
+    Card(modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), border = BorderStroke(1.dp, BSPOSTheme.colors.outline),
         colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface)) {
         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp), content = content)
     }
@@ -188,6 +216,34 @@ private fun AmountBlock(label: String, amount: Double?, prominent: Boolean = fal
 private fun MoneyText(value: Double, size: Int) {
     Text(MoneyUtils.formatCents(BigDecimal.valueOf(value).movePointRight(2).setScale(0, RoundingMode.HALF_UP).longValueExact(), LocalCurrency.current),
         fontSize = size.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false, color = BSPOSTheme.colors.textPrimary)
+}
+
+@Composable
+private fun DecimalAmount(label: String, value: String?) {
+    Text(label, fontSize = 12.sp, color = BSPOSTheme.colors.textSecondary)
+    val cents = value?.let { runCatching { BigDecimal(it).movePointRight(2).longValueExact() }.getOrNull() }
+    Text(if (value == null) "Sin nuevo arqueo" else if (cents == null) "Importe no disponible" else MoneyUtils.formatCents(cents, LocalCurrency.current), fontSize = 15.sp)
+}
+
+@Composable
+private fun ReconciliationAdjustmentDialog(busy: Boolean, onDismiss: () -> Unit, onConfirm: (String?, String) -> Unit) {
+    var counted by rememberSaveable { mutableStateOf("") }
+    var reason by rememberSaveable { mutableStateOf("") }
+    val valid = reason.isNotBlank() && validCountedCash(counted) && (counted.isBlank() ||
+        MoneyUtils.parseDecimalToCents(counted)?.let { it <= 100_000_000_000_000L } == true)
+    AlertDialog(onDismissRequest = { if (!busy) onDismiss() }, title = { Text("Ajuste de conciliación") }, text = {
+        Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()).imePadding(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("Se anexa al historial con tu usuario y motivo. No modifica el cierre original ni mueve dinero.")
+            OutlinedTextField(counted, { counted = it.filter { char -> char in '0'..'9' || char == '.' }.take(24) },
+                Modifier.fillMaxWidth().testTag("day-close-adjust-count"), label = { Text("Nuevo efectivo contado · opcional") }, enabled = !busy, singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
+            Text("Vacío significa que no se realizó un nuevo arqueo.", fontSize = 11.sp)
+            OutlinedTextField(reason, { reason = it.take(1000) }, Modifier.fillMaxWidth().testTag("day-close-adjust-reason"),
+                label = { Text("Motivo obligatorio") }, enabled = !busy, minLines = 2)
+        }
+    }, confirmButton = { TextButton(onClick = { onConfirm(counted.trim().takeIf { it.isNotEmpty() }, reason.trim()) }, enabled = valid && !busy,
+        modifier = Modifier.testTag("day-close-adjust-confirm")) { Text(if (busy) "Confirmando…" else "Confirmar ajuste") } },
+        dismissButton = { TextButton(onDismiss, enabled = !busy) { Text("Cancelar") } })
 }
 
 internal fun validCountedCash(value: String): Boolean = value.isBlank() ||

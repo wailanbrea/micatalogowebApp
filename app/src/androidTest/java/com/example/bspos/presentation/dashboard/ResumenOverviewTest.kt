@@ -19,7 +19,8 @@ import org.junit.runner.RunWith
 class ResumenOverviewTest {
     @get:Rule val compose = createComposeRule()
 
-    private fun show(sales: List<Sale> = emptyList(), showEncargos: Boolean = false, historicalSale: Boolean? = null, known: Boolean = true) {
+    private fun show(sales: List<Sale> = emptyList(), showEncargos: Boolean = false, historicalSale: Boolean? = null, known: Boolean = true,
+        remoteError: String? = null, onRange: (String, String) -> Unit = { _, _ -> }) {
         compose.setContent {
             BSPOSTheme {
                 ResumenOverview(
@@ -30,9 +31,26 @@ class ResumenOverviewTest {
                     onNewSale = {}, onCollections = {}, onInventory = {}, onStockFilter = {}, onMovements = {},
                     onProducts = {}, onPhotos = {}, onEncargos = {}, onDayClose = {},
                     onStorefront = {}, onProfile = {}, onSupport = {}, onAllSales = {}, onSale = {},
-                    firstSaleCompleted = historicalSale, setupStatusKnown = known
+                    firstSaleCompleted = historicalSale, setupStatusKnown = known,
+                    remoteSummaryError = remoteError, onRangeChanged = onRange
                 )
             }
+        }
+    }
+
+    @Test fun failedRemoteSummaryCanRetryTheSelectedPeriodWithoutLosingLocalContent() {
+        val requests = mutableListOf<Pair<String, String>>()
+        show(remoteError = "Sin conexión de prueba", onRange = { from, to -> requests += from to to })
+        compose.onNodeWithText("Actualizar resumen").performScrollTo().performClick()
+        compose.runOnIdle {
+            assertTrue(requests.size >= 2)
+            assertTrue(requests.last() == (LocalDate.now().toString() to LocalDate.now().toString()))
+        }
+        compose.onNodeWithText("Resumen con datos locales").assertExists()
+        compose.onNodeWithText("Últimos 7").performScrollTo().performClick()
+        compose.onNodeWithText("Actualizar resumen").performScrollTo().performClick()
+        compose.runOnIdle {
+            assertTrue(requests.last() == (LocalDate.now().minusDays(6).toString() to LocalDate.now().toString()))
         }
     }
 

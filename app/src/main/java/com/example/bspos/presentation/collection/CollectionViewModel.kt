@@ -6,8 +6,10 @@ import com.example.bspos.core.database.ShopScope
 import kotlinx.coroutines.CancellationException
 import com.example.bspos.core.money.MoneyUtils
 import com.example.bspos.data.local.dao.CustomerRouteDao
+import com.example.bspos.data.local.dao.PaymentDao
 import com.example.bspos.data.micatalogo.MiCatalogoPosSaleOutboxMapper
 import com.example.bspos.data.micatalogo.api.CustomerPaymentDto
+import com.example.bspos.data.micatalogo.api.CustomerPaymentResponseDto
 import com.example.bspos.data.micatalogo.api.MiCatalogoCustomerApi
 import com.example.bspos.data.micatalogo.apiErrorMessage
 import com.example.bspos.domain.model.Customer
@@ -28,6 +30,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.collectLatest
 import com.example.bspos.domain.model.MiCatalogoResult
@@ -51,12 +54,49 @@ class CollectionViewModel @Inject constructor(
     private val catalog: MiCatalogoCatalogRepository,
     private val shops:ShopScope,
     private val paymentQueue: com.example.bspos.data.local.dao.PaymentSyncDao,
+    paymentDao: PaymentDao,
     private val paymentSync: com.example.bspos.data.micatalogo.PaymentSyncRepository,
     private val mutations: com.example.bspos.data.micatalogo.RemoteMutationRecorder,
     private val permissions: com.example.bspos.data.micatalogo.CachedShopMenuPolicy
 ) : ViewModel() {
     val customers = customers.observeAll().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val sales = sales.observeAll().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    private val localPayments = shops.observe(paymentDao::observeAll)
+    private val syncedPayments = shops.observe { shop ->
+        if (shop == null) flowOf(emptyList()) else paymentQueue.observeAllForShop(shop)
+    }
+    val paymentHistory = combine(localPayments, syncedPayments, customers.observeAll()) { local, queued, customerRows ->
+        val customersById = customerRows.associateBy { it.id }
+        val localRows = local.map { payment ->
+            CollectionPaymentHistoryItem(
+                id = payment.id.toString(), customerId = payment.customerId.toString(),
+                customerName = customersById[payment.customerId]?.fullName ?: "Cliente",
+                customerTaxId = customersById[payment.customerId]?.taxId,
+                receipt = payment.receiptNumber, amount = payment.amount,
+                method = payment.method.historyLabel(), at = payment.date,
+                reference = payment.reference, notes = payment.notes
+            )
+        }
+        val localIds = local.mapTo(mutableSetOf()) { it.id.toString() }
+        val remoteRows = queued.asSequence().filter { it.state == "SENT" && it.id !in localIds }
+            .mapNotNull { row ->
+                val ack = runCatching { Json.decodeFromString<CustomerPaymentResponseDto>(row.serverResponse.orEmpty()) }.getOrNull()
+                    ?: return@mapNotNull null
+                val at = runCatching { Instant.parse(ack.serverTimestamp) }.getOrNull() ?: return@mapNotNull null
+                val customerId = runCatching { UUID.fromString(row.customerId) }.getOrNull()
+                CollectionPaymentHistoryItem(
+                    id = row.id, customerId = row.customerId,
+                    customerName = customersById[customerId]?.fullName ?: "Cliente",
+                    customerTaxId = customersById[customerId]?.taxId,
+                    receipt = "REC-${ack.paymentId}",
+                    amount = MoneyUtils.parsePesosStringToCents(ack.amount),
+                    method = ack.paymentMethod.historyLabel(), at = at,
+                    notes = ack.allocations.takeIf { it.isNotEmpty() }
+                        ?.joinToString(" · ") { "${it.invoiceNumber}: ${it.allocatedAmount}" }
+                )
+            }.toList()
+        (localRows + remoteRows).distinctBy { it.id }.sortedByDescending { it.at }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     private val _customer = MutableStateFlow<Customer?>(null)
     val customer = _customer.asStateFlow()
     private val _message = MutableStateFlow<String?>(null)
@@ -182,6 +222,33 @@ class CollectionViewModel @Inject constructor(
     }
 
     fun consumeMessage() { _message.value = null }
+}
+
+data class CollectionPaymentHistoryItem(
+    val id: String,
+    val customerId: String,
+    val customerName: String,
+    val customerTaxId: String? = null,
+    val receipt: String,
+    val amount: Long,
+    val method: String,
+    val at: Instant,
+    val reference: String? = null,
+    val notes: String? = null
+)
+
+private fun PaymentMethod.historyLabel(): String = when (this) {
+    PaymentMethod.CASH -> "Efectivo"
+    PaymentMethod.TRANSFER -> "Transferencia"
+    PaymentMethod.CARD -> "Tarjeta"
+    PaymentMethod.CHECK -> "Cheque"
+}
+
+private fun String.historyLabel(): String = when (lowercase()) {
+    "cash" -> "Efectivo"
+    "bank_transfer", "transfer" -> "Transferencia"
+    "card" -> "Tarjeta"
+    else -> "Otro método"
 }
 
 private fun PaymentMethod.toApiValue(): String = when (this) {

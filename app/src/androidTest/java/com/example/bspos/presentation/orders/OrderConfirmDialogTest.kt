@@ -137,11 +137,13 @@ class OrderConfirmDialogTest {
 
         compose.onNodeWithText("Mixto").performClick()
         compose.onNodeWithText("Abono inicial (RD$)").performTextReplacement("100")
+        androidx.test.espresso.Espresso.closeSoftKeyboard()
         compose.onNodeWithText("Nuevo cliente").performScrollTo().performClick()
         compose.waitUntil(5_000) { compose.onAllNodesWithText("Nombre completo").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText("Nombre completo").performTextReplacement("Nuevo cliente")
         compose.onNodeWithText("Límite de crédito (RD$)").performTextReplacement("1000")
-        compose.onNodeWithText("Crear y seleccionar").performClick()
+        androidx.test.espresso.Espresso.closeSoftKeyboard()
+        compose.onNodeWithText("Crear y seleccionar").assertIsDisplayed().performClick()
 
         compose.waitForIdle()
         assertEquals(true, orderOpen)

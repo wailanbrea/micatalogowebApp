@@ -63,7 +63,8 @@ fun QuoteScreen(
     LaunchedEffect(Unit) { focus.clearFocus(force = true); viewModel.load() }
     QuoteTerminalContent(state, viewModel::add, viewModel::remove, viewModel::clearCart,
         viewModel::save, viewModel::convert, onOpenSales, onOpenTerminal, onNavigateBack,
-        onOpenInvoice = { url -> uriHandler.openUri(url) }, initialSavedTab = true, onDownload = documents::download)
+        onOpenInvoice = { url -> uriHandler.openUri(url) }, initialSavedTab = true, onDownload = documents::download,
+        onReload = viewModel::load)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -73,9 +74,17 @@ internal fun QuoteTerminalContent(
     onAdd: (FeatureProductDto) -> Unit, onRemove: (FeatureProductDto) -> Unit, onClear: () -> Unit,
     onSave: (String, String, String, String, String?) -> Unit, onConvert: (String) -> Unit,
     onOpenSales: () -> Unit, onOpenTerminal: () -> Unit, onNavigateBack: () -> Unit,
-    onOpenInvoice: (String) -> Unit = {}, initialSavedTab: Boolean = false, onDownload: (String, String) -> Unit = { _, _ -> }
+    onOpenInvoice: (String) -> Unit = {}, initialSavedTab: Boolean = false, onDownload: (String, String) -> Unit = { _, _ -> },
+    onReload: () -> Unit = {}
 ) {
     var query by rememberSaveable { mutableStateOf("") }
+    var savedQuery by rememberSaveable(state.shopId) { mutableStateOf("") }
+    var savedStatus by rememberSaveable(state.shopId) { mutableStateOf<String?>(null) }
+    val quoteStatuses = state.rows.map { it.status }.filter { it.isNotBlank() }.distinct().sorted()
+    val visibleQuotes = state.rows.filter {
+        (savedStatus == null || it.status == savedStatus) &&
+            "${it.primary} ${it.secondary}".contains(savedQuery.trim(), ignoreCase = true)
+    }
     var category by rememberSaveable { mutableStateOf<String?>(null) }
     var savedTab by rememberSaveable { mutableStateOf(initialSavedTab) }
     var showCart by rememberSaveable { mutableStateOf(false) }
@@ -182,7 +191,7 @@ internal fun QuoteTerminalContent(
                 SavedQuoteDetail(quoteDetail!!, { quoteDetail = null }, { quoteToConvert = quoteDetail },
                     { quoteDetail?.let { row -> row.id?.let { onDownload(it, row.primary) } } }, onOpenInvoice)
             } else if (savedTab) {
-                LazyColumn(Modifier.weight(1f).fillMaxWidth(), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 18.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                LazyColumn(Modifier.weight(1f).fillMaxWidth().testTag("saved-quotes"), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 18.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     item {
                         BSPOSSectionLabel("Ventas")
                         Text("Cotizaciones", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.ExtraBold)
@@ -190,14 +199,32 @@ internal fun QuoteTerminalContent(
                         TextButton({ savedTab = false }) { Text("Nueva cotización") }
                     }
                     item { QuoteSummary(state.kpis, state.rows) }
-                    item { com.example.bspos.presentation.common.BSPOSSearchField(query, { query = it }, "Buscar por número o cliente…", Modifier.fillMaxWidth()) }
-                    if (state.rows.isEmpty() && !state.loading) item { Text("Todavía no hay cotizaciones guardadas.", color = BSPOSTheme.colors.textSecondary) }
-                    items(state.rows.filter { "${it.primary} ${it.secondary}".contains(query, true) }, key = { it.id ?: it.primary }) { row ->
+                    item { com.example.bspos.presentation.common.BSPOSSearchField(savedQuery, { savedQuery = it }, "Buscar por número o cliente…", Modifier.fillMaxWidth()) }
+                    item {
+                        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            FilterChip(selected = savedStatus == null, onClick = { savedStatus = null }, label = { Text("Todas (${state.rows.size})") })
+                            quoteStatuses.forEach { status ->
+                                FilterChip(selected = savedStatus == status, onClick = { savedStatus = status }, label = { Text("$status (${state.rows.count { it.status == status }})") })
+                            }
+                        }
+                        Text("Conteos de las cotizaciones cargadas, antes de la búsqueda.", style = MaterialTheme.typography.bodySmall, color = BSPOSTheme.colors.textSecondary)
+                        if (savedQuery.isNotBlank() || savedStatus != null) {
+                            TextButton({ savedQuery = ""; savedStatus = null }) { Text("Limpiar búsqueda y estado") }
+                        }
+                    }
+                    if (state.loading) item { CircularProgressIndicator() }
+                    if (visibleQuotes.isEmpty() && !state.loading && state.error == null) item {
+                        Text(if (state.rows.isEmpty()) "Todavía no hay cotizaciones guardadas." else "No hay cotizaciones que coincidan con la búsqueda y el estado.", color = BSPOSTheme.colors.textSecondary)
+                    }
+                    items(visibleQuotes, key = { it.id ?: it.primary }) { row ->
                         RecentQuoteRow(row, state.convertingId == row.id, state.convertingId == null,
                             onConvert = { quoteToConvert = row }, onOpen = { quoteDetail = row })
                     }
                     state.message?.let { item { Text(it, color = BSPOSTheme.colors.success) } }
-                    state.error?.let { item { Text(it, color = BSPOSTheme.colors.error) } }
+                    state.error?.let { item {
+                        Text(it, color = BSPOSTheme.colors.error)
+                        TextButton(onReload, enabled = !state.loading) { Text("Actualizar cotizaciones") }
+                    } }
                 }
             } else {
                 PunttoSearchRow(query, "Buscar producto, marca o código…", { query = it }, { showScanner = true }, {}, false)

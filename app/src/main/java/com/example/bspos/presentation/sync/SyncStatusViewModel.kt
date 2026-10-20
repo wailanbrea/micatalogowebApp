@@ -24,7 +24,12 @@ data class SyncStatus(
     val count: Int = 0,
     val error: String? = null,
     val resolutionTarget: SyncResolutionTarget = SyncResolutionTarget.NONE,
-    val resolutionLabel: String? = null
+    val resolutionLabel: String? = null,
+    val operationCount: Int = 0,
+    val saleCount: Int = 0,
+    val paymentCount: Int = 0,
+    val refreshCount: Int = 0,
+    val blockedCount: Int = 0
 )
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -107,7 +112,12 @@ class SyncStatusViewModel @Inject constructor(
                 count = count,
                 error = blocked,
                 resolutionTarget = resolutionTarget,
-                resolutionLabel = resolutionLabel
+                resolutionLabel = resolutionLabel,
+                operationCount = ops.size,
+                saleCount = bills.size,
+                paymentCount = collections.size,
+                refreshCount = refreshes.size,
+                blockedCount = blockedCount
             )
         }.onStart { emit(SyncStatus()) }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SyncStatus())

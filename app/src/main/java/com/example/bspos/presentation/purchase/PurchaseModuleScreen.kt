@@ -104,6 +104,8 @@ private fun PurchaseContent(
     var customsAmount by remember(feature) { mutableStateOf("") }
     var mode by remember(feature) { mutableStateOf("draft") }
     var lines by remember(feature) { mutableStateOf(listOf(PurchaseLineDraft())) }
+    var photoLines by remember(state.photoReview) { mutableStateOf(state.photoReview?.lines.orEmpty()) }
+    var showPhotoText by remember(state.photoReview) { mutableStateOf(false) }
     val invoiceLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let(viewModel::previewInvoice)
     }
@@ -292,6 +294,7 @@ private fun PurchaseContent(
                                         "text/csv",
                                         "text/plain",
                                         "application/pdf",
+                                        "image/jpeg", "image/png", "image/webp",
                                         "application/vnd.ms-excel",
                                         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                                     ))
@@ -304,10 +307,34 @@ private fun PurchaseContent(
                                 Text("Leer factura antes de recibir")
                             }
                             Text(
-                                "La lectura prepara una revisión; no crea productos ni modifica inventario hasta que confirmes la recepción. Usa PDF con texto, Excel o CSV.",
+                                "Usa una foto, PDF con texto, Excel o CSV. La foto se lee en este dispositivo. Revisa productos, cantidades y costos antes de preparar el borrador y recibir inventario.",
                                 color = BSPOSTheme.colors.textSecondary,
                                 style = MaterialTheme.typography.bodySmall
                             )
+                            state.photoReview?.let { review ->
+                                Card(colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.primaryLight)) {
+                                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Text("Revisión de la foto", fontWeight = FontWeight.Bold)
+                                        Text("El texto puede contener errores. Las coincidencias de producto son sugerencias: comprueba cada producto e introduce cantidad y costo de la factura. No se han guardado movimientos.")
+                                        TextButton(onClick = { showPhotoText = !showPhotoText }) { Text(if (showPhotoText) "Ocultar texto leído" else "Ver texto leído") }
+                                        if (showPhotoText) Text(review.text, style = MaterialTheme.typography.bodySmall)
+                                        photoLines.forEachIndexed { index, line ->
+                                            PurchaseLineEditor(index = index, line = line, products = workspace.products,
+                                                canRemove = photoLines.size > 1,
+                                                useCatalogCost = false,
+                                                onChange = { updated -> photoLines = photoLines.toMutableList().also { it[index] = updated } },
+                                                onRemove = { photoLines = photoLines.toMutableList().also { it.removeAt(index) } })
+                                        }
+                                        TextButton(onClick = { photoLines = photoLines + PurchaseLineDraft(quantity = "") }) { Text("Agregar línea revisada") }
+                                        Button(onClick = { lines = photoLines; mode = "draft"; viewModel.dismissPhotoReview() },
+                                            enabled = !state.saving && photoLines.isNotEmpty() && photoLines.all {
+                                                it.productId.isNotBlank() && (it.quantity.toIntOrNull() ?: 0) > 0 &&
+                                                    com.example.bspos.core.money.MoneyUtils.parseDecimalToCents(it.unitCost)?.let { cost -> cost >= 0 } == true
+                                            }, modifier = Modifier.fillMaxWidth()) { Text("Usar líneas revisadas en borrador") }
+                                        TextButton(onClick = viewModel::dismissPhotoReview) { Text("Descartar lectura de foto") }
+                                    }
+                                }
+                            }
                             state.preview?.let { preview ->
                                 val detectedLines = preview.rows.filter { it.valid && !it.productId.isNullOrBlank() }
                                 Card(shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.primaryLight)) {
@@ -480,7 +507,8 @@ private fun PurchaseLineEditor(
     products: List<PurchaseProductDto>,
     canRemove: Boolean,
     onChange: (PurchaseLineDraft) -> Unit,
-    onRemove: () -> Unit
+    onRemove: () -> Unit,
+    useCatalogCost: Boolean = true
 ) {
     var menu by remember(line.productId) { mutableStateOf(false) }
     val selected = products.firstOrNull { it.id == line.productId }
@@ -493,7 +521,7 @@ private fun PurchaseLineEditor(
             Box {
                 SelectorButton("Producto", selected?.let { if (it.code.isBlank()) it.name else "${it.name} · ${it.code}" } ?: "Selecciona un producto", Modifier.fillMaxWidth()) { menu = true }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                    products.forEach { product -> DropdownMenuItem(text = { Text(if (product.code.isBlank()) product.name else "${product.name} · ${product.code}") }, onClick = { onChange(line.copy(productId = product.id, unitCost = line.unitCost.ifBlank { product.cost })); menu = false }) }
+                    products.forEach { product -> DropdownMenuItem(text = { Text(if (product.code.isBlank()) product.name else "${product.name} · ${product.code}") }, onClick = { onChange(line.copy(productId = product.id, unitCost = line.unitCost.ifBlank { if (useCatalogCost) product.cost else "" })); menu = false }) }
                 }
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
