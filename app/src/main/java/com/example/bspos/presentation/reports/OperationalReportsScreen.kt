@@ -21,6 +21,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.pluralStringResource
@@ -89,6 +90,8 @@ fun OperationalReportsScreen(
             finally { exporting = false }
         }
     }
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+    val stacked = maxWidth < 380.dp || LocalDensity.current.fontScale > 1.25f
     LazyColumn(
         Modifier.fillMaxSize().testTag("operational_reports"),
         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 18.dp),
@@ -118,13 +121,15 @@ fun OperationalReportsScreen(
         if (section.kpis.isNotEmpty()) item {
             Surface(shape = RoundedCornerShape(16.dp), color = colors.surface, border = BorderStroke(1.dp, colors.outline)) {
                 Column {
-                    section.kpis.chunked(2).forEachIndexed { index, pair ->
+                    section.kpis.chunked(if (stacked) 1 else 2).forEachIndexed { index, pair ->
                         if (index > 0) HorizontalDivider(color = colors.outline)
                         Row(Modifier.fillMaxWidth()) {
                             pair.forEach { metric ->
                                 Column(Modifier.weight(1f).padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                     Text(metric.label, style = MaterialTheme.typography.labelMedium, color = colors.textSecondary)
-                                    Text(metric.value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, color = colors.textPrimary)
+                                    Text(metric.value, modifier = Modifier.horizontalScroll(rememberScrollState()),
+                                        style = if (stacked) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge,
+                                        softWrap = false, fontWeight = FontWeight.SemiBold, color = colors.textPrimary)
                                 }
                             }
                         }
@@ -135,6 +140,12 @@ fun OperationalReportsScreen(
         item {
             Surface(shape = RoundedCornerShape(16.dp), color = colors.surface, border = BorderStroke(1.dp, colors.outline)) {
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (stacked) {
+                        Button(onClick = { export("whatsapp") }, enabled = !exporting, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp)) { Text(stringResource(R.string.reports_whatsapp)) }
+                        OutlinedButton(onClick = { export("print") }, enabled = !exporting, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp)) { Text(stringResource(R.string.reports_print)) }
+                        TextButton(onClick = { export("share") }, enabled = !exporting, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.reports_share)) }
+                        if (section.key == "sales") ReportExportMenu(onExport, !exporting, Modifier.fillMaxWidth())
+                    } else {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(onClick = { export("whatsapp") }, enabled = !exporting, modifier = Modifier.weight(1f), shape = RoundedCornerShape(8.dp)) { Text(stringResource(R.string.reports_whatsapp)) }
                         OutlinedButton(onClick = { export("print") }, enabled = !exporting, modifier = Modifier.weight(1f), shape = RoundedCornerShape(8.dp)) { Text(stringResource(R.string.reports_print)) }
@@ -142,15 +153,9 @@ fun OperationalReportsScreen(
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         TextButton(onClick = { export("share") }, enabled = !exporting) { Text(stringResource(R.string.reports_share)) }
                         if (section.key == "sales") {
-                            var expanded by remember { mutableStateOf(false) }
-                            Box {
-                                TextButton(onClick = { expanded = true }, enabled = !exporting) { Text(stringResource(R.string.reports_export)) }
-                                DropdownMenu(expanded, { expanded = false }) {
-                                    DropdownMenuItem(text = { Text(stringResource(R.string.reports_csv)) }, onClick = { expanded = false; onExport("csv") })
-                                    DropdownMenuItem(text = { Text(stringResource(R.string.reports_excel)) }, onClick = { expanded = false; onExport("xlsx") })
-                                }
-                            }
+                            ReportExportMenu(onExport, !exporting)
                         }
+                    }
                     }
                     if (exporting) { LinearProgressIndicator(Modifier.fillMaxWidth()); Text(stringResource(R.string.reports_preparing), style = MaterialTheme.typography.bodySmall) }
                 }
@@ -176,7 +181,10 @@ fun OperationalReportsScreen(
                 Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(row.primary, fontWeight = FontWeight.SemiBold, color = colors.textPrimary)
                     if (row.secondary.isNotBlank()) Text(row.secondary, style = MaterialTheme.typography.bodySmall, color = colors.textSecondary)
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    if (stacked) {
+                        Text(row.value, color = colors.primary, fontWeight = FontWeight.SemiBold, softWrap = false, modifier = Modifier.horizontalScroll(rememberScrollState()))
+                        if (row.status.isNotBlank()) Text(row.status, style = MaterialTheme.typography.labelSmall, color = colors.textSecondary)
+                    } else Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         Text(row.value, Modifier.weight(1f), color = colors.primary, fontWeight = FontWeight.SemiBold)
                         if (row.status.isNotBlank()) Text(row.status, Modifier.weight(1f), style = MaterialTheme.typography.labelSmall, color = colors.textSecondary)
                     }
@@ -187,6 +195,19 @@ fun OperationalReportsScreen(
             TextButton(onClick = { showInfo = !showInfo }) { Icon(Icons.Default.Info, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.reports_info)) }
             if (showInfo) Text(note, style = MaterialTheme.typography.bodySmall, color = colors.textSecondary)
         } }
+    }
+    }
+}
+
+@Composable
+private fun ReportExportMenu(onExport: (String) -> Unit, enabled: Boolean, modifier: Modifier = Modifier) {
+    var expanded by remember { mutableStateOf(false) }
+    Box(modifier) {
+        TextButton(onClick = { expanded = true }, enabled = enabled, modifier = modifier) { Text(stringResource(R.string.reports_export)) }
+        DropdownMenu(expanded, { expanded = false }) {
+            DropdownMenuItem(text = { Text(stringResource(R.string.reports_csv)) }, onClick = { expanded = false; onExport("csv") })
+            DropdownMenuItem(text = { Text(stringResource(R.string.reports_excel)) }, onClick = { expanded = false; onExport("xlsx") })
+        }
     }
 }
 
