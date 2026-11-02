@@ -74,6 +74,7 @@ class OperationSyncRepository @Inject constructor(private val api: MiCatalogoOpe
             "product_photo_update" -> !productId.isNullOrBlank() && !imageHash.isNullOrBlank() &&
                 ack["product_id"]?.jsonPrimitive?.contentOrNull == productId && ack["image_sha256"]?.jsonPrimitive?.contentOrNull == imageHash
             "return" -> (ack["return_id"]?.jsonPrimitive?.longOrNull ?: 0) > 0
+            "sale_cancel" -> ack["status"]?.jsonPrimitive?.contentOrNull == "void"
             "cash_open" -> nestedId("session") != null
             "cash_close" -> nestedId("session") == resource && resource != null
             "cash_movement" -> nestedId("movement") != null

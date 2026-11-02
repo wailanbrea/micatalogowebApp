@@ -39,6 +39,7 @@ class CancelSaleUseCase @Inject constructor(
             val activeShop = shops.current()
             val sale = checkNotNull(sales.findById(saleId, activeShop)) { "Venta no encontrada en la tienda." }
             require(sale.status == SaleStatus.COMPLETED) { "Solo se pueden anular ventas activas." }
+            require(sale.paidAmount == 0L) { "Esta venta tiene cobros registrados. Usa Devolver para registrar el reembolso en caja." }
 
             val sold = sales.itemsInInvoiceOrder(sale.id, activeShop)
             val restocked = sold.map { item ->
@@ -72,7 +73,7 @@ class CancelSaleUseCase @Inject constructor(
 
             sales.updateBalancesAndStatus(sale.id, sale.paidAmount, 0L, SaleStatus.CANCELLED, at, activeShop)
 
-            val shop = saleQueue.shopForSale(sale.id)
+            val shop = saleQueue.shopForSale(sale.id) ?: activeShop ?: sale.tenant.shopId
             if (shop != null) {
                 val operationUuid = UUID.randomUUID()
                 remote.enqueue(shop, restocked.mapNotNull { it.productId.toString() }, buildJsonObject {

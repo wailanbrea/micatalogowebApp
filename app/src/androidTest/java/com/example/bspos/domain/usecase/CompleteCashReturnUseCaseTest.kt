@@ -38,7 +38,7 @@ class CompleteCashReturnUseCaseTest {
         db.productDao().insert(product)
         val recorder = RemoteMutationRecorder(RoomDatabaseTransactor(db),db.categoryDao(),db.operationOutboxDao(),PosSaleSyncScheduler(context))
         useCase = CompleteCashReturnUseCase(RoomDatabaseTransactor(db),db.returnDao(),db.saleDao(),db.inventoryDao(),
-            db.cashSessionDao(),SafeSettings,db.productDao(),db.posSaleOutboxDao(),recorder,com.example.bspos.data.local.tenant.tenantTestScope("shop"))
+            db.cashSessionDao(),SafeSettings,db.productDao(),db.customerRouteDao(),db.posSaleOutboxDao(),recorder,com.example.bspos.data.local.tenant.tenantTestScope("shop"))
     }
     @After fun close() = db.close()
 
@@ -99,6 +99,30 @@ class CompleteCashReturnUseCaseTest {
         Assert.assertTrue(db.operationOutboxDao().activeForShop("shop").isEmpty())
         val refund = useCase(request(sale,item,1,"R-NORESTOCK").copy(lines=listOf(CashReturnLineInput(item.id,product.id,1,100,50,false))))
         Assert.assertEquals(100L,refund.totalAmount)
+    }
+
+    @Test fun creditSaleCanBeReturnedWithoutOpenCashSessionAndReducesCustomerDebt() = runTest {
+        stock(product.id, 5)
+        val customerId = UUID.randomUUID()
+        db.customerRouteDao().insertCustomer(CustomerEntity(
+            customerId, "Cliente Crédito", balance = 200L, creditLimit = 5000L, createdAt = at, updatedAt = at,
+            miCatalogoCustomerShopId = "shop", tenant = TenantMetadata.assigned("shop")
+        ))
+        val sale = SaleEntity(UUID.randomUUID(), "F-CREDIT-1", customerId = customerId, date = at, subtotal = 200, discount = 0,
+            total = 200, paymentType = SalePaymentType.CREDIT, paidAmount = 0L, pendingAmount = 200L, createdAt = at, updatedAt = at, tenant = TenantMetadata.assigned("shop"))
+        val item = SaleItemEntity(UUID.randomUUID(), sale.id, product.id, 2, 100, 50, subtotal = 200,
+            saleUnitSnapshot = product.miCatalogoSaleUnit, volumeMlSnapshot = product.miCatalogoVolumeMl, remoteSourceSnapshot = product.miCatalogoSourceProductId)
+        db.saleDao().insertWithItems(sale, listOf(item))
+        db.posSaleOutboxDao().insert(PosSaleOutboxEntity(sale.id, "shop", "{}", nextAttemptAt = at, createdAt = at, updatedAt = at))
+
+        // No cash session opened! Must succeed without demanding cash register
+        val returned = useCase(request(sale, item, 2, "R-CREDIT"))
+        Assert.assertEquals(200L, returned.totalAmount)
+        Assert.assertEquals(0L, db.customerRouteDao().findCustomer(customerId, "shop")!!.balance)
+        Assert.assertEquals(7L, db.inventoryDao().findStock(product.id, InventoryLocationType.MAIN_WAREHOUSE, "MAIN", "shop")!!.quantity)
+        val updatedSale = db.saleDao().findById(sale.id, "shop")!!
+        Assert.assertEquals(SaleStatus.CANCELLED, updatedSale.status)
+        Assert.assertEquals(0L, updatedSale.pendingAmount)
     }
 
     private suspend fun stock(id:UUID,quantity:Long) {

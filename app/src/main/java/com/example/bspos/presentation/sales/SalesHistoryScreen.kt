@@ -299,6 +299,29 @@ fun SalesHistoryScreen(
         }, confirmButton = { TextButton({ selectedRemote = null }) { Text("Cerrar") } },
             dismissButton = { TextButton({ selectedRemote = null; onReturns() }) { Text("Ver devoluciones") } })
     }
+    var saleToCancel by remember { mutableStateOf<Sale?>(null) }
+    saleToCancel?.let { target ->
+        AlertDialog(
+            onDismissRequest = { saleToCancel = null },
+            title = { Text("Anular venta") },
+            text = { Text("¿Deseas anular la venta ${target.invoiceNumber}? Se reintegrarán los productos al inventario y se anulará la deuda pendiente si fue a crédito.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.cancelSale(target) { success, error ->
+                        if (!success && error != null) {
+                            UiErrorBus.show(error)
+                        }
+                    }
+                    saleToCancel = null
+                }) {
+                    Text("Anular", color = BSPOSTheme.colors.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { saleToCancel = null }) { Text("Cancelar") }
+            }
+        )
+    }
     selectedSale?.let { sale ->
         SaleDetailDialog(
             sale = sale,
@@ -332,6 +355,7 @@ fun SalesHistoryScreen(
                 }
             },
             onReturn = { viewModel.selectSale(null); onReturns() },
+            onCancelSale = { saleToCancel = sale },
             onDismiss = { viewModel.selectSale(null) }
         )
     }
