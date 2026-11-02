@@ -5,11 +5,14 @@ import com.example.bspos.domain.model.SaleStatus
 import kotlinx.coroutines.flow.Flow
 import java.util.UUID
 @Dao abstract class PaymentDao{
- @Query("SELECT * FROM payments WHERE remote_shop_id=:shopId AND tenancy_status='assigned' ORDER BY date DESC,id DESC") abstract fun observeAll(shopId:String?=null):Flow<List<PaymentEntity>>
+ @Query("SELECT * FROM payments WHERE remote_shop_id=:shopId AND tenancy_status='assigned' AND NOT EXISTS(SELECT 1 FROM payment_sync_outbox o WHERE o.id=payments.id AND o.shopId=:shopId AND o.state='REVERSED') ORDER BY date DESC,id DESC") abstract fun observeAll(shopId:String?=null):Flow<List<PaymentEntity>>
+ @Query("SELECT * FROM payments WHERE remote_shop_id=:shopId AND tenancy_status='assigned' ORDER BY date DESC,id DESC") abstract fun observeHistory(shopId:String?=null):Flow<List<PaymentEntity>>
+ @Query("SELECT * FROM payments WHERE id=:id AND remote_shop_id=:shopId AND tenancy_status='assigned'") abstract suspend fun findPayment(id:UUID,shopId:String):PaymentEntity?
+ @Query("SELECT * FROM payment_allocations WHERE payment_id=:id AND remote_shop_id=:shopId AND tenancy_status='assigned'") abstract suspend fun allocations(id:UUID,shopId:String):List<PaymentAllocationEntity>
  @Query("SELECT * FROM payments WHERE remote_shop_id=:shopId AND tenancy_status='assigned' AND customer_id=:customerId ORDER BY date DESC,id DESC") abstract fun observeForCustomer(customerId:UUID,shopId:String?=null):Flow<List<PaymentEntity>>
  @Query("SELECT * FROM payment_allocations WHERE remote_shop_id=:shopId AND tenancy_status='assigned' AND payment_id=:paymentId ORDER BY sale_id") abstract fun observeAllocations(paymentId:UUID,shopId:String?=null):Flow<List<PaymentAllocationEntity>>
  @Query("SELECT * FROM sales WHERE id=:id AND remote_shop_id=:shopId AND tenancy_status='assigned'") protected abstract suspend fun findSale(id:UUID,shopId:String?):SaleEntity?
- @Query("SELECT COALESCE(SUM(allocated_amount),0) FROM payment_allocations WHERE sale_id=:saleId AND remote_shop_id=:shopId AND tenancy_status='assigned'") protected abstract suspend fun allocatedAmount(saleId:UUID,shopId:String?):Long
+ @Query("SELECT COALESCE(SUM(allocated_amount),0) FROM payment_allocations WHERE sale_id=:saleId AND remote_shop_id=:shopId AND tenancy_status='assigned' AND NOT EXISTS(SELECT 1 FROM payment_sync_outbox o WHERE o.id=payment_allocations.payment_id AND o.shopId=:shopId AND o.state='REVERSED')") protected abstract suspend fun allocatedAmount(saleId:UUID,shopId:String?):Long
  @Insert protected abstract suspend fun insertPayment(payment:PaymentEntity)
  @Insert protected abstract suspend fun insertAllocations(rows:List<PaymentAllocationEntity>)
  @Transaction open suspend fun insertWithAllocations(payment:PaymentEntity,allocations:List<PaymentAllocationEntity>){

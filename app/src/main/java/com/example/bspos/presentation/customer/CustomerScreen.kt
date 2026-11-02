@@ -29,6 +29,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.example.bspos.core.ui.theme.BSPOSTheme
@@ -143,6 +144,26 @@ internal fun CustomerCard(customer: Customer, showCredit: Boolean, onOpen:()->Un
                 IconButton(onClick={menuOpen=true}) { Icon(Icons.Default.MoreVert,"Acciones de ${customer.fullName}") }
                 DropdownMenu(expanded=menuOpen,onDismissRequest={menuOpen=false}) {
                     DropdownMenuItem(text={Text("Ver movimientos")},onClick={menuOpen=false;onOpen()})
+                    if (customer.balance > 0) {
+                        val context = LocalContext.current
+                        val message = remember(customer.fullName, customer.balance) {
+                            DebtReminderHelper.buildReminderMessage(customer.fullName, customer.balance)
+                        }
+                        DropdownMenuItem(
+                            text = { Text("Recordar por WhatsApp") },
+                            onClick = {
+                                menuOpen = false
+                                DebtReminderHelper.sendWhatsApp(context, customer.phone, message)
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Copiar recordatorio") },
+                            onClick = {
+                                menuOpen = false
+                                DebtReminderHelper.copyToClipboard(context, message)
+                            }
+                        )
+                    }
                     DropdownMenuItem(text={Text("Editar cliente")},onClick={menuOpen=false;onEdit()})
                     DropdownMenuItem(text={Text("Eliminar cliente")},onClick={menuOpen=false;onDelete()})
                 }

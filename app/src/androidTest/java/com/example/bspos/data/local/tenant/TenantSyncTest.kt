@@ -54,6 +54,9 @@ class TenantSyncTest {
         db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
             .addCallback(InventoryIntegrity).addCallback(TenantIntegrity).build()
         customerApi = object : MiCatalogoCustomerApi {
+        override suspend fun payments(shopId: String, beforeId: String?, paymentIds: List<String>?): Response<com.example.bspos.data.micatalogo.api.CustomerPaymentHistoryDto> = Response.success(com.example.bspos.data.micatalogo.api.CustomerPaymentHistoryDto())
+        override suspend fun reversePayment(shopId: String, customerId: String, paymentId: String, body: com.example.bspos.data.micatalogo.api.ReverseCustomerPaymentDto): Response<com.example.bspos.data.micatalogo.api.ReverseCustomerPaymentResponseDto> = error("Unused reversal")
+
             override suspend fun customers(shopId: String): Response<CustomerListDto> {
                 val snapshot = remoteCustomers[shopId].orEmpty().toList()
                 beforeDownload?.invoke()

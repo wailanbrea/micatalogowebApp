@@ -17,7 +17,14 @@ data class SaleCostTotal(@ColumnInfo(name = "sale_id") val saleId: UUID, val cos
  @Insert protected abstract suspend fun insertSale(sale:SaleEntity)
  @Insert protected abstract suspend fun insertItems(items:List<SaleItemEntity>)
  @Query("UPDATE sales SET paid_amount=:paidAmount,pending_amount=:pendingAmount,updated_at=:updatedAt WHERE id=:saleId AND remote_shop_id=:shopId AND tenancy_status='assigned'") protected abstract suspend fun updateBalances(saleId:UUID,paidAmount:Long,pendingAmount:Long,updatedAt:java.time.Instant,shopId:String?):Int
+ @Query("UPDATE sales SET paid_amount=:paidAmount,pending_amount=:pendingAmount,status=:status,updated_at=:updatedAt WHERE id=:saleId AND remote_shop_id=:shopId AND tenancy_status='assigned'") abstract suspend fun updateBalancesAndStatus(saleId:UUID,paidAmount:Long,pendingAmount:Long,status:SaleStatus,updatedAt:java.time.Instant,shopId:String?):Int
+ @Query("UPDATE sales SET status=:status,updated_at=:updatedAt WHERE id=:saleId AND remote_shop_id=:shopId AND tenancy_status='assigned'") abstract suspend fun updateStatus(saleId:UUID,status:SaleStatus,updatedAt:java.time.Instant,shopId:String?):Int
  @Transaction open suspend fun applyPayment(saleId:UUID,amount:Long,at:java.time.Instant,shopId:String?=null){val sale=checkNotNull(findById(saleId,shopId)){"Sale not found in shop"};require(amount>0&&amount<=sale.pendingAmount);check(updateBalances(saleId,Math.addExact(sale.paidAmount,amount),Math.subtractExact(sale.pendingAmount,amount),at,shopId)==1)}
+ @Transaction open suspend fun reversePayment(saleId:UUID,amount:Long,at:java.time.Instant,shopId:String){
+  val sale=checkNotNull(findById(saleId,shopId)){"Venta no encontrada en esta tienda"}
+  require(amount>0&&sale.paidAmount>=amount){"El saldo local necesita sincronización antes de aplicar la anulación"}
+  check(updateBalances(saleId,Math.subtractExact(sale.paidAmount,amount),Math.addExact(sale.pendingAmount,amount),at,shopId)==1)
+ }
  @Transaction open suspend fun insertWithItems(sale:SaleEntity,items:List<SaleItemEntity>){
   require(sale.invoiceNumber.isNotBlank()&&items.isNotEmpty())
   val shop=checkNotNull(sale.tenant.shopId){"La venta necesita tienda"}

@@ -242,6 +242,29 @@ fun DashboardScreen(
             onDismiss = { showAllSales = false }
         )
     }
+    var saleToCancel by remember { mutableStateOf<Sale?>(null) }
+    saleToCancel?.let { target ->
+        AlertDialog(
+            onDismissRequest = { saleToCancel = null },
+            title = { Text("Anular venta") },
+            text = { Text("¿Deseas anular la venta ${target.invoiceNumber}? Se reintegrarán los productos al inventario y se anulará la deuda pendiente si fue a crédito.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.cancelSale(target) { success, error ->
+                        if (!success && error != null) {
+                            com.example.bspos.presentation.common.UiErrorBus.show(error)
+                        }
+                    }
+                    saleToCancel = null
+                }) {
+                    Text("Anular", color = BSPOSTheme.colors.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { saleToCancel = null }) { Text("Cancelar") }
+            }
+        )
+    }
     selectedSale?.let { sale ->
         SaleDetailDialog(
             sale = sale,
@@ -275,6 +298,7 @@ fun DashboardScreen(
                 }
             },
             onReturn = { viewModel.selectSale(null); onReturns() },
+            onCancelSale = { saleToCancel = sale },
             onDismiss = { viewModel.selectSale(null) }
         )
     }
@@ -819,6 +843,7 @@ internal fun SaleDetailDialog(
     onShare: () -> Unit,
     onPrint: (() -> Unit)? = null,
     onReturn: () -> Unit,
+    onCancelSale: (() -> Unit)? = null,
     onDismiss: () -> Unit
 ) {
     val date = sale.date.atZone(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm"))
@@ -853,6 +878,11 @@ internal fun SaleDetailDialog(
                             OutlinedButton(onClick = print, modifier = Modifier.weight(1f), shape = RoundedCornerShape(14.dp)) { Text("Térmico") }
                         }
                         OutlinedButton(onClick = onReturn, modifier = Modifier.weight(1f), shape = RoundedCornerShape(14.dp)) { Text("Devolver") }
+                        if (sale.status == SaleStatus.COMPLETED && onCancelSale != null) {
+                            OutlinedButton(onClick = onCancelSale, modifier = Modifier.weight(1f), shape = RoundedCornerShape(14.dp)) {
+                                Text("Anular", color = BSPOSTheme.colors.error)
+                            }
+                        }
                     }
                     FinanceSummaryCard(sale, cost, gain, margin)
                     InfoPairCard("Cliente", customerName, "Pago", sale.paymentType.label())

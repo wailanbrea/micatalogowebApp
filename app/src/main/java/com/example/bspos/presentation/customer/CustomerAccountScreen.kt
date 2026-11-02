@@ -10,8 +10,11 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import com.example.bspos.presentation.common.BSPOSOutlinedButton as OutlinedButton
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.bspos.core.money.LocalCurrency
@@ -52,6 +55,26 @@ internal fun CustomerAccountScreen(state:CustomerDetailState,onBack:()->Unit,onR
                         AccountValueRow("Disponible",accountMoney((limit-balance).coerceAtLeast(0)))
                         if(!active) Text("Inactivo",color=BSPOSTheme.colors.textSecondary,style=MaterialTheme.typography.labelMedium)
                         state.customer.phone?.takeIf { it.isNotBlank() }?.let { Text(it,color=BSPOSTheme.colors.textSecondary) }
+                        if (balance > 0) {
+                            val context = LocalContext.current
+                            val message = remember(state.customer.fullName, balance) {
+                                DebtReminderHelper.buildReminderMessage(state.customer.fullName, balance)
+                            }
+                            Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                OutlinedButton(
+                                    onClick = { DebtReminderHelper.sendWhatsApp(context, state.customer.phone, message) },
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Text("WhatsApp", maxLines = 1)
+                                }
+                                OutlinedButton(
+                                    onClick = { DebtReminderHelper.copyToClipboard(context, message) },
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Text("Copiar", maxLines = 1)
+                                }
+                            }
+                        }
                     }
                 }
             }

@@ -15,7 +15,13 @@ import java.util.UUID
  @Query("SELECT * FROM cash_sessions WHERE remote_session_id=:remoteId AND remote_shop_id=:shopId") abstract suspend fun findRemote(remoteId:String,shopId:String):CashSessionEntity?
  @Query("UPDATE cash_sessions SET tenancy_status='remote_unconfirmed' WHERE remote_shop_id=:shopId AND tenancy_status='assigned' AND remote_session_id IS NOT NULL AND status='OPEN'") abstract suspend fun invalidateRemoteOpen(shopId:String):Int
  @Query("SELECT COUNT(*) FROM cash_sessions WHERE remote_shop_id=:shopId AND tenancy_status='assigned' AND remote_session_id IS NOT NULL AND status='OPEN'") protected abstract suspend fun openCount(shopId:String?):Int
- @Query("SELECT COALESCE(SUM(CASE WHEN type IN ('EXPENSE','REFUND') THEN -amount ELSE amount END),0) FROM cash_movements WHERE remote_shop_id=:shopId AND tenancy_status='assigned' AND session_id=:sessionId") protected abstract suspend fun movementBalance(sessionId:UUID,shopId:String?):Long
+ @Query("SELECT COALESCE(SUM(CASE WHEN type IN ('EXPENSE','REFUND','PAYMENT_REVERSAL') THEN -amount ELSE amount END),0) FROM cash_movements WHERE remote_shop_id=:shopId AND tenancy_status='assigned' AND session_id=:sessionId") protected abstract suspend fun movementBalance(sessionId:UUID,shopId:String?):Long
+ @Query("SELECT * FROM cash_movements WHERE remote_shop_id=:shop AND tenancy_status='assigned' AND type='PAYMENT_COLLECTION' AND reason=:receipt") protected abstract suspend fun paymentMovements(shop:String,receipt:String):List<CashMovementEntity>
+ @Transaction open suspend fun reversePaymentCollection(shop:String,receipt:String,reason:String,at:Instant){
+  paymentMovements(shop,"Payment $receipt").forEach { original ->
+   insertMovement(CashMovementEntity(UUID.randomUUID(),original.sessionId,CashMovementType.PAYMENT_REVERSAL,original.amount,"Anulación de abono $receipt: $reason",at,tenant=original.tenant))
+  }
+ }
  @Insert protected abstract suspend fun insertSession(value:CashSessionEntity)
  @Insert protected abstract suspend fun insertMovement(value:CashMovementEntity)
  @Update protected abstract suspend fun updateSession(value:CashSessionEntity):Int

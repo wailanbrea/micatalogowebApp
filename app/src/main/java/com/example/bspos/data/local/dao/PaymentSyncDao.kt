@@ -21,6 +21,8 @@ import com.example.bspos.data.local.entity.PaymentSyncEntity
     @Query("SELECT * FROM payment_sync_outbox WHERE id=:id") suspend fun find(id: String): PaymentSyncEntity?
     @Query("SELECT * FROM payment_sync_outbox WHERE shopId=:shop AND customerId=:customer AND state IN ('PENDING','BLOCKED') ORDER BY rowid")
     suspend fun activeForCustomer(shop: String, customer: String): List<PaymentSyncEntity>
+    @Query("SELECT * FROM payment_sync_outbox WHERE state='SENT' ORDER BY shopId,rowid")
+    suspend fun confirmed(): List<PaymentSyncEntity>
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun requestRefresh(row: com.example.bspos.data.local.entity.CatalogRefreshEntity)
     @Query("UPDATE payment_sync_outbox SET state='SENT',error=NULL,server_response=:receipt WHERE id=:id AND state='PENDING'")
@@ -30,7 +32,9 @@ import com.example.bspos.data.local.entity.PaymentSyncEntity
         if (changed == 1) requestRefresh(com.example.bspos.data.local.entity.CatalogRefreshEntity(row.shopId, java.util.UUID.randomUUID().toString()))
         return changed
     }
-    @Query("SELECT COUNT(*) FROM payment_sync_outbox WHERE shopId = :shopId AND state != 'SENT'")
+    @Query("UPDATE payment_sync_outbox SET state='REVERSED', error=:reason WHERE id=:id AND shopId=:shop AND state='SENT'")
+    suspend fun markReversed(id: String, shop: String, reason: String): Int
+    @Query("SELECT COUNT(*) FROM payment_sync_outbox WHERE shopId = :shopId AND state IN ('PENDING','BLOCKED')")
     suspend fun unsentCount(shopId: String): Int
     @Query("SELECT COUNT(*) FROM payment_sync_outbox WHERE state = 'BLOCKED'")
     suspend fun blockedCount(): Int

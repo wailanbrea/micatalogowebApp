@@ -51,7 +51,7 @@ class PaymentSyncResilienceTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
         api = FakeCustomerApi()
-        repository = PaymentSyncRepository(db.paymentSyncDao(), db.posSaleOutboxDao(), db.customerRouteDao(), api, Json)
+        repository = PaymentSyncRepository(db.paymentSyncDao(), db.posSaleOutboxDao(), db.customerRouteDao(), api, Json, com.example.bspos.data.micatalogo.testPaymentReversalReconciler(db))
 
         db.customerRouteDao().insertCustomer(
             CustomerEntity(
@@ -174,6 +174,9 @@ class PaymentSyncResilienceTest {
     }
 
     private class FakeCustomerApi : MiCatalogoCustomerApi {
+        override suspend fun payments(shopId: String, beforeId: String?, paymentIds: List<String>?): Response<com.example.bspos.data.micatalogo.api.CustomerPaymentHistoryDto> = Response.success(com.example.bspos.data.micatalogo.api.CustomerPaymentHistoryDto())
+        override suspend fun reversePayment(shopId: String, customerId: String, paymentId: String, body: com.example.bspos.data.micatalogo.api.ReverseCustomerPaymentDto): Response<com.example.bspos.data.micatalogo.api.ReverseCustomerPaymentResponseDto> = error("Unused reversal")
+
         var status = 500
         var lastRequest: CustomerPaymentDto? = null
 

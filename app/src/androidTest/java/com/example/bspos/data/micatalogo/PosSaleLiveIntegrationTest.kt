@@ -255,7 +255,7 @@ class PosSaleLiveIntegrationTest {
                 db.posSaleOutboxDao(),
                 db.customerRouteDao(),
                 customerApi,
-                json
+                json, testPaymentReversalReconciler(db)
             )
             assertEquals(false, paymentSync.sync())
             assertTrue(db.paymentSyncDao().pending().isEmpty())

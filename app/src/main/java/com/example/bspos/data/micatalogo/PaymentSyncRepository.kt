@@ -15,7 +15,8 @@ import kotlinx.coroutines.sync.withLock
 
 class PaymentSyncRepository @Inject constructor(private val queue: PaymentSyncDao,
     private val sales: PosSaleOutboxDao, private val customers: CustomerRouteDao,
-    private val api: MiCatalogoCustomerApi, private val json: Json) {
+    private val api: MiCatalogoCustomerApi, private val json: Json,
+    private val reversals: PaymentReversalReconciler) {
     private val mutex = Mutex()
     suspend fun blockedCount(): Int = queue.blockedCount()
     suspend fun sync(): Boolean = mutex.withLock {
@@ -55,6 +56,16 @@ class PaymentSyncRepository @Inject constructor(private val queue: PaymentSyncDa
                     queue.mark(row.id, "PENDING", "No se pudo confirmar el abono. Se conserva para reintentar sin duplicarlo.")
                     retry = true
                 }
+            }
+        }
+        // Check every locally known receipt, including old ones outside the first history page.
+        queue.confirmed().groupBy { it.shopId }.forEach { (shop, rows) ->
+            val ids = rows.mapNotNull { row -> runCatching { json.decodeFromString<com.example.bspos.data.micatalogo.api.CustomerPaymentResponseDto>(row.serverResponse.orEmpty()).paymentId.toString() }.getOrNull() }
+            ids.chunked(50).forEach { batch ->
+                try {
+                    val response = api.payments(shop, paymentIds = batch)
+                    if (response.isSuccessful) response.body()?.payments?.forEach { reversals.reconcile(shop, it) }
+                } catch (error: Exception) { if (error is CancellationException) throw error }
             }
         }
         retry || queue.pending().isNotEmpty()

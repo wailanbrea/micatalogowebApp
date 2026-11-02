@@ -25,6 +25,9 @@ import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.CheckCircle
 import com.example.bspos.presentation.common.BSPOSButton as Button
+import com.example.bspos.presentation.common.BSPOSOutlinedButton as OutlinedButton
+import com.example.bspos.presentation.customer.DebtReminderHelper
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
@@ -77,12 +80,17 @@ fun CollectionScreen(viewModel: CollectionViewModel = hiltViewModel()) {
     val history by viewModel.paymentHistory.collectAsState()
     val collecting by viewModel.collecting.collectAsState()
     val message by viewModel.message.collectAsState()
+    val historyLoading by viewModel.historyLoading.collectAsState()
+    val nextHistoryCursor by viewModel.nextHistoryCursor.collectAsState()
+    val reversing by viewModel.reversing.collectAsState()
     var method by remember { mutableStateOf(PaymentMethod.CASH) }
     var tab by remember { mutableStateOf("Por cobrar") }
     var query by remember(tab) { mutableStateOf("") }
     var period by remember { mutableStateOf("Hoy") }
     var historyMethod by remember { mutableStateOf("Todos") }
     var selectedReceipt by remember { mutableStateOf<CollectionPaymentHistoryItem?>(null) }
+    var reversalTarget by remember { mutableStateOf<CollectionPaymentHistoryItem?>(null) }
+    var reversalReason by remember { mutableStateOf("") }
     val pendingSales = sales.filter { it.pendingAmount > 0 && it.customerId != null }
     val customersById = customers.associateBy { it.id }
     val debtorIds = (customers.filter { it.isActive && it.deletedAt == null && it.balance > 0L }.map { it.id } + pendingSales.mapNotNull { it.customerId }).toSet()
@@ -178,7 +186,7 @@ fun CollectionScreen(viewModel: CollectionViewModel = hiltViewModel()) {
             }
             item {
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("Hoy", "Esta semana", "Este mes").forEach { label ->
+                    listOf("Hoy", "Esta semana", "Este mes", "Todo el historial").forEach { label ->
                         FilterChip(selected = period == label, onClick = { period = label }, label = { Text(label) })
                     }
                     listOf("Todos", "Efectivo", "Transferencia", "Tarjeta", "Cheque").forEach { label ->
@@ -187,6 +195,12 @@ fun CollectionScreen(viewModel: CollectionViewModel = hiltViewModel()) {
                 }
             }
             item { CollectionHistorySummary(filteredHistory) }
+            item {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    TextButton(onClick = { viewModel.refreshPayments() }, enabled = !historyLoading && !reversing) { Text(if (historyLoading) "Actualizando…" else "Actualizar historial") }
+                    if (nextHistoryCursor != null) TextButton(onClick = { period = "Todo el historial"; viewModel.refreshPayments(loadMore = true) }, enabled = !historyLoading && !reversing) { Text("Ver anteriores") }
+                }
+            }
             if (groupedHistory.isEmpty()) {
                 item { CreditEmptyState("Historial Pagados") }
             } else {
@@ -216,10 +230,41 @@ fun CollectionScreen(viewModel: CollectionViewModel = hiltViewModel()) {
                     Text(money(receipt.amount), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
                     receipt.reference?.takeIf(String::isNotBlank)?.let { Text("Referencia: $it") }
                     receipt.notes?.takeIf(String::isNotBlank)?.let { Text(it, color = BSPOSTheme.colors.textSecondary) }
+                    if (receipt.reversed) {
+                        Text("Abono anulado", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
+                        receipt.reversalReason?.let { Text(it) }
+                        receipt.reversedBy?.let { Text("Registrado por $it", color = BSPOSTheme.colors.textSecondary) }
+                        receipt.reversedAt?.let { Text(it.let { at -> runCatching { Instant.parse(at).atZone(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("d MMM yyyy · h:mm a", Locale.forLanguageTag("es"))) }.getOrDefault(at) }, color = BSPOSTheme.colors.textSecondary) }
+                    }
+                    if (!receipt.reversed && receipt.remotePaymentId == null) Text("Sincroniza y actualiza el historial para consultar las acciones de este abono.", style = MaterialTheme.typography.bodySmall)
                 }
-            }, confirmButton = { TextButton(onClick = { selectedReceipt = null }) { Text("Cerrar") } })
+            }, confirmButton = { TextButton(onClick = { selectedReceipt = null }) { Text("Cerrar") } },
+            dismissButton = {
+                if (receipt.canReverse && !receipt.reversed) TextButton(enabled = !reversing && !collecting, onClick = {
+                    selectedReceipt = null; reversalReason = ""; reversalTarget = receipt
+                }) { Text("Anular abono", color = MaterialTheme.colorScheme.error) }
+            })
+    }
+    reversalTarget?.let { receipt ->
+        PaymentReversalDialog(receipt, reversalReason, { reversalReason = it }, reversing || collecting,
+            onConfirm = { viewModel.reversePayment(receipt, reversalReason); reversalTarget = null }, onDismiss = { reversalTarget = null })
     }
     message?.let { text -> AlertDialog(onDismissRequest = viewModel::consumeMessage, title = { Text("Cobros") }, text = { Text(text) }, confirmButton = { TextButton(onClick = viewModel::consumeMessage) { Text("Aceptar") } }) }
+}
+
+@Composable
+internal fun PaymentReversalDialog(receipt: CollectionPaymentHistoryItem, reason: String, onReasonChange: (String) -> Unit,
+    busy: Boolean, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(onDismissRequest = { if (!busy) onDismiss() }, title = { Text("Anular abono") },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("${receipt.customerName} · ${receipt.receipt}", fontWeight = FontWeight.Bold)
+            Text(money(receipt.amount), style = MaterialTheme.typography.headlineSmall)
+            Text("Se restituirá el importe a la deuda y se corregirán las facturas y la conciliación originales. Se requiere conexión.")
+            OutlinedTextField(reason, { onReasonChange(it.take(255)) }, Modifier.fillMaxWidth(), enabled = !busy,
+                label = { Text("Motivo de anulación") }, minLines = 2, supportingText = { Text("${reason.length}/255") })
+        } }, confirmButton = {
+            TextButton(enabled = reason.isNotBlank() && !busy, onClick = onConfirm) { Text("Confirmar anulación", color = MaterialTheme.colorScheme.error) }
+        }, dismissButton = { TextButton(enabled = !busy, onClick = onDismiss) { Text("Cancelar") } })
 }
 
 @Composable
@@ -266,16 +311,17 @@ private fun DebtorSelectorCard(customer: Customer, balance: Long, selected: Bool
 
 @Composable
 private fun CollectionHistorySummary(rows: List<CollectionPaymentHistoryItem>) {
-    val total = rows.sumOf { it.amount }
-    val cash = rows.filter { it.method == "Efectivo" }.sumOf { it.amount }
-    val transfer = rows.filter { it.method == "Transferencia" }.sumOf { it.amount }
-    val card = rows.filter { it.method == "Tarjeta" }.sumOf { it.amount }
+    val applied = rows.filterNot { it.reversed }
+    val total = applied.sumOf { it.amount }
+    val cash = applied.filter { it.method == "Efectivo" }.sumOf { it.amount }
+    val transfer = applied.filter { it.method == "Transferencia" }.sumOf { it.amount }
+    val card = applied.filter { it.method == "Tarjeta" }.sumOf { it.amount }
     Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.secondaryNavy)) {
         Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("COBROS DEL PERÍODO", color = androidx.compose.ui.graphics.Color.White.copy(alpha = .78f),
                     style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                Text("${rows.size} registrados", color = BSPOSTheme.colors.success, fontWeight = FontWeight.Bold)
+                Text("${applied.size} aplicados", color = BSPOSTheme.colors.success, fontWeight = FontWeight.Bold)
             }
             Text(money(total), color = androidx.compose.ui.graphics.Color.White,
                 style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold)
@@ -305,10 +351,10 @@ internal fun PaymentHistoryCard(payment: CollectionPaymentHistoryItem, onOpen: (
                             style = MaterialTheme.typography.bodySmall, color = BSPOSTheme.colors.textSecondary)
                 }
                 Surface(shape = RoundedCornerShape(50), color = BSPOSTheme.colors.success.copy(alpha = .12f)) {
-                    Text("✓ Cobrado", Modifier.padding(horizontal = 10.dp, vertical = 6.dp), color = BSPOSTheme.colors.success, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelMedium)
+                    Text(if (payment.reversed) "Anulado" else "✓ Cobrado", Modifier.padding(horizontal = 10.dp, vertical = 6.dp), color = if (payment.reversed) MaterialTheme.colorScheme.error else BSPOSTheme.colors.success, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelMedium)
                 }
             }
-            Text("+${money(payment.amount)}", modifier = Modifier.align(Alignment.End), color = BSPOSTheme.colors.success,
+            Text(money(payment.amount), modifier = Modifier.align(Alignment.End), color = if (payment.reversed) BSPOSTheme.colors.textSecondary else BSPOSTheme.colors.success,
                 style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
             androidx.compose.material3.HorizontalDivider(color = BSPOSTheme.colors.outline.copy(alpha = .28f))
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -362,6 +408,26 @@ internal fun RemoteCustomerDebtCard(
                 Text("Saldo pendiente", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelLarge)
                 Text(money(customer.balance), fontWeight = FontWeight.ExtraBold, style = MaterialTheme.typography.headlineSmall)
                 Text(method.label, color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodySmall)
+            }
+            if (customer.balance > 0) {
+                val context = LocalContext.current
+                val message = remember(customer.fullName, customer.balance) {
+                    DebtReminderHelper.buildReminderMessage(customer.fullName, customer.balance)
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(
+                        onClick = { DebtReminderHelper.sendWhatsApp(context, customer.phone, message) },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("WhatsApp", maxLines = 1)
+                    }
+                    OutlinedButton(
+                        onClick = { DebtReminderHelper.copyToClipboard(context, message) },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Copiar", maxLines = 1)
+                    }
+                }
             }
             CollectionAmountForm(customer.id.toString(), customer.balance, busy, true, onCollect)
         }

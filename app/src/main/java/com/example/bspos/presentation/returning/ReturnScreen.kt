@@ -85,7 +85,7 @@ fun ReturnScreen(viewModel: ReturnViewModel = hiltViewModel()) {
     val selectedItems = items.filter { it.saleId == selected?.id }
     val charged = selected?.let { sale -> if (selectedItems.isEmpty()) emptyMap() else
         CashRefundAmounts.allocate(selectedItems.map { RefundableLine(it.id.toString(),it.quantity,it.subtotal) },sale.discount,sale.tax) }.orEmpty()
-    val eligible = sales.filter { it.status == SaleStatus.COMPLETED && it.paymentType == SalePaymentType.CASH && it.pendingAmount == 0L && it.paidAmount == it.total }
+    val eligible = sales.filter { it.status == SaleStatus.COMPLETED }
 
     Column(Modifier.fillMaxSize().background(BSPOSTheme.colors.background).padding(20.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -97,7 +97,7 @@ fun ReturnScreen(viewModel: ReturnViewModel = hiltViewModel()) {
                     when {
                         selected != null -> "Factura ${selected?.invoiceNumber}"
                         selectedRemote != null -> "Factura ${selectedRemote?.invoiceNumber}"
-                        else -> "Reembolsos de ventas de contado"
+                        else -> "Devoluciones y reembolsos"
                     },
                     color = BSPOSTheme.colors.textSecondary
                 )
@@ -106,11 +106,11 @@ fun ReturnScreen(viewModel: ReturnViewModel = hiltViewModel()) {
         Spacer(Modifier.size(16.dp))
         if (submitting) Text("Procesando devolución…", color = BSPOSTheme.colors.primary)
         if (selected == null && selectedRemote == null) {
-            Text("Selecciona una factura liquidada", color = BSPOSTheme.colors.textSecondary)
+            Text("Selecciona una factura para devolver", color = BSPOSTheme.colors.textSecondary)
             Spacer(Modifier.size(8.dp))
             if (eligible.isEmpty() && remoteInvoices.isEmpty()) Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(when { remoteLoading -> "Cargando ventas elegibles…"; remoteError != null -> remoteError!!; else -> "No hay ventas elegibles para reembolso" }, color = BSPOSTheme.colors.textSecondary)
+                    Text(when { remoteLoading -> "Cargando ventas elegibles…"; remoteError != null -> remoteError!!; else -> "No hay ventas elegibles para devolución" }, color = BSPOSTheme.colors.textSecondary)
                     if (remoteError != null) TextButton(viewModel::refreshRemote) { Text("Reintentar") }
                 }
             }

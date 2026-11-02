@@ -48,7 +48,8 @@ class DashboardViewModel @Inject constructor(
     private val firstSaleReader: FirstSaleStatusReader,
     private val saleOutbox: com.example.bspos.data.local.dao.PosSaleOutboxDao,
     private val shops:ShopScope,
-    private val events: com.example.bspos.data.micatalogo.ShopReadModelEvents
+    private val events: com.example.bspos.data.micatalogo.ShopReadModelEvents,
+    private val cancelSaleUseCase: com.example.bspos.domain.usecase.CancelSaleUseCase
 ) : ViewModel() {
     private val _sellerSummary = MutableStateFlow<SellerSummaryDto?>(null)
     val sellerSummary = _sellerSummary.asStateFlow()
@@ -180,6 +181,16 @@ class DashboardViewModel @Inject constructor(
     val selectedItems = _selectedSale.flatMapLatest { sale ->
         sale?.let { saleRepository.observeItems(it.id) } ?: flowOf(emptyList())
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    fun cancelSale(sale: Sale, reason: String? = null, onResult: (Boolean, String?) -> Unit) = viewModelScope.launch {
+        try {
+            cancelSaleUseCase(sale.id, reason)
+            _selectedSale.value = null
+            onResult(true, null)
+        } catch (e: Exception) {
+            onResult(false, e.message ?: "Error al anular la venta")
+        }
+    }
 
     fun selectSale(sale: Sale?) {
         _selectedSale.value = sale

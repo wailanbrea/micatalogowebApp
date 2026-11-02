@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.*
@@ -31,6 +33,34 @@ class CollectionCardLayoutTest {
     @get:Rule val compose = createComposeRule()
     private val customer = Customer(UUID.randomUUID(), "Distribuidora de Electrodomésticos y Perfumes del Caribe",
         balance = 99_999_999, createdAt = Instant.EPOCH, updatedAt = Instant.EPOCH)
+
+    @Test fun reversalRequiresMotiveAndPreservesClearConfirmation() {
+        var confirmed = 0
+        val receipt = CollectionPaymentHistoryItem("p","c","Cliente de prueba",receipt="REC-42",amount=30000,method="Efectivo",at=Instant.EPOCH)
+        compose.setContent { BSPOSTheme {
+            var reason by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
+            PaymentReversalDialog(receipt,reason,{ reason=it },false,{ confirmed++ },{})
+        } }
+        compose.onNodeWithText("Confirmar anulación").assertIsNotEnabled()
+        compose.onNodeWithText("Motivo de anulación").performTextInput("Se registró dos veces por error")
+        screenshot("payment-reversal-confirmation")
+        compose.onNodeWithText("Confirmar anulación").assertIsEnabled().performClick()
+        compose.runOnIdle { assertEquals(1,confirmed) }
+    }
+
+    @Test fun reversedReceiptIsClearlyMarkedAndBusyConfirmationCannotBeSubmitted() {
+        val receipt = CollectionPaymentHistoryItem("p","c","Cliente QA",receipt="REC-42",amount=30000,method="Efectivo",at=Instant.EPOCH,reversed=true,reversalReason="Duplicado")
+        compose.setContent { BSPOSTheme { PaymentHistoryCard(receipt) {} } }
+        compose.onNodeWithText("Anulado").assertIsDisplayed()
+        screenshot("payment-reversed-receipt")
+    }
+
+    @Test fun busyReversalDisablesBothActions() {
+        val receipt = CollectionPaymentHistoryItem("p","c","Cliente QA",receipt="REC-42",amount=30000,method="Efectivo",at=Instant.EPOCH)
+        compose.setContent { BSPOSTheme { PaymentReversalDialog(receipt,"Duplicado",{},true,{}, {}) } }
+        compose.onNodeWithText("Confirmar anulación").assertIsNotEnabled()
+        compose.onNodeWithText("Cancelar").assertIsNotEnabled()
+    }
 
     @Test fun remoteCollectionFitsSmallPhoneWithButtonBelowAmount() {
         var paid = 0L

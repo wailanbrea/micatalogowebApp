@@ -588,6 +588,9 @@ class CatalogSyncIntegrationTest {
     )
 
     private class EmptyCustomerApi : com.example.bspos.data.micatalogo.api.MiCatalogoCustomerApi {
+        override suspend fun payments(shopId: String, beforeId: String?, paymentIds: List<String>?): retrofit2.Response<com.example.bspos.data.micatalogo.api.CustomerPaymentHistoryDto> = retrofit2.Response.success(com.example.bspos.data.micatalogo.api.CustomerPaymentHistoryDto())
+        override suspend fun reversePayment(shopId: String, customerId: String, paymentId: String, body: com.example.bspos.data.micatalogo.api.ReverseCustomerPaymentDto): retrofit2.Response<com.example.bspos.data.micatalogo.api.ReverseCustomerPaymentResponseDto> = error("Unused")
+
         override suspend fun customers(shopId: String) = Response.success(com.example.bspos.data.micatalogo.api.CustomerListDto(emptyList()))
         override suspend fun createCustomer(shopId: String, request: CustomerUploadRequestDto): Response<RemoteCustomerDto> = error("Unused")
         override suspend fun payment(shopId: String, customerId: String, body: com.example.bspos.data.micatalogo.api.CustomerPaymentDto): Response<com.example.bspos.data.micatalogo.api.CustomerPaymentResponseDto> = error("Unused")

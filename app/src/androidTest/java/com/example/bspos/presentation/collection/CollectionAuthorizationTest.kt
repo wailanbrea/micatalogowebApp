@@ -78,7 +78,7 @@ class CollectionAuthorizationTest {
         val store = ViewModelStore()
         val model = CollectionViewModel(fake<CustomerRepository> { flowOf(emptyList<Customer>()) }, fake<SaleRepository> { flowOf(emptyList<Sale>()) },
             record, Lazy { api }, connection, db.customerRouteDao(), catalog, scope, db.paymentSyncDao(), db.paymentDao(),
-            PaymentSyncRepository(db.paymentSyncDao(), db.posSaleOutboxDao(), db.customerRouteDao(), api, Json), recorder, permissions)
+            PaymentSyncRepository(db.paymentSyncDao(), db.posSaleOutboxDao(), db.customerRouteDao(), api, Json, com.example.bspos.data.micatalogo.testPaymentReversalReconciler(db)), recorder, permissions, com.example.bspos.data.micatalogo.testPaymentReversalReconciler(db))
             .also { store.put("collection", it) }
         suspend fun prepare() {
             db.customerRouteDao().insertCustomer(CustomerEntity(customer.id, customer.businessName, balance = 100, creditLimit = 100,

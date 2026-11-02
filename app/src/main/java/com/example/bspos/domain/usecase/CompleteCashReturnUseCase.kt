@@ -4,6 +4,7 @@ import com.example.bspos.core.database.AppDatabaseTransactor
 import com.example.bspos.core.database.ShopScope
 import com.example.bspos.data.local.entity.TenantMetadata
 import com.example.bspos.data.local.dao.CashSessionDao
+import com.example.bspos.data.local.dao.CustomerRouteDao
 import com.example.bspos.data.local.dao.InventoryDao
 import com.example.bspos.data.local.dao.ReturnDao
 import com.example.bspos.data.local.dao.SaleDao
@@ -30,6 +31,7 @@ data class CompleteCashReturnRequest(val returnNumber:String,val saleId:UUID,val
 class CompleteCashReturnUseCase @Inject constructor(private val transactor:AppDatabaseTransactor,
     private val returns:ReturnDao, private val sales:SaleDao, private val inventory:InventoryDao,
     private val cash:CashSessionDao, private val settings:SettingsRepository, private val products:ProductDao,
+    private val customers:CustomerRouteDao,
     private val saleQueue:PosSaleOutboxDao, private val remote:RemoteMutationRecorder, private val shops:ShopScope) {
     suspend operator fun invoke(request:CompleteCashReturnRequest):Return {
         var queued = false
@@ -38,8 +40,7 @@ class CompleteCashReturnUseCase @Inject constructor(private val transactor:AppDa
             require(request.returnNumber.isNotBlank() && request.lines.isNotEmpty())
             require(request.lines.map { it.saleItemId }.distinct().size == request.lines.size)
             val sale = checkNotNull(sales.findById(request.saleId,activeShop)) { "Venta no encontrada en la tienda." }
-            require(sale.status == SaleStatus.COMPLETED && sale.paymentType == SalePaymentType.CASH &&
-                sale.pendingAmount == 0L && sale.paidAmount == sale.total) { "Solo se devuelven ventas de contado totalmente pagadas." }
+            require(sale.status == SaleStatus.COMPLETED) { "Solo se pueden devolver ventas completadas." }
             val sold = sales.itemsInInvoiceOrder(sale.id,activeShop)
             val charged = CashRefundAmounts.allocate(sold.map { RefundableLine(it.id.toString(),it.quantity,it.subtotal) },sale.discount,sale.tax)
             val id = UUID.randomUUID()
@@ -90,9 +91,24 @@ class CompleteCashReturnUseCase @Inject constructor(private val transactor:AppDa
             val targetLocation = sale.routeId?.let(InventoryLocation::route) ?: InventoryLocation.MAIN
             if (restocked.isNotEmpty()) LinkedInventorySaleRecorder.record(restocked,id,request.date,targetLocation,
                 products,inventory,settings.observe().first().allowNegativeStock,restoring=true)
-            if (total > 0) {
+
+            val debtReduction = if (sale.pendingAmount > 0L) minOf(total, sale.pendingAmount) else 0L
+            val cashRefund = total - debtReduction
+
+            if (debtReduction > 0L && sale.customerId != null) {
+                val customer = customers.findCustomer(sale.customerId, activeShop)
+                if (customer != null) {
+                    val newBalance = maxOf(0L, customer.balance - debtReduction)
+                    customers.updateCustomer(customer.copy(balance = newBalance, updatedAt = request.date))
+                }
+                val newPending = sale.pendingAmount - debtReduction
+                val newStatus = if (newPending == 0L && sale.paidAmount == 0L) SaleStatus.CANCELLED else sale.status
+                sales.updateBalancesAndStatus(sale.id, sale.paidAmount, newPending, newStatus, request.date, activeShop)
+            }
+
+            if (cashRefund > 0) {
                 val sessionId = checkNotNull(cash.findOpenId(activeShop)) { "Abre una caja para registrar el reembolso." }
-                cash.recordMovement(CashMovementEntity(UUID.randomUUID(),sessionId,CashMovementType.REFUND,total,
+                cash.recordMovement(CashMovementEntity(UUID.randomUUID(),sessionId,CashMovementType.REFUND,cashRefund,
                     "Devolución ${request.returnNumber}",request.date,tenant=TenantMetadata.assigned(activeShop)))
             }
             Return(id,request.returnNumber,sale.id,sale.customerId,request.date,total,request.reason,request.date)

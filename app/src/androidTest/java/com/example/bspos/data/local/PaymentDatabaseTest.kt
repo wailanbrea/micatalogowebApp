@@ -22,6 +22,54 @@ class PaymentDatabaseTest {
   private val shop="payment-dao-qa"; private val tenant=TenantMetadata.assigned(shop)
  @Before fun setup()=runTest{db=Room.inMemoryDatabaseBuilder(ApplicationProvider.getApplicationContext<Context>(),AppDatabase::class.java).build();payments=db.paymentDao();val category=UUID.randomUUID();val unit=UUID.randomUUID();db.categoryDao().insert(CategoryEntity(category,"C",createdAt=at,updatedAt=at));db.unitOfMeasureDao().insert(UnitOfMeasureEntity(unit,"U","u",createdAt=at,updatedAt=at));db.productDao().insert(ProductEntity(productId,"P","PAY-1",categoryId=category,unitId=unit,salePrice=100,averageCost=50,createdAt=at,updatedAt=at));db.customerRouteDao().insertCustomer(CustomerEntity(customerId,"Cliente",createdAt=at,updatedAt=at))}
  @After fun close()=db.close()
+ @Test fun serverReversalUpdatesLocalDebtCashAndSalesExactlyOnceWithoutDeletingReceipt()=runTest {
+  val (payment,remote,session)=prepareReversal()
+  val reconciler=com.example.bspos.data.micatalogo.testPaymentReversalReconciler(db)
+  reconciler.reconcile(shop,remote);reconciler.reconcile(shop,remote)
+  Assert.assertEquals("REVERSED",db.paymentSyncDao().find(payment.id.toString())?.state)
+  Assert.assertEquals(0,db.paymentSyncDao().unsentCount(shop))
+  Assert.assertEquals(1000L,db.customerRouteDao().findCustomer(customerId,shop)?.balance)
+  val saleId=payments.allocations(payment.id,shop).single().saleId
+  Assert.assertEquals(1000L,db.saleDao().findById(saleId,shop)?.pendingAmount)
+  Assert.assertEquals(0L,db.saleDao().findById(saleId,shop)?.paidAmount)
+  Assert.assertTrue(payments.observeAll(shop).first().isEmpty())
+  Assert.assertEquals(1,payments.observeHistory(shop).first().size)
+  Assert.assertEquals(1,payments.observeAllocations(payment.id,shop).first().size)
+  val movements=db.cashSessionDao().observeMovements(session,shop).first()
+  Assert.assertEquals(2,movements.size)
+  Assert.assertEquals(300L,movements.single { it.type==CashMovementType.PAYMENT_REVERSAL }.amount)
+ }
+ @Test fun reversalRespectsShopBoundaryAndPreservesClosedSessionSnapshot()=runTest {
+  val (payment,remote,session)=prepareReversal()
+  val reconciler=com.example.bspos.data.micatalogo.testPaymentReversalReconciler(db)
+  reconciler.reconcile("another-shop",remote)
+  Assert.assertEquals("SENT",db.paymentSyncDao().find(payment.id.toString())?.state)
+  val closed=db.cashSessionDao().close(session,400,at.plusSeconds(10),shopId=shop)
+  reconciler.reconcile(shop,remote)
+  Assert.assertEquals(closed,db.cashSessionDao().find(session,shop))
+  Assert.assertEquals(2,db.cashSessionDao().observeMovements(session,shop).first().size)
+ }
+ @Test fun inconsistentLocalBalanceRollsBackReversalMarkerAndAllCorrections()=runTest {
+  val (payment,remote,_)=prepareReversal()
+  val sale=payments.allocations(payment.id,shop).single().saleId
+  db.openHelper.writableDatabase.execSQL("UPDATE sales SET paid_amount=100,pending_amount=900 WHERE id=?",arrayOf(sale.toString()))
+  fails<IllegalArgumentException>{com.example.bspos.data.micatalogo.testPaymentReversalReconciler(db).reconcile(shop,remote)}
+  Assert.assertEquals("SENT",db.paymentSyncDao().find(payment.id.toString())?.state)
+  Assert.assertEquals(700L,db.customerRouteDao().findCustomer(customerId,shop)?.balance)
+ }
+ private suspend fun prepareReversal():Triple<PaymentEntity,com.example.bspos.data.micatalogo.api.RemotePaymentHistoryDto,UUID> {
+  db.openHelper.writableDatabase.execSQL("UPDATE customers SET remote_shop_id=?,tenancy_status='assigned',balance=700 WHERE id=?",arrayOf(shop,customerId.toString()))
+  val sale=creditSale(1000);insertSale(sale)
+  val payment=PaymentEntity(UUID.randomUUID(),"REC-QA",customerId,date=at,amount=300,method=PaymentMethod.CASH,createdAt=at,tenant=tenant)
+  payments.insertWithAllocations(payment,listOf(PaymentAllocationEntity(UUID.randomUUID(),payment.id,sale.id,300,tenant)))
+  db.saleDao().applyPayment(sale.id,300,at,shop)
+  val session=UUID.randomUUID()
+  db.cashSessionDao().open(CashSessionEntity(session,at,openingAmount=100,remoteSessionId="qa-session",tenant=tenant))
+  db.cashSessionDao().recordMovement(CashMovementEntity(UUID.randomUUID(),session,CashMovementType.PAYMENT_COLLECTION,300,"Payment REC-QA",at,tenant))
+  db.paymentSyncDao().insert(com.example.bspos.data.local.entity.PaymentSyncEntity(payment.id.toString(),shop,customerId.toString(),"{}","",state="SENT",serverResponse="{\"customer\":{\"id\":\"qa-customer\"},\"payment_id\":42}"))
+  val remote=com.example.bspos.data.micatalogo.api.RemotePaymentHistoryDto("42","qa-customer","Cliente",payment.id.toString(),"REC-42","3.00","cash",createdAt=at.toString(),reversal=com.example.bspos.data.micatalogo.api.CustomerPaymentReversalDto("43","Error QA","Propietario",at.plusSeconds(20).toString()))
+  return Triple(payment,remote,session)
+ }
   @Test fun receiptAndFullAllocationPersist()=runTest{val sale=creditSale(300);insertSale(sale);val payment=PaymentEntity(UUID.randomUUID(),"R-1",customerId,date=at,amount=300,method=PaymentMethod.CASH,createdAt=at,tenant=tenant);val allocation=PaymentAllocationEntity(UUID.randomUUID(),payment.id,sale.id,300,tenant=tenant);payments.insertWithAllocations(payment,listOf(allocation));Assert.assertEquals(listOf(payment),payments.observeForCustomer(customerId,shop).first());Assert.assertEquals(listOf(allocation),payments.observeAllocations(payment.id,shop).first())}
   @Test fun allocationsRequireExactAmountMatchingCustomerAndPendingBalance()=runTest{val sale=creditSale(100);insertSale(sale);val payment=PaymentEntity(UUID.randomUUID(),"R-2",customerId,date=at,amount=100,method=PaymentMethod.TRANSFER,createdAt=at,tenant=tenant);val wrongAmount=PaymentAllocationEntity(UUID.randomUUID(),payment.id,sale.id,99);fails<IllegalArgumentException>{payments.insertWithAllocations(payment,listOf(wrongAmount))};val otherCustomer=payment.copy(id=UUID.randomUUID(),receiptNumber="R-3",customerId=UUID.randomUUID());val mismatch=PaymentAllocationEntity(UUID.randomUUID(),otherCustomer.id,sale.id,100);fails<IllegalArgumentException>{payments.insertWithAllocations(otherCustomer,listOf(mismatch))};val tooMuch=payment.copy(id=UUID.randomUUID(),receiptNumber="R-4",amount=101);fails<IllegalArgumentException>{payments.insertWithAllocations(tooMuch,listOf(PaymentAllocationEntity(UUID.randomUUID(),tooMuch.id,sale.id,101)))}}
   @Test fun receiptNumberAndReferencesAreProtected()=runTest{val sale=creditSale(100);insertSale(sale);val payment=PaymentEntity(UUID.randomUUID(),"R-5",customerId,date=at,amount=100,method=PaymentMethod.CASH,createdAt=at,tenant=tenant);payments.insertWithAllocations(payment,listOf(PaymentAllocationEntity(UUID.randomUUID(),payment.id,sale.id,100)));val duplicate=payment.copy(id=UUID.randomUUID());fails<IllegalArgumentException>{payments.insertWithAllocations(duplicate,listOf(PaymentAllocationEntity(UUID.randomUUID(),duplicate.id,sale.id,100)))};fails<SQLiteConstraintException>{db.openHelper.writableDatabase.execSQL("DELETE FROM customers")};fails<SQLiteConstraintException>{db.openHelper.writableDatabase.execSQL("DELETE FROM sales")}}
