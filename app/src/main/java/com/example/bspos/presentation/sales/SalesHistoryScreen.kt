@@ -33,6 +33,7 @@ import com.example.bspos.presentation.common.BSPOSButton as Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.Surface
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import com.example.bspos.presentation.common.BSPOSActionTextButton as TextButton
@@ -172,6 +173,7 @@ fun SalesHistoryScreen(
         }
         .sortedByDescending { it.date }
     var remoteToVoid by remember { mutableStateOf<com.example.bspos.data.micatalogo.dto.FeatureRowDto?>(null) }
+    var saleToCancel by remember { mutableStateOf<Sale?>(null) }
     var voidingRemote by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     Column(
@@ -266,34 +268,51 @@ fun SalesHistoryScreen(
                 item { EmptySalesState() }
             }
             items(remote.module?.rows.orEmpty(), key = { "server-${it.id ?: it.primary}" }) { row ->
+                val isVoid = row.status.contains("anulad", ignoreCase = true) || row.status.contains("reembols", ignoreCase = true)
+                val isPending = row.status.contains("pendiente", ignoreCase = true) || row.status.contains("parcial", ignoreCase = true) || row.status.contains("crédito", ignoreCase = true)
+                val statusColor = when {
+                    isVoid -> BSPOSTheme.colors.error
+                    isPending -> BSPOSTheme.colors.warning
+                    else -> BSPOSTheme.colors.success
+                }
+                val statusBg = when {
+                    isVoid -> BSPOSTheme.colors.errorLight
+                    isPending -> BSPOSTheme.colors.warningLight
+                    else -> BSPOSTheme.colors.successLight
+                }
                 Card(onClick = { selectedRemote = row }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp),
                     colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface)) {
-                    Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(row.primary, fontWeight = FontWeight.ExtraBold)
+                    Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            Text(row.primary, fontWeight = FontWeight.ExtraBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).padding(end = 8.dp))
+                            Text(row.value, fontWeight = FontWeight.ExtraBold, color = BSPOSTheme.colors.primary, maxLines = 1, softWrap = false)
+                        }
                         Text(row.secondary, style = MaterialTheme.typography.bodySmall, color = BSPOSTheme.colors.textSecondary)
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                            Text(row.status)
-                            Text(row.value, fontWeight = FontWeight.Bold, color = BSPOSTheme.colors.primary, maxLines = 1, softWrap = false)
-                        }
-                        if (row.canVoid && !row.id.isNullOrBlank()) {
-                            OutlinedButton(
-                                onClick = { remoteToVoid = row },
-                                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-                                shape = RoundedCornerShape(10.dp)
-                            ) {
-                                Text("Anular", color = BSPOSTheme.colors.error, fontWeight = FontWeight.Bold)
+                            Surface(shape = RoundedCornerShape(50), color = statusBg) {
+                                Text(row.status, color = statusColor, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
+                            }
+                            if (row.canVoid && !row.id.isNullOrBlank()) {
+                                OutlinedButton(
+                                    onClick = { remoteToVoid = row },
+                                    shape = RoundedCornerShape(10.dp),
+                                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
+                                ) {
+                                    Text("Anular", color = BSPOSTheme.colors.error, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
+                                }
                             }
                         }
                     }
                 }
             }
             if (visibleSales.isNotEmpty()) {
-                item { Text("Pendientes de confirmación en MiCatalogo", color = BSPOSTheme.colors.warning) }
+                item { Text("Pendientes de sincronización", color = BSPOSTheme.colors.warning, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold) }
                 items(visibleSales, key = { it.id }) { sale ->
                     SaleHistoryCard(
                         sale = sale,
                         customerName = customerNames[sale.customerId] ?: "Consumidor final",
-                        onClick = { viewModel.selectSale(sale) }
+                        onClick = { viewModel.selectSale(sale) },
+                        onCancelClick = if (sale.status == SaleStatus.COMPLETED) ({ saleToCancel = sale }) else null
                     )
                 }
             }
@@ -306,20 +325,27 @@ fun SalesHistoryScreen(
     selectedRemote?.let { invoice ->
         AlertDialog(onDismissRequest = { selectedRemote = null }, title = { Text(invoice.primary) }, text = {
             com.example.bspos.presentation.common.DialogScrollableColumn {
-                Text(invoice.secondary)
-                invoice.items.forEach { item -> Text("${item.quantity} × ${item.name} · ${item.lineTotal}") }
-                Text("Total: ${invoice.value}", fontWeight = FontWeight.Bold)
-                Text(invoice.status)
+                Text(invoice.secondary, style = MaterialTheme.typography.bodySmall, color = BSPOSTheme.colors.textSecondary)
+                Spacer(Modifier.height(8.dp))
+                invoice.items.forEach { item ->
+                    Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("${item.quantity} × ${item.name}", modifier = Modifier.weight(1f).padding(end = 8.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(item.lineTotal, fontWeight = FontWeight.SemiBold, maxLines = 1, softWrap = false)
+                    }
+                }
+                HorizontalDivider(Modifier.padding(vertical = 8.dp), color = BSPOSTheme.colors.outline)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("Total", fontWeight = FontWeight.Bold)
+                    Text(invoice.value, fontWeight = FontWeight.ExtraBold, color = BSPOSTheme.colors.primary, maxLines = 1, softWrap = false)
+                }
+                Text("Estado: ${invoice.status}", style = MaterialTheme.typography.labelMedium, color = BSPOSTheme.colors.textSecondary)
             }
         }, confirmButton = { TextButton({ selectedRemote = null }) { Text("Cerrar") } },
             dismissButton = {
-                Row {
-                    if (invoice.canVoid && !invoice.id.isNullOrBlank()) {
-                        TextButton({ selectedRemote = null; remoteToVoid = invoice }) {
-                            Text("Anular", color = BSPOSTheme.colors.error, fontWeight = FontWeight.Bold)
-                        }
+                if (invoice.canVoid && !invoice.id.isNullOrBlank()) {
+                    TextButton({ selectedRemote = null; remoteToVoid = invoice }) {
+                        Text("Anular", color = BSPOSTheme.colors.error, fontWeight = FontWeight.Bold)
                     }
-                    TextButton({ selectedRemote = null; onReturns() }) { Text("Ver devoluciones") }
                 }
             })
     }
@@ -368,12 +394,11 @@ fun SalesHistoryScreen(
             }
         )
     }
-    var saleToCancel by remember { mutableStateOf<Sale?>(null) }
     saleToCancel?.let { target ->
         AlertDialog(
             onDismissRequest = { saleToCancel = null },
             title = { Text("Anular venta") },
-            text = { Text("¿Deseas anular la venta ${target.invoiceNumber}? Se reintegrarán los productos al inventario y se anulará la deuda pendiente si fue a crédito.") },
+            text = { Text("Factura ${target.invoiceNumber}") },
             confirmButton = {
                 TextButton(onClick = {
                     viewModel.cancelSale(target) { success, error ->
@@ -540,26 +565,47 @@ private fun Metric(label: String, value: String, color: Color, modifier: Modifie
 }
 
 @Composable
-private fun SaleHistoryCard(sale: Sale, customerName: String, onClick: () -> Unit) {
+private fun SaleHistoryCard(sale: Sale, customerName: String, onClick: () -> Unit, onCancelClick: (() -> Unit)? = null) {
     val date = sale.date.atZone(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm"))
     Card(
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
         shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface)
     ) {
-        Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Card(shape = RoundedCornerShape(14.dp), colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.primaryLight)) {
-                Icon(Icons.Default.BarChart, contentDescription = null, tint = BSPOSTheme.colors.primary, modifier = Modifier.padding(12.dp))
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Text(sale.invoiceNumber, fontWeight = FontWeight.ExtraBold, color = BSPOSTheme.colors.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).padding(end = 8.dp))
+                Text(money(sale.total), fontWeight = FontWeight.ExtraBold, color = BSPOSTheme.colors.primary, maxLines = 1, softWrap = false)
             }
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text(sale.invoiceNumber, fontWeight = FontWeight.ExtraBold, color = BSPOSTheme.colors.textPrimary)
-                Text(customerName, color = BSPOSTheme.colors.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text("$date · ${sale.paymentType.label()}", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelSmall)
-            }
-            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text(money(sale.total), fontWeight = FontWeight.ExtraBold, color = BSPOSTheme.colors.textPrimary)
-                Text(if (sale.pendingAmount > 0) "PENDIENTE" else "PAGADA", color = if (sale.pendingAmount > 0) BSPOSTheme.colors.warning else BSPOSTheme.colors.success, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+            Text("$customerName · $date · ${sale.paymentType.label()}", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                val badgeText = when {
+                    sale.status != SaleStatus.COMPLETED -> "ANULADA"
+                    sale.pendingAmount > 0 -> "PENDIENTE"
+                    else -> "PAGADA"
+                }
+                val badgeColor = when {
+                    sale.status != SaleStatus.COMPLETED -> BSPOSTheme.colors.error
+                    sale.pendingAmount > 0 -> BSPOSTheme.colors.warning
+                    else -> BSPOSTheme.colors.success
+                }
+                val badgeBg = when {
+                    sale.status != SaleStatus.COMPLETED -> BSPOSTheme.colors.errorLight
+                    sale.pendingAmount > 0 -> BSPOSTheme.colors.warningLight
+                    else -> BSPOSTheme.colors.successLight
+                }
+                Surface(shape = RoundedCornerShape(50), color = badgeBg) {
+                    Text(badgeText, color = badgeColor, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
+                }
+                if (onCancelClick != null) {
+                    OutlinedButton(
+                        onClick = onCancelClick,
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
+                    ) {
+                        Text("Anular", color = BSPOSTheme.colors.error, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
+                    }
+                }
             }
         }
     }

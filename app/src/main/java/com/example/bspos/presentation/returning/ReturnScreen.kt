@@ -43,6 +43,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
+import java.time.ZoneId
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.example.bspos.core.ui.theme.BSPOSTheme
@@ -97,7 +98,7 @@ fun ReturnScreen(viewModel: ReturnViewModel = hiltViewModel()) {
                     when {
                         selected != null -> "Factura ${selected?.invoiceNumber}"
                         selectedRemote != null -> "Factura ${selectedRemote?.invoiceNumber}"
-                        else -> "Devoluciones y reembolsos"
+                        else -> "Devoluciones"
                     },
                     color = BSPOSTheme.colors.textSecondary
                 )
@@ -106,8 +107,6 @@ fun ReturnScreen(viewModel: ReturnViewModel = hiltViewModel()) {
         Spacer(Modifier.size(16.dp))
         if (submitting) Text("Procesando devolución…", color = BSPOSTheme.colors.primary)
         if (selected == null && selectedRemote == null) {
-            Text("Selecciona una factura para devolver", color = BSPOSTheme.colors.textSecondary)
-            Spacer(Modifier.size(8.dp))
             if (eligible.isEmpty() && remoteInvoices.isEmpty()) Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(when { remoteLoading -> "Cargando ventas elegibles…"; remoteError != null -> remoteError!!; else -> "No hay ventas elegibles para devolución" }, color = BSPOSTheme.colors.textSecondary)
@@ -149,28 +148,28 @@ fun ReturnScreen(viewModel: ReturnViewModel = hiltViewModel()) {
 
 @Composable
 private fun SaleCard(sale: Sale, onClick: () -> Unit) {
+    val date = sale.date.atZone(ZoneId.systemDefault()).format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm"))
     Card(onClick = onClick, shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface)) {
-        Row(Modifier.fillMaxWidth().padding(15.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(42.dp).clip(RoundedCornerShape(12.dp)).background(BSPOSTheme.colors.errorLight), contentAlignment = Alignment.Center) { Icon(Icons.Default.Replay, null, tint = BSPOSTheme.colors.error) }
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) { Text(sale.invoiceNumber, fontWeight = FontWeight.ExtraBold); Text("Venta liquidada", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelMedium) }
-            Text(money(sale.total), fontWeight = FontWeight.ExtraBold, color = BSPOSTheme.colors.primary)
+        Column(Modifier.fillMaxWidth().padding(15.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Text(sale.invoiceNumber, fontWeight = FontWeight.ExtraBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).padding(end = 8.dp))
+                Text(money(sale.total), fontWeight = FontWeight.ExtraBold, color = BSPOSTheme.colors.primary, maxLines = 1, softWrap = false)
+            }
+            Text(date, color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }
 
 @Composable
 private fun RemoteSaleCard(invoice: ReturnEligibleInvoiceDto, onClick: () -> Unit) {
+    val itemsLabel = if (invoice.items.size == 1) "1 artículo" else "${invoice.items.size} artículos"
     Card(onClick = onClick, shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface)) {
-        Row(Modifier.fillMaxWidth().padding(15.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(42.dp).clip(RoundedCornerShape(12.dp)).background(BSPOSTheme.colors.errorLight), contentAlignment = Alignment.Center) { Icon(Icons.Default.Replay, null, tint = BSPOSTheme.colors.error) }
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text(invoice.invoiceNumber, fontWeight = FontWeight.ExtraBold)
-                Text(invoice.customerName ?: "Venta general", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelMedium)
-                Text("Venta del servidor · ${invoice.items.size} artículo(s)", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+        Column(Modifier.fillMaxWidth().padding(15.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Text(invoice.invoiceNumber, fontWeight = FontWeight.ExtraBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).padding(end = 8.dp))
+                Text(money(MoneyUtils.parsePesosStringToCents(invoice.total)), fontWeight = FontWeight.ExtraBold, color = BSPOSTheme.colors.primary, maxLines = 1, softWrap = false)
             }
-            Text(money(MoneyUtils.parsePesosStringToCents(invoice.total)), fontWeight = FontWeight.ExtraBold, color = BSPOSTheme.colors.primary)
+            Text("${invoice.customerName ?: "Consumidor final"} · $itemsLabel", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }
@@ -181,7 +180,7 @@ private fun ReturnItemCard(name: String, item: SaleItem, onClick: () -> Unit) {
         Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(40.dp).clip(RoundedCornerShape(11.dp)).background(BSPOSTheme.colors.primaryLight), contentAlignment = Alignment.Center) { Icon(Icons.Default.ShoppingBag, null, tint = BSPOSTheme.colors.primary) }
             Spacer(Modifier.width(10.dp))
-            Column(Modifier.weight(1f)) { Text(name, fontWeight = FontWeight.ExtraBold, maxLines = 1, overflow = TextOverflow.Ellipsis); Text("${item.quantity} unidades · ${money(item.unitPrice)} c/u", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelMedium) }
+            Column(Modifier.weight(1f)) { Text(name, fontWeight = FontWeight.ExtraBold, maxLines = 1, overflow = TextOverflow.Ellipsis); Text("${item.quantity} ${if (item.quantity == 1L) "unidad" else "unidades"} · ${money(item.unitPrice)} c/u", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelMedium) }
             Text("Devolver", color = BSPOSTheme.colors.error, fontWeight = FontWeight.Bold)
         }
     }
@@ -215,7 +214,6 @@ private fun ReturnLineDialog(item: SaleItem, charged: Long, returned: Long, onSa
             Text("Máximo permitido: $remaining unidades · Ya devueltas: $returned", color = BSPOSTheme.colors.textSecondary)
             OutlinedTextField(quantity, { quantity = it.filter(Char::isDigit); error = null }, label = { Text("Cantidad") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), isError = error != null)
             amount?.let { Text("Reembolso: ${money(it)}", fontWeight = FontWeight.Bold, color = BSPOSTheme.colors.primary) }
-            Text("Importe original con descuentos e impuestos. La devolución remota espera la confirmación de la venta original.", style = MaterialTheme.typography.bodySmall)
             FilterChip(restock, { restock = !restock }, label = { Text(if (restock) "Reintegrar al inventario" else "No reintegrar al inventario") })
             OutlinedTextField(reason, { reason = it; error = null }, label = { Text("Motivo") }, minLines = 2, isError = error != null)
             error?.let { Text(it, color = BSPOSTheme.colors.error, style = MaterialTheme.typography.bodySmall) }

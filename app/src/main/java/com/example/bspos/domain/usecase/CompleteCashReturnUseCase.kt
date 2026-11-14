@@ -107,9 +107,10 @@ class CompleteCashReturnUseCase @Inject constructor(private val transactor:AppDa
             }
 
             if (cashRefund > 0) {
-                val sessionId = checkNotNull(cash.findOpenId(activeShop)) { "Abre una caja para registrar el reembolso." }
-                cash.recordMovement(CashMovementEntity(UUID.randomUUID(),sessionId,CashMovementType.REFUND,cashRefund,
-                    "Devolución ${request.returnNumber}",request.date,tenant=TenantMetadata.assigned(activeShop)))
+                cash.findOpenId(activeShop)?.let { sessionId ->
+                    cash.recordMovement(CashMovementEntity(UUID.randomUUID(),sessionId,CashMovementType.REFUND,cashRefund,
+                        "Devolución ${request.returnNumber}",request.date,tenant=TenantMetadata.assigned(activeShop)))
+                }
             }
             Return(id,request.returnNumber,sale.id,sale.customerId,request.date,total,request.reason,request.date)
         }

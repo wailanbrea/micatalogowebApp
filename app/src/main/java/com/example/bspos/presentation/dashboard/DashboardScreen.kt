@@ -247,7 +247,7 @@ fun DashboardScreen(
         AlertDialog(
             onDismissRequest = { saleToCancel = null },
             title = { Text("Anular venta") },
-            text = { Text("¿Deseas anular la venta ${target.invoiceNumber}? Se reintegrarán los productos al inventario y se anulará la deuda pendiente si fue a crédito.") },
+            text = { Text("Factura ${target.invoiceNumber}") },
             confirmButton = {
                 TextButton(onClick = {
                     viewModel.cancelSale(target) { success, error ->
@@ -875,19 +875,18 @@ internal fun SaleDetailDialog(
                     }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         onPrint?.let { print ->
-                            OutlinedButton(onClick = print, modifier = Modifier.weight(1f), shape = RoundedCornerShape(14.dp)) { Text("Térmico") }
+                            OutlinedButton(onClick = print, modifier = Modifier.weight(1f), shape = RoundedCornerShape(14.dp), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)) { Text("Térmico", maxLines = 1, softWrap = false) }
                         }
-                        OutlinedButton(onClick = onReturn, modifier = Modifier.weight(1f), shape = RoundedCornerShape(14.dp)) { Text("Devolver") }
                         if (sale.status == SaleStatus.COMPLETED && onCancelSale != null) {
-                            OutlinedButton(onClick = onCancelSale, modifier = Modifier.weight(1f), shape = RoundedCornerShape(14.dp)) {
-                                Text("Anular", color = BSPOSTheme.colors.error)
+                            OutlinedButton(onClick = onCancelSale, modifier = Modifier.weight(1f), shape = RoundedCornerShape(14.dp), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)) {
+                                Text("Anular", color = BSPOSTheme.colors.error, maxLines = 1, softWrap = false)
                             }
                         }
                     }
                     FinanceSummaryCard(sale, cost, gain, margin)
                     InfoPairCard("Cliente", customerName, "Pago", sale.paymentType.label())
                     InfoPairCard("Estado", if (sale.status == SaleStatus.COMPLETED) "Completada" else "Anulada", "Origen", "Terminal")
-                    SectionTitle("Productos", Icons.Default.Inventory2, "${items.size} artículo(s)")
+                    SectionTitle("Productos", Icons.Default.Inventory2, if (items.size == 1) "1 artículo" else "${items.size} artículos")
                     if (items.isEmpty()) {
                         EmptyText("No hay productos asociados a esta venta.")
                     } else {

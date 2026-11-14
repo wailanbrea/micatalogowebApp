@@ -2,14 +2,18 @@ package com.example.bspos.domain.usecase
 
 import com.example.bspos.core.database.AppDatabaseTransactor
 import com.example.bspos.core.database.ShopScope
+import com.example.bspos.data.local.dao.CashSessionDao
 import com.example.bspos.data.local.dao.CustomerRouteDao
 import com.example.bspos.data.local.dao.InventoryDao
 import com.example.bspos.data.local.dao.PosSaleOutboxDao
 import com.example.bspos.data.local.dao.ProductDao
 import com.example.bspos.data.local.dao.ReturnDao
 import com.example.bspos.data.local.dao.SaleDao
+import com.example.bspos.data.local.entity.CashMovementEntity
+import com.example.bspos.data.local.entity.TenantMetadata
 import com.example.bspos.data.mapper.toDomain
 import com.example.bspos.data.micatalogo.RemoteMutationRecorder
+import com.example.bspos.domain.model.CashMovementType
 import com.example.bspos.domain.model.InventoryLocation
 import com.example.bspos.domain.model.Sale
 import com.example.bspos.domain.model.SaleStatus
@@ -29,6 +33,7 @@ class CancelSaleUseCase @Inject constructor(
     private val customers: CustomerRouteDao,
     private val returns: ReturnDao,
     private val saleQueue: PosSaleOutboxDao,
+    private val cash: CashSessionDao,
     private val remote: RemoteMutationRecorder,
     private val settings: SettingsRepository,
     private val shops: ShopScope
@@ -39,7 +44,6 @@ class CancelSaleUseCase @Inject constructor(
             val activeShop = shops.current()
             val sale = checkNotNull(sales.findById(saleId, activeShop)) { "Venta no encontrada en la tienda." }
             require(sale.status == SaleStatus.COMPLETED) { "Solo se pueden anular ventas activas." }
-            require(sale.paidAmount == 0L) { "Esta venta tiene cobros registrados. Usa Devolver para registrar el reembolso en caja." }
 
             val sold = sales.itemsInInvoiceOrder(sale.id, activeShop)
             val restocked = sold.map { item ->
@@ -68,6 +72,23 @@ class CancelSaleUseCase @Inject constructor(
                 if (customer != null) {
                     val newBalance = maxOf(0L, customer.balance - sale.pendingAmount)
                     customers.updateCustomer(customer.copy(balance = newBalance, updatedAt = at))
+                }
+            }
+
+            // Record cash refund only if a cash session is currently open
+            if (sale.paidAmount > 0L) {
+                cash.findOpenId(activeShop)?.let { sessionId ->
+                    cash.recordMovement(
+                        CashMovementEntity(
+                            UUID.randomUUID(),
+                            sessionId,
+                            CashMovementType.REFUND,
+                            sale.paidAmount,
+                            "Anulación ${sale.invoiceNumber}",
+                            at,
+                            tenant = TenantMetadata.assigned(activeShop)
+                        )
+                    )
                 }
             }
 
