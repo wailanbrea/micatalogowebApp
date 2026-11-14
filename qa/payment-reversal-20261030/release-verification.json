@@ -1,0 +1,17 @@
+{
+  "ApkPath": "C:\\Users\\waila\\AndroidStudioProjects\\micatalogowebApp\\app\\build\\outputs\\apk\\release\\app-release.apk",
+  "ApplicationId": "com.bsolutions.micatalogo",
+  "VersionCode": 129,
+  "VersionName": "1.0.128",
+  "MinSdk": 26,
+  "CertificateSha256": "5a5670decdac3ee1e2fc95503ae65343c3a1f075f62dec835d26125a578d490f",
+  "ApkSha256": "455a220e06030065e9d7656f221417885b8d83e85511e1609756fe08bd8f5c04",
+  "SizeBytes": 84003648,
+  "SignatureVerified": true,
+  "Debuggable": false,
+  "Status": "apk_verified",
+  "Mode": "Build",
+  "Published": false,
+  "ReferenceVerified": true,
+  "UnitTestsPassed": true
+}

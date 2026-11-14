@@ -916,17 +916,10 @@ fun BSPOSNavHost(
             }
         }
         composable(Screen.SalesHistory.route) {
-            if (remoteShopAvailable) {
-                // Remote sales are the source of truth for quotes converted
-                // from the server. This also keeps the Android flow aligned
-                // with Puntto when a quote is converted outside the local POS.
-                FeatureDestination("sales", canSeeMenu("sales"), navController, canSeeMenu)
-            } else {
-                RestrictedMenuDestination(canSeeMenu("sales"), navController) {
-                    SalesHistoryScreen(
-                        onReturns = { if (canSeeMenu("returns")) navController.navigate(Screen.Returns.route) }
-                    )
-                }
+            RestrictedMenuDestination(canSeeMenu("sales"), navController) {
+                SalesHistoryScreen(
+                    onReturns = { if (canSeeMenu("returns")) navController.navigate(Screen.Returns.route) }
+                )
             }
         }
         composable(Screen.Quotes.route) {

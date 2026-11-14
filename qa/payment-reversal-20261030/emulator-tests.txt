@@ -1,0 +1,12 @@
+
+com.example.bspos.data.local.PaymentDatabaseTest:......
+com.example.bspos.data.micatalogo.PaymentSyncResilienceTest:.
+com.example.bspos.presentation.collection.CollectionCardLayoutTest:........
+com.example.bspos.presentation.collection.CollectionAuthorizationTest:..
+com.example.bspos.domain.usecase.RecordPaymentUseCaseTest:.....
+
+Time: 29.179
+
+OK (22 tests)
+
+

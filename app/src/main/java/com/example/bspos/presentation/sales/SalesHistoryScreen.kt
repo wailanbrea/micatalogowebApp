@@ -185,10 +185,62 @@ fun SalesHistoryScreen(
             modifier = Modifier.fillMaxSize()
         ) {
             item {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("VENTAS", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
-                    OutlinedButton(onClick = { showExportDialog = true }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)) {
-                        Icon(Icons.Default.FileDownload, null); Spacer(Modifier.width(8.dp)); Text("Exportar ventas")
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "Historial de ventas",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = BSPOSTheme.colors.textPrimary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f).padding(end = 8.dp)
+                    )
+                    OutlinedButton(
+                        onClick = { showExportDialog = true },
+                        shape = RoundedCornerShape(12.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+                    ) {
+                        Icon(Icons.Default.FileDownload, null, modifier = Modifier.width(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Exportar", maxLines = 1, softWrap = false)
+                    }
+                }
+            }
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedTextField(
+                        value = query,
+                        onValueChange = { query = it },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true,
+                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                        placeholder = { Text("Buscar factura o cliente...", maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                        shape = RoundedCornerShape(14.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = BSPOSTheme.colors.primary,
+                            unfocusedBorderColor = BSPOSTheme.colors.outline,
+                            focusedLeadingIconColor = BSPOSTheme.colors.primary
+                        )
+                    )
+                    val hasActiveFilters = originFilter != "Todos" || minAmount.isNotBlank() || maxAmount.isNotBlank()
+                    OutlinedButton(
+                        onClick = { showFilters = true },
+                        shape = RoundedCornerShape(14.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 14.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.FilterList,
+                            contentDescription = "Filtros",
+                            tint = if (hasActiveFilters) BSPOSTheme.colors.primary else BSPOSTheme.colors.textSecondary
+                        )
                     }
                 }
             }
@@ -201,7 +253,7 @@ fun SalesHistoryScreen(
                         FilterChip(
                             selected = period == option,
                             onClick = { period = option },
-                            label = { Text(option, fontWeight = FontWeight.Bold) },
+                            label = { Text(option, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false) },
                             colors = FilterChipDefaults.filterChipColors(
                                 selectedContainerColor = BSPOSTheme.colors.secondaryNavy,
                                 selectedLabelColor = Color.White,
@@ -212,37 +264,25 @@ fun SalesHistoryScreen(
                 }
             }
             item {
-                OutlinedTextField(
-                    value = query,
-                    onValueChange = { query = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                    placeholder = { Text("Buscar factura o cliente...") },
-                    shape = RoundedCornerShape(14.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = BSPOSTheme.colors.primary,
-                        unfocusedBorderColor = BSPOSTheme.colors.outline,
-                        focusedLeadingIconColor = BSPOSTheme.colors.primary
-                    )
-                )
-            }
-            item {
-                OutlinedButton(onClick = { showFilters = true }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)) {
-                    Icon(Icons.Default.FilterList, null); Spacer(Modifier.width(8.dp)); Text("Filtros" + if (originFilter != "Todos" || minAmount.isNotBlank() || maxAmount.isNotBlank()) " · activos" else "")
-                }
-            }
-            item {
                 remote.module?.let { RemoteSalesSummary(it.kpis) }
-                    ?: Text(if (remote.loading) "Cargando ventas confirmadas…" else remote.error ?: "No se pudo confirmar el historial.", color = BSPOSTheme.colors.textSecondary)
+                    ?: Text(
+                        if (remote.loading) "Cargando ventas..." else remote.error ?: "No se pudo cargar el historial.",
+                        color = BSPOSTheme.colors.textSecondary
+                    )
                 if (remote.error != null && remote.module != null) Text(remote.error.orEmpty(), color = BSPOSTheme.colors.error)
             }
             item {
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                     Icon(Icons.Default.ReceiptLong, contentDescription = null, tint = BSPOSTheme.colors.primary)
                     Spacer(Modifier.width(8.dp))
-                    Text("Historial de ventas", fontWeight = FontWeight.ExtraBold, modifier = Modifier.weight(1f))
-                    Text("${remote.module?.rows?.size ?: 0} confirmadas", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+                    Text("Ventas", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold, modifier = Modifier.weight(1f))
+                    Text(
+                        "${remote.module?.rows?.size ?: 0} registradas",
+                        color = BSPOSTheme.colors.textSecondary,
+                        style = MaterialTheme.typography.labelMedium,
+                        maxLines = 1,
+                        softWrap = false
+                    )
                 }
             }
             item {
@@ -254,7 +294,7 @@ fun SalesHistoryScreen(
                         FilterChip(
                             selected = paymentFilter == option,
                             onClick = { paymentFilter = option },
-                            label = { Text(option) },
+                            label = { Text(option, maxLines = 1, softWrap = false) },
                             colors = FilterChipDefaults.filterChipColors(
                                 selectedContainerColor = BSPOSTheme.colors.primaryLight,
                                 selectedLabelColor = BSPOSTheme.colors.primary,
@@ -280,17 +320,66 @@ fun SalesHistoryScreen(
                     isPending -> BSPOSTheme.colors.warningLight
                     else -> BSPOSTheme.colors.successLight
                 }
-                Card(onClick = { selectedRemote = row }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp),
-                    colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface)) {
-                    Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                val customerLabel = row.customerName?.takeIf { it.isNotBlank() } ?: "Consumidor final"
+                val dateLabel = row.createdAt?.let {
+                    runCatching {
+                        Instant.parse(it).atZone(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("dd/MM · HH:mm"))
+                    }.getOrNull()
+                }
+                val itemsSummary = when {
+                    row.items.isEmpty() -> null
+                    row.items.size == 1 -> "${row.items[0].quantity} × ${row.items[0].name}"
+                    else -> "${row.items[0].quantity} × ${row.items[0].name} (+${row.items.size - 1} más)"
+                }
+                Card(
+                    onClick = { selectedRemote = row },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(18.dp),
+                    colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface)
+                ) {
+                    Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                            Text(row.primary, fontWeight = FontWeight.ExtraBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).padding(end = 8.dp))
+                            Text(
+                                row.primary,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = BSPOSTheme.colors.textPrimary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f).padding(end = 8.dp)
+                            )
                             Text(row.value, fontWeight = FontWeight.ExtraBold, color = BSPOSTheme.colors.primary, maxLines = 1, softWrap = false)
                         }
-                        Text(row.secondary, style = MaterialTheme.typography.bodySmall, color = BSPOSTheme.colors.textSecondary)
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                customerLabel,
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Medium,
+                                color = BSPOSTheme.colors.textPrimary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f).padding(end = 8.dp)
+                            )
+                            if (dateLabel != null) {
+                                Text(dateLabel, style = MaterialTheme.typography.labelSmall, color = BSPOSTheme.colors.textSecondary, maxLines = 1, softWrap = false)
+                            }
+                        }
+                        if (itemsSummary != null) {
+                            Text(itemsSummary, style = MaterialTheme.typography.bodySmall, color = BSPOSTheme.colors.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        } else if (dateLabel == null && row.secondary.isNotBlank()) {
+                            Text(row.secondary, style = MaterialTheme.typography.bodySmall, color = BSPOSTheme.colors.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                        Spacer(Modifier.height(2.dp))
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                             Surface(shape = RoundedCornerShape(50), color = statusBg) {
-                                Text(row.status, color = statusColor, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
+                                Text(
+                                    row.status,
+                                    color = statusColor,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
                             }
                             if (row.canVoid && !row.id.isNullOrBlank()) {
                                 OutlinedButton(
@@ -386,7 +475,7 @@ fun SalesHistoryScreen(
                         }
                     }
                 }) {
-                    Text(if (voidingRemote) "Anulando..." else "Confirmar", color = BSPOSTheme.colors.error, fontWeight = FontWeight.Bold)
+                    Text(if (voidingRemote) "Anulando..." else "Confirmar", fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
@@ -408,7 +497,7 @@ fun SalesHistoryScreen(
                     }
                     saleToCancel = null
                 }) {
-                    Text("Anular", color = BSPOSTheme.colors.error)
+                    Text("Anular")
                 }
             },
             dismissButton = {
@@ -524,8 +613,15 @@ internal fun RemoteSalesSummary(kpis: List<com.example.bspos.data.micatalogo.dto
                 if (rowIndex > 0) HorizontalDivider(color = BSPOSTheme.colors.outline)
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     pair.forEachIndexed { index, metric ->
-                        if (index > 0) VerticalDivider(Modifier.height(88.dp), color = BSPOSTheme.colors.outline)
-                        Metric(metric.label, metric.value, BSPOSTheme.colors.primary, Modifier.weight(1f))
+                        if (index > 0) VerticalDivider(Modifier.height(80.dp), color = BSPOSTheme.colors.outline)
+                        val color = when {
+                            metric.tone == "emerald" || metric.label.contains("vendido", ignoreCase = true) -> BSPOSTheme.colors.success
+                            metric.tone == "amber" -> BSPOSTheme.colors.warning
+                            metric.tone == "rose" -> BSPOSTheme.colors.error
+                            metric.tone == "slate" -> BSPOSTheme.colors.textPrimary
+                            else -> BSPOSTheme.colors.primary
+                        }
+                        Metric(metric.label, metric.value, color, Modifier.weight(1f))
                     }
                 }
             }
@@ -558,9 +654,9 @@ internal fun SalesSummary(sales: List<Sale>) {
 
 @Composable
 private fun Metric(label: String, value: String, color: Color, modifier: Modifier) {
-    Column(modifier.padding(horizontal = 14.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text(label.uppercase(Locale("es")), color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelSmall, letterSpacing = 1.sp)
-        Text(value, color = color, fontWeight = FontWeight.ExtraBold, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleLarge)
+    Column(modifier.padding(horizontal = 14.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(label.uppercase(Locale("es")), color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelSmall, letterSpacing = 0.8.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(value, color = color, fontWeight = FontWeight.ExtraBold, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleMedium)
     }
 }
 

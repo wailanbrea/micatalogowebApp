@@ -1,0 +1,18 @@
+{
+  "published": true,
+  "version_name": "1.0.128",
+  "version_code": 129,
+  "package": "com.bsolutions.micatalogo",
+  "apk_url": "https://micatalogo.bsolutions.dev/downloads/bspos-1.0.128-release.apk",
+  "apk_sha256": "455a220e06030065e9d7656f221417885b8d83e85511e1609756fe08bd8f5c04",
+  "size_bytes": 84003648,
+  "certificate_sha256": "5a5670decdac3ee1e2fc95503ae65343c3a1f075f62dec835d26125a578d490f",
+  "public_download_reverified": true,
+  "backend_tests": 728,
+  "backend_assertions": 8065,
+  "android_unit_tests": 169,
+  "emulator_tests": 22,
+  "minimum_supported_version_code": 23,
+  "device_test_package": "com.bsolutions.micatalogo.offlinecheck",
+  "physical_phone_installed": false
+}
