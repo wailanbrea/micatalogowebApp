@@ -195,7 +195,6 @@ internal fun QuoteTerminalContent(
                     item {
                         BSPOSSectionLabel("Ventas")
                         Text("Cotizaciones", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.ExtraBold)
-                        Text("Presupuestos guardados desde la terminal, listos para cobrar.", color = BSPOSTheme.colors.textSecondary)
                         TextButton({ savedTab = false }) { Text("Nueva cotización") }
                     }
                     item { QuoteSummary(state.kpis, state.rows) }
@@ -207,7 +206,6 @@ internal fun QuoteTerminalContent(
                                 FilterChip(selected = savedStatus == status, onClick = { savedStatus = status }, label = { Text("$status (${state.rows.count { it.status == status }})") })
                             }
                         }
-                        Text("Conteos de las cotizaciones cargadas, antes de la búsqueda.", style = MaterialTheme.typography.bodySmall, color = BSPOSTheme.colors.textSecondary)
                         if (savedQuery.isNotBlank() || savedStatus != null) {
                             TextButton({ savedQuery = ""; savedStatus = null }) { Text("Limpiar búsqueda y estado") }
                         }
@@ -470,9 +468,9 @@ private fun quoteDate(value: String?): String = value?.let {
             Text(row.primary, style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.ExtraBold)
             Spacer(Modifier.height(12.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onDownload, enabled = row.pdfAvailable && row.id != null) { Text("Descargar PDF") }
-                row.invoiceUrl?.let { url -> Button({ onOpenInvoice(url) }) { Text("Ver venta") } }
-                if (row.canConvert) Button(onConvert) { Text("Convertir venta") }
+                OutlinedButton(onDownload, enabled = row.pdfAvailable && row.id != null, contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)) { Text("Descargar PDF", maxLines = 1, softWrap = false) }
+                row.invoiceUrl?.let { url -> Button({ onOpenInvoice(url) }, contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)) { Text("Ver venta", maxLines = 1, softWrap = false) } }
+                if (row.canConvert) Button(onConvert, contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)) { Text("Convertir venta", maxLines = 1, softWrap = false) }
             }
             TextButton(onBack) { Text("← Volver a cotizaciones") }
         }

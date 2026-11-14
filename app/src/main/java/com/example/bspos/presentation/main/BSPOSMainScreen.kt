@@ -1396,7 +1396,6 @@ private fun StorefrontWorkspaceScreen(
             .padding(20.dp),
         verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(14.dp)
     ) {
-        Text("Todo lo de tu tienda en línea: compártela, decide cómo se ve y mira lo que le falta.", color = BSPOSTheme.colors.textSecondary)
         Card(
             shape = BSPOSTheme.shapes.large,
             colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface)
@@ -1466,8 +1465,8 @@ private fun StorefrontWorkspaceScreen(
                     }
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = ::shareStoreLink, modifier = Modifier.weight(1f)) { Text("Enviar por WhatsApp") }
-                    OutlinedButton(onClick = { openNative(Screen.Metrics) }, modifier = Modifier.weight(1f)) { Text("QR y métricas") }
+                    OutlinedButton(onClick = ::shareStoreLink, modifier = Modifier.weight(1f), contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 10.dp)) { Text("WhatsApp", maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis) }
+                    OutlinedButton(onClick = { openNative(Screen.Metrics) }, modifier = Modifier.weight(1f), contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 10.dp)) { Text("QR y métricas", maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis) }
                 }
                 OutlinedButton(onClick = { openNative(Screen.ShopSettings) }, modifier = Modifier.fillMaxWidth()) { Text("Configuración avanzada") }
             }

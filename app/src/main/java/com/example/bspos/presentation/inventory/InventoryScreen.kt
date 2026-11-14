@@ -207,69 +207,63 @@ fun InventoryScreen(
         verticalArrangement = Arrangement.spacedBy(0.dp)
     ) {
         if (!initialImport) inventorySection {
-            Text("Inventario", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.ExtraBold)
-            Text("Tus productos y lo que tienes en existencia.", color = BSPOSTheme.colors.textSecondary)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Text("Inventario", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.ExtraBold)
+                var toolsOpen by remember { mutableStateOf(false) }
+                Box {
+                    OutlinedButton(
+                        onClick = { toolsOpen = true },
+                        shape = RoundedCornerShape(12.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+                    ) {
+                        Icon(Icons.Default.MoreVert, null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Opciones", maxLines = 1, softWrap = false)
+                    }
+                    DropdownMenu(expanded = toolsOpen, onDismissRequest = { toolsOpen = false }) {
+                        DropdownMenuItem(text = { Text("Añadir del catálogo") }, enabled = onOpenImport != null, onClick = { toolsOpen = false; onOpenImport?.invoke() })
+                        DropdownMenuItem(text = { Text("Precios y costos") }, enabled = onOpenPrices != null, onClick = { toolsOpen = false; onOpenPrices?.invoke() })
+                        DropdownMenuItem(text = { Text("Movimientos") }, enabled = allMovements.isNotEmpty(), onClick = { toolsOpen = false; showGlobalMovements = true })
+                        DropdownMenuItem(text = { Text("Configurar combos") }, onClick = { toolsOpen = false; inventoryTab = 2 })
+                        DropdownMenuItem(text = { Text("Exportar CSV") }, enabled = products.isNotEmpty(), onClick = { toolsOpen = false; exportLauncher.launch("inventario-${System.currentTimeMillis()}.csv") })
+                        DropdownMenuItem(text = { Text("Importar archivo") }, enabled = importShop != null && !isLoadingImport, onClick = { toolsOpen = false; importRequested = true })
+                    }
+                }
+            }
         }
         if (initialImport) inventorySection {
-            Text("Carga Excel, CSV o PDF y revisa los datos antes de guardarlos.", color = BSPOSTheme.colors.textSecondary)
-        }
-        inventorySection(spaceAfter = 4.dp) {
-            if (initialImport) {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    ImportChoiceButton(
-                        title = "Desde archivo",
-                        description = "Excel, CSV o PDF con previsualización",
-                        onClick = { importRequested = true },
-                        enabled = importShop != null && !isLoadingImport,
-                        primary = true
-                    )
-                    ImportChoiceButton(
-                        title = "Desde catálogo",
-                        description = "Elige productos de la galería",
-                        onClick = { onOpenProducts?.invoke() },
-                        enabled = onOpenProducts != null
-                    )
-                    ImportChoiceButton(
-                        title = "Crear rápido",
-                        description = "Escribe nombre, precio y existencia",
-                        onClick = { onOpenQuickCreate?.invoke() },
-                        enabled = onOpenQuickCreate != null
-                    )
-                }
-            } else {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(
-                        onClick = { onOpenImport?.invoke() },
-                        enabled = onOpenImport != null,
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(12.dp),
-                        contentPadding = PaddingValues(horizontal = 6.dp)
-                    ) { Text("Añadir del catálogo", style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis) }
-                    OutlinedButton(
-                        onClick = { onOpenPrices?.invoke() },
-                        enabled = onOpenPrices != null,
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(12.dp),
-                        contentPadding = PaddingValues(horizontal = 6.dp)
-                    ) { Text("Precios y costos", maxLines = 1) }
-                }
+            Text("Carga Excel, CSV o PDF", color = BSPOSTheme.colors.textSecondary)
+            Spacer(Modifier.height(8.dp))
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                ImportChoiceButton(
+                    title = "Desde archivo",
+                    description = "Excel, CSV o PDF",
+                    onClick = { importRequested = true },
+                    enabled = importShop != null && !isLoadingImport,
+                    primary = true
+                )
+                ImportChoiceButton(
+                    title = "Desde catálogo",
+                    description = "Elige productos de la galería",
+                    onClick = { onOpenProducts?.invoke() },
+                    enabled = onOpenProducts != null
+                )
+                ImportChoiceButton(
+                    title = "Crear rápido",
+                    description = "Nombre, precio y existencia",
+                    onClick = { onOpenQuickCreate?.invoke() },
+                    enabled = onOpenQuickCreate != null
+                )
             }
-        }
-        inventorySection(spaceAfter = 4.dp) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = { showGlobalMovements = true }, enabled = allMovements.isNotEmpty(), modifier = Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 6.dp)) { Text("Movimientos", maxLines = 1) }
-                OutlinedButton(onClick = { exportLauncher.launch("inventario-${System.currentTimeMillis()}.csv") }, enabled = products.isNotEmpty(), contentPadding = PaddingValues(horizontal = 12.dp)) { Text("Exportar", maxLines = 1) }
-                OutlinedButton(onClick = { importRequested = true }, enabled = importShop != null && !isLoadingImport, modifier = Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 6.dp)) { Text("Importar", maxLines = 1) }
-            }
-        }
-        inventorySection {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(
-                onClick = { inventoryTab = 2 },
-                modifier = Modifier.weight(1f),
-                shape = RoundedCornerShape(12.dp)
-            ) { Text("Configurar combos", maxLines = 1, overflow = TextOverflow.Ellipsis) }
-            Button({ (onOpenQuickCreate ?: onOpenProducts)?.invoke() }, enabled = onOpenProducts != null || onOpenQuickCreate != null, modifier = Modifier.weight(1f)) { Text("Nuevo producto") }
+        } else inventorySection {
+            Button(
+                onClick = { (onOpenQuickCreate ?: onOpenProducts)?.invoke() },
+                enabled = onOpenProducts != null || onOpenQuickCreate != null,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(Icons.Default.Add, null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("Nuevo producto", maxLines = 1, softWrap = false)
             }
         }
         if (productsWithoutPhoto > 0) {
@@ -338,7 +332,7 @@ fun InventoryScreen(
         }
         if (selectedIds.isNotEmpty()) inventorySection {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("${selectedIds.size} seleccionado(s)", Modifier.weight(1f))
+                Text("${selectedIds.size} ${if (selectedIds.size == 1) "seleccionado" else "seleccionados"}", Modifier.weight(1f))
                 TextButton({ selectedIds = emptySet() }) { Text("Limpiar selección") }
             }
         }
@@ -681,7 +675,7 @@ private fun InventoryProductDetailDialog(
                             Spacer(Modifier.height(14.dp))
                         }
                         Text("Información del producto", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold)
-                        InventoryInfoRow("Existencia mínima", "${product.minimumStock} unidades")
+                        InventoryInfoRow("Existencia mínima", "${product.minimumStock} ${if (product.minimumStock == 1L) "unidad" else "unidades"}")
                         if (showCosts) InventoryInfoRow("Último costo", MoneyUtils.formatCents(product.lastPurchaseCost, LocalCurrency.current))
                         InventoryInfoRow("Unidad de venta", product.remoteSaleUnit ?: "Unidad")
                     }
@@ -825,7 +819,7 @@ private fun InventorySummaryRow(capitalAtCost: Long, productCount: Int, products
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val metrics = buildList {
             if (showCosts) add(InventoryMetric("Capital al costo", MoneyUtils.formatCents(capitalAtCost, LocalCurrency.current), if (estimated) "Estimación local; FIFO pendiente de consulta" else "Costo FIFO · incluye Decants y envases", BSPOSTheme.colors.textPrimary))
-            add(InventoryMetric("Productos", productCount.toString(), "$totalUnits unidades · $productsWithStock con existencia", BSPOSTheme.colors.textPrimary))
+            add(InventoryMetric("Productos", productCount.toString(), "$totalUnits ${if (totalUnits == 1L) "unidad" else "unidades"} · $productsWithStock con existencia", BSPOSTheme.colors.textPrimary))
             add(InventoryMetric("Nivel bajo", lowStock.toString(), "$exhausted agotados", if (lowStock > 0) BSPOSTheme.colors.warning else BSPOSTheme.colors.success))
             if (showCosts && averageMargin != null) add(InventoryMetric("Margen prom.", "$averageMargin%", "Sobre el precio de venta", BSPOSTheme.colors.success))
         }

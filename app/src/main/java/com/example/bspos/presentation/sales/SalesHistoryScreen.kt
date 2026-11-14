@@ -597,7 +597,7 @@ fun SalesHistoryScreen(
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     TextButton(onClick = { originFilter = "Todos"; paymentFilter = "Todas"; minAmount = ""; maxAmount = "" }, modifier = Modifier.weight(1f)) { Text("Limpiar") }
-                    Button(onClick = { showFilters = false }, modifier = Modifier.weight(1f)) { Text("Ver ventas") }
+                    Button(onClick = { showFilters = false }, modifier = Modifier.weight(1f)) { Text("Ver ventas", maxLines = 1, softWrap = false) }
                 }
                 Spacer(Modifier.height(10.dp))
             }

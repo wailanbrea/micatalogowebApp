@@ -201,8 +201,8 @@ internal fun SellerDashboardScreen(
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 SellerMonoLabel("ACCESOS RÁPIDOS")
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (showProducts) OutlinedButton(onProducts, shape = RoundedCornerShape(8.dp), modifier = Modifier.weight(1f)) { Text("Productos") }
-                    if (showCustomers) OutlinedButton(onCustomers, shape = RoundedCornerShape(8.dp), modifier = Modifier.weight(1f)) { Text("Clientes") }
+                    if (showProducts) OutlinedButton(onProducts, shape = RoundedCornerShape(8.dp), modifier = Modifier.weight(1f)) { Text("Productos", maxLines = 1, softWrap = false) }
+                    if (showCustomers) OutlinedButton(onCustomers, shape = RoundedCornerShape(8.dp), modifier = Modifier.weight(1f)) { Text("Clientes", maxLines = 1, softWrap = false) }
                 }
             }
         }

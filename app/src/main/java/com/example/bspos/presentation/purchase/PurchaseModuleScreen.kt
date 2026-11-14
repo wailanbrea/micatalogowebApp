@@ -175,8 +175,8 @@ private fun PurchaseContent(
         if (feature == "purchase_invoices" && showForm) {
             item {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = { debtMode = false }, modifier = Modifier.weight(1f)) { Text("Nueva factura") }
-                    OutlinedButton(onClick = { debtMode = true }, modifier = Modifier.weight(1f)) { Text("Registrar deuda") }
+                    OutlinedButton(onClick = { debtMode = false }, modifier = Modifier.weight(1f)) { Text("Nueva factura", maxLines = 1, softWrap = false) }
+                    OutlinedButton(onClick = { debtMode = true }, modifier = Modifier.weight(1f)) { Text("Registrar deuda", maxLines = 1, softWrap = false) }
                 }
             }
         }
@@ -372,8 +372,8 @@ private fun PurchaseContent(
                         }
                         if (feature != "loads" && !debtMode) {
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                OutlinedButton(onClick = { mode = "draft" }, modifier = Modifier.weight(1f), enabled = !state.saving) { Text(if (mode == "draft") "✓ Borrador" else "Borrador") }
-                                Button(onClick = { mode = "received" }, modifier = Modifier.weight(1f), enabled = !state.saving) { Text(if (mode == "received") "✓ Recibir" else "Recibir") }
+                                OutlinedButton(onClick = { mode = "draft" }, modifier = Modifier.weight(1f), enabled = !state.saving) { Text(if (mode == "draft") "✓ Borrador" else "Borrador", maxLines = 1, softWrap = false) }
+                                Button(onClick = { mode = "received" }, modifier = Modifier.weight(1f), enabled = !state.saving) { Text(if (mode == "received") "✓ Recibir" else "Recibir", maxLines = 1, softWrap = false) }
                             }
                         }
                         Button(

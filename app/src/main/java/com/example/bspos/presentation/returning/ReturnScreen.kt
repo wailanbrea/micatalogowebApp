@@ -211,7 +211,7 @@ private fun ReturnLineDialog(item: SaleItem, charged: Long, returned: Long, onSa
     val amount = quantity.toLongOrNull()?.let { runCatching { CashRefundAmounts.portion(charged,item.quantity,returned,it) }.getOrNull() }
     AlertDialog(onDismissRequest = onDismiss, title = { Text("Confirmar devolución") }, text = {
         DialogScrollableColumn {
-            Text("Máximo permitido: $remaining unidades · Ya devueltas: $returned", color = BSPOSTheme.colors.textSecondary)
+            Text("Máximo permitido: $remaining ${if (remaining == 1L) "unidad" else "unidades"} · Ya devueltas: $returned", color = BSPOSTheme.colors.textSecondary)
             OutlinedTextField(quantity, { quantity = it.filter(Char::isDigit); error = null }, label = { Text("Cantidad") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), isError = error != null)
             amount?.let { Text("Reembolso: ${money(it)}", fontWeight = FontWeight.Bold, color = BSPOSTheme.colors.primary) }
             FilterChip(restock, { restock = !restock }, label = { Text(if (restock) "Reintegrar al inventario" else "No reintegrar al inventario") })
@@ -232,7 +232,7 @@ private fun RemoteReturnLineDialog(item: ReturnEligibleItemDto, onSave: (Int, Bo
     val amount = value?.takeIf { it in 1..remaining }?.let { remoteRefundCents(item, it) }
     AlertDialog(onDismissRequest = onDismiss, title = { Text("Confirmar devolución") }, text = {
         DialogScrollableColumn {
-            Text("Máximo permitido: $remaining unidades", color = BSPOSTheme.colors.textSecondary)
+            Text("Máximo permitido: $remaining ${if (remaining == 1) "unidad" else "unidades"}", color = BSPOSTheme.colors.textSecondary)
             OutlinedTextField(quantity, { quantity = it.filter(Char::isDigit); error = null }, label = { Text("Cantidad") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), isError = error != null)
             amount?.let { Text("Reembolso: ${money(it)}", fontWeight = FontWeight.Bold, color = BSPOSTheme.colors.primary) }
             FilterChip(restock, { restock = !restock }, label = { Text(if (restock) "Reintegrar al inventario" else "No reintegrar al inventario") })

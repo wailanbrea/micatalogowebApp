@@ -253,8 +253,8 @@ private fun ShopSettingsContent(
                                 val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
                                 clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Vitrina pública", storeUrl))
                                 com.example.bspos.presentation.common.UiErrorBus.show("Enlace copiado.")
-                            }, modifier = Modifier.weight(1f)) { Text("Copiar") }
-                            Button(onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(storeUrl))) }, modifier = Modifier.weight(1f)) { Text("Ver tienda") }
+                            }, modifier = Modifier.weight(1f)) { Text("Copiar", maxLines = 1, softWrap = false) }
+                            Button(onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(storeUrl))) }, modifier = Modifier.weight(1f)) { Text("Ver tienda", maxLines = 1, softWrap = false) }
                         }
                         OutlinedButton(onClick = {
                             val metricsUrl = "https://micatalogo.bsolutions.dev/panel/tiendas/${initial.id}/metricas"

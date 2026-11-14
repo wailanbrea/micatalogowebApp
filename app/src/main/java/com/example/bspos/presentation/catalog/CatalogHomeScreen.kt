@@ -171,22 +171,32 @@ fun CatalogHomeScreen(
             }
             Spacer(Modifier.height(8.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton({ decantOverlay = "report" }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(12.dp)) { Text("Reporte") }
-                OutlinedButton({ decantOverlay = "vials" }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(12.dp)) { Text("Frascos") }
-            }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton({ decantOverlay = "open" }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(12.dp)) { Text("Abrir botella") }
-                Button({ decantOverlay = "prepare" }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(12.dp)) { Icon(Icons.Default.Add, null); Spacer(Modifier.width(4.dp)); Text("Preparar decant") }
+                var decantMenuOpen by remember { mutableStateOf(false) }
+                Box {
+                    OutlinedButton({ decantMenuOpen = true }, shape = RoundedCornerShape(12.dp), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)) {
+                        Text("Opciones", maxLines = 1, softWrap = false)
+                    }
+                    DropdownMenu(expanded = decantMenuOpen, onDismissRequest = { decantMenuOpen = false }) {
+                        DropdownMenuItem(text = { Text("Abrir botella") }, onClick = { decantMenuOpen = false; decantOverlay = "open" })
+                        DropdownMenuItem(text = { Text("Frascos") }, onClick = { decantMenuOpen = false; decantOverlay = "vials" })
+                        DropdownMenuItem(text = { Text("Reporte") }, onClick = { decantMenuOpen = false; decantOverlay = "report" })
+                    }
+                }
+                Button({ decantOverlay = "prepare" }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(12.dp), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)) {
+                    Icon(Icons.Default.Add, null)
+                    Spacer(Modifier.width(4.dp))
+                    Text("Preparar decant", maxLines = 1, softWrap = false)
+                }
             }
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Text(
-                if (photosOnly) "$photoFilter · ${filtered.size} producto(s)" else "${filtered.size} productos",
+                if (photosOnly) "$photoFilter · ${filtered.size} ${if (filtered.size == 1) "producto" else "productos"}" else "${filtered.size} ${if (filtered.size == 1) "producto" else "productos"}",
                 color = BSPOSTheme.colors.textSecondary,
                 style = MaterialTheme.typography.labelLarge
             )
             if (!photosOnly && !initialDecantMode && mayCreate) {
-                Button({ showForm = true }, enabled = categories.any { it.isActive } && units.any { it.isActive }, shape = RoundedCornerShape(14.dp)) { Icon(Icons.Default.Add, null); Spacer(Modifier.width(5.dp)); Text(if (initialServiceMode) "Nuevo servicio" else "Nuevo producto") }
+                Button({ showForm = true }, enabled = categories.any { it.isActive } && units.any { it.isActive }, shape = RoundedCornerShape(14.dp)) { Icon(Icons.Default.Add, null); Spacer(Modifier.width(5.dp)); Text(if (initialServiceMode) "Nuevo servicio" else "Nuevo producto", maxLines = 1, softWrap = false) }
             }
         }
         if (photosOnly) {

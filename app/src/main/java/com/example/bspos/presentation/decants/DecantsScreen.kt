@@ -418,14 +418,6 @@ internal fun DecantsContent(workspace: DecantWorkspaceDto, error: String?, messa
         item {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Decants", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.ExtraBold, modifier = Modifier.weight(1f))
-                BSPOSOutlinedButton(
-                    onClick = onTutorial,
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp)
-                ) {
-                    Icon(Icons.Outlined.HelpOutline, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text("Tutorial", maxLines = 1)
-                }
                 IconButton(onRefresh) { Icon(Icons.Outlined.Refresh, "Actualizar") }
             }
             Text("${groups.size} ${if (groups.size == 1) "fragancia" else "fragancias"} · ${workspace.opened} ${if (workspace.opened == 1) "botella abierta" else "botellas abiertas"}", color = BSPOSTheme.colors.textSecondary)
@@ -460,27 +452,26 @@ internal fun DecantsContent(workspace: DecantWorkspaceDto, error: String?, messa
             }
         }
         item {
-            Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf("report" to "Reporte", "unconfigured" to "Sin volumen (${unconfiguredSources.size})", "advanced" to "Más opciones").forEach { (action, label) ->
-                    BSPOSOutlinedButton({ onAction(action) }, modifier = Modifier.weight(1f).fillMaxHeight(),
-                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp)) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Icon(when (action) {
-                                "report" -> Icons.Outlined.Assessment
-                                "unconfigured" -> Icons.Outlined.Straighten
-                                else -> Icons.Outlined.Tune
-                            }, null, Modifier.size(18.dp))
-                            Text(label, fontSize = 12.sp, maxLines = 2, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-                        }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                var menuOpen by remember { mutableStateOf(false) }
+                Box {
+                    BSPOSOutlinedButton({ menuOpen = true }, contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)) {
+                        Icon(Icons.Outlined.Tune, null, Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Opciones", maxLines = 1, softWrap = false)
+                    }
+                    DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                        DropdownMenuItem(text = { Text("Reporte") }, onClick = { menuOpen = false; onAction("report") })
+                        DropdownMenuItem(text = { Text("Sin volumen (${unconfiguredSources.size})") }, onClick = { menuOpen = false; onAction("unconfigured") })
+                        DropdownMenuItem(text = { Text("Tutorial") }, onClick = { menuOpen = false; onTutorial() })
+                        DropdownMenuItem(text = { Text("Más opciones") }, onClick = { menuOpen = false; onAction("advanced") })
                     }
                 }
-            }
-            Spacer(Modifier.height(8.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 BSPOSButton({ onAction("setup") }, enabled = workspace.enabled && workspace.canManage && !busy, modifier = Modifier.weight(1f)) {
-                    Icon(Icons.Outlined.Add, null); Spacer(Modifier.width(8.dp)); Text("Crear decants")
+                    Icon(Icons.Outlined.Add, null)
+                    Spacer(Modifier.width(6.dp))
+                    Text("Crear decants", maxLines = 1, softWrap = false)
                 }
-                Text("Las aperturas, envases y preparaciones manuales están en Más opciones.", fontSize = 11.sp, color = BSPOSTheme.colors.textSecondary, modifier = Modifier.weight(1f))
             }
         }
         item {

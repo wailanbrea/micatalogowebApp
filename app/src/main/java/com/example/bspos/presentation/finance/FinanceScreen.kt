@@ -220,7 +220,7 @@ private fun FinancePunttoLinks(
                 contentPadding = PaddingValues(horizontal = 14.dp, vertical = 4.dp),
                 shape = RoundedCornerShape(14.dp)
             ) {
-                Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(label, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
             }
         }
     }
@@ -311,7 +311,7 @@ fun FinanceSummaryTab(
             FinanceKpiCard(
                 title = "Ventas netas",
                 amount = netSalesAmount,
-                subtitle = "${period.salesCount} ventas (${period.unitsSold} u.)",
+                subtitle = "${period.salesCount} ${if (period.salesCount == 1) "venta" else "ventas"} (${period.unitsSold} u.)",
                 icon = shoppingCartIcon,
                 accentColor = BSPOSTheme.colors.primary,
                 onClick = {

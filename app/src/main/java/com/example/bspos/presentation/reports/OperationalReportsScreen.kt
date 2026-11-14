@@ -141,8 +141,8 @@ fun OperationalReportsScreen(
             Surface(shape = RoundedCornerShape(16.dp), color = colors.surface, border = BorderStroke(1.dp, colors.outline)) {
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (stacked) {
-                        Button(onClick = { export("whatsapp") }, enabled = !exporting, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp)) { Text(stringResource(R.string.reports_whatsapp)) }
-                        OutlinedButton(onClick = { export("print") }, enabled = !exporting, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp)) { Text(stringResource(R.string.reports_print)) }
+                        Button(onClick = { export("whatsapp") }, enabled = !exporting, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp)) { Text(stringResource(R.string.reports_whatsapp), maxLines = 1, softWrap = false) }
+                        OutlinedButton(onClick = { export("print") }, enabled = !exporting, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp)) { Text(stringResource(R.string.reports_print), maxLines = 1, softWrap = false) }
                         TextButton(onClick = { export("share") }, enabled = !exporting, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.reports_share)) }
                         if (section.key == "sales") ReportExportMenu(onExport, !exporting, Modifier.fillMaxWidth())
                     } else {

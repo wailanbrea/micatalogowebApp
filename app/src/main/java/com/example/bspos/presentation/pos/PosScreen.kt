@@ -1095,22 +1095,22 @@ private fun SaleCompleteDialog(
                             Text("Comprobante", style = MaterialTheme.typography.labelSmall, color = BSPOSTheme.colors.textSecondary)
                             Text(sale.invoiceNumber, fontWeight = FontWeight.Bold, color = BSPOSTheme.colors.textPrimary)
                         }
-                        Text("$itemCount artículo(s)", style = MaterialTheme.typography.labelSmall, color = BSPOSTheme.colors.textSecondary)
+                        Text("$itemCount ${if (itemCount == 1L) "artículo" else "artículos"}", style = MaterialTheme.typography.labelSmall, color = BSPOSTheme.colors.textSecondary)
                     }
                 }
 
                 Text(result.message, style = MaterialTheme.typography.bodySmall, color = BSPOSTheme.colors.textSecondary)
 
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    OutlinedButton(onClick = onShare, modifier = Modifier.weight(1f), shape = RoundedCornerShape(14.dp)) {
+                    OutlinedButton(onClick = onShare, modifier = Modifier.weight(1f), shape = RoundedCornerShape(14.dp), contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp)) {
                         Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(6.dp))
-                        Text("WhatsApp")
+                        Text("WhatsApp", maxLines = 1, softWrap = false)
                     }
                     OutlinedButton(onClick = onPrint, modifier = Modifier.weight(1f), shape = RoundedCornerShape(14.dp)) {
                         Icon(Icons.Default.Print, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(6.dp))
-                        Text(if (hasConfiguredPrinter) "Imprimir" else "PDF")
+                        Text(if (hasConfiguredPrinter) "Imprimir" else "PDF", maxLines = 1, softWrap = false)
                     }
                 }
 

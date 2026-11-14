@@ -680,7 +680,7 @@ private fun PortfolioCard(collected: Long, receivable: Long, customers: Int, mod
         }
         HorizontalDivider(color = BSPOSTheme.colors.outline)
         Spacer(Modifier.height(10.dp))
-        Text("$customers clientes con saldo pendiente", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelLarge)
+        Text("$customers ${if (customers == 1) "cliente" else "clientes"} con saldo pendiente", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelLarge)
     }
 }
 
@@ -703,7 +703,7 @@ private fun TopProductsCard(products: List<TopProduct>, modifier: Modifier = Mod
                 Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
                     Text(product.name, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text("${product.quantity} unidad(es)", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+                    Text("${product.quantity} ${if (product.quantity.toLong() == 1L) "unidad" else "unidades"}", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelMedium)
                 }
                 Text(money(product.revenue), fontWeight = FontWeight.ExtraBold)
             }
@@ -870,8 +870,8 @@ internal fun SaleDetailDialog(
                         }
                     }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = onShare, modifier = Modifier.weight(1f), shape = RoundedCornerShape(14.dp)) { Text("Recibo") }
-                        Button(onClick = onShare, modifier = Modifier.weight(1f), shape = RoundedCornerShape(14.dp)) { Text("Compartir") }
+                        OutlinedButton(onClick = onShare, modifier = Modifier.weight(1f), shape = RoundedCornerShape(14.dp), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)) { Text("Recibo", maxLines = 1, softWrap = false) }
+                        Button(onClick = onShare, modifier = Modifier.weight(1f), shape = RoundedCornerShape(14.dp), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)) { Text("Compartir", maxLines = 1, softWrap = false) }
                     }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         onPrint?.let { print ->
