@@ -6,6 +6,7 @@ import com.example.bspos.core.database.ShopScope
 import com.example.bspos.data.local.dao.PosSaleOutboxDao
 import com.example.bspos.data.micatalogo.ShopReadModelEvents
 import com.example.bspos.data.micatalogo.api.MiCatalogoSalesApi
+import com.example.bspos.data.micatalogo.api.SaleVoidRequestDto
 import com.example.bspos.data.micatalogo.apiErrorMessage
 import com.example.bspos.data.micatalogo.dto.FeatureModuleDto
 import com.example.bspos.domain.repository.MiCatalogoConnectionRepository
@@ -59,5 +60,15 @@ class RemoteSalesViewModel @Inject constructor(private val api: MiCatalogoSalesA
         check(response.isSuccessful) { response.apiErrorMessage("No se pudo exportar el historial de la tienda.") }
         check(connection.activeShopId() == shop) { "La tienda cambió antes de finalizar la exportación." }
         return checkNotNull(response.body()).string()
+    }
+
+    suspend fun voidSale(invoiceId: String, reason: String): Result<Unit> = runCatching {
+        val shop = checkNotNull(connection.activeShopId()) { "Selecciona una tienda activa." }
+        val numericId = checkNotNull(invoiceId.toLongOrNull()) { "Factura inválida." }
+        val cleanReason = reason.trim()
+        require(cleanReason.isNotEmpty()) { "Indica un motivo para anular." }
+        val response = api.voidSale(shop, SaleVoidRequestDto(invoiceId = numericId, reason = cleanReason))
+        check(response.isSuccessful) { response.apiErrorMessage("No se pudo anular la venta.") }
+        load(filters)
     }
 }

@@ -171,6 +171,9 @@ fun SalesHistoryScreen(
                 (customerNames[sale.customerId] ?: "").contains(normalizedQuery, ignoreCase = true)
         }
         .sortedByDescending { it.date }
+    var remoteToVoid by remember { mutableStateOf<com.example.bspos.data.micatalogo.dto.FeatureRowDto?>(null) }
+    var voidingRemote by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
     Column(
         modifier = Modifier.fillMaxSize().background(BSPOSTheme.colors.background)
     ) {
@@ -268,7 +271,19 @@ fun SalesHistoryScreen(
                     Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(row.primary, fontWeight = FontWeight.ExtraBold)
                         Text(row.secondary, style = MaterialTheme.typography.bodySmall, color = BSPOSTheme.colors.textSecondary)
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(row.status); Text(row.value, fontWeight = FontWeight.Bold, color = BSPOSTheme.colors.primary) }
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            Text(row.status)
+                            Text(row.value, fontWeight = FontWeight.Bold, color = BSPOSTheme.colors.primary, maxLines = 1, softWrap = false)
+                        }
+                        if (row.canVoid && !row.id.isNullOrBlank()) {
+                            OutlinedButton(
+                                onClick = { remoteToVoid = row },
+                                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                                shape = RoundedCornerShape(10.dp)
+                            ) {
+                                Text("Anular", color = BSPOSTheme.colors.error, fontWeight = FontWeight.Bold)
+                            }
+                        }
                     }
                 }
             }
@@ -283,7 +298,7 @@ fun SalesHistoryScreen(
                 }
             }
             item {
-                Text("El historial muestra hasta 100 facturas. La exportación consulta el período completo en el servidor.", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(vertical = 6.dp))
+
             }
         }
     }
@@ -297,7 +312,61 @@ fun SalesHistoryScreen(
                 Text(invoice.status)
             }
         }, confirmButton = { TextButton({ selectedRemote = null }) { Text("Cerrar") } },
-            dismissButton = { TextButton({ selectedRemote = null; onReturns() }) { Text("Ver devoluciones") } })
+            dismissButton = {
+                Row {
+                    if (invoice.canVoid && !invoice.id.isNullOrBlank()) {
+                        TextButton({ selectedRemote = null; remoteToVoid = invoice }) {
+                            Text("Anular", color = BSPOSTheme.colors.error, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                    TextButton({ selectedRemote = null; onReturns() }) { Text("Ver devoluciones") }
+                }
+            })
+    }
+
+    remoteToVoid?.let { target ->
+        var reason by remember(target.id) { mutableStateOf("") }
+        var reasonError by remember(target.id) { mutableStateOf(false) }
+        AlertDialog(
+            onDismissRequest = { if (!voidingRemote) remoteToVoid = null },
+            title = { Text("Anular ${target.primary}") },
+            text = {
+                com.example.bspos.presentation.common.DialogScrollableColumn {
+                    Text(target.value, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = reason,
+                        onValueChange = { reason = it; reasonError = false },
+                        label = { Text("Motivo de anulación") },
+                        placeholder = { Text("Ej. Venta duplicada") },
+                        isError = reasonError,
+                        supportingText = { if (reasonError) Text("Indica un motivo para anular") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(enabled = !voidingRemote, onClick = {
+                    val id = target.id
+                    if (reason.isBlank()) {
+                        reasonError = true
+                    } else if (!id.isNullOrBlank()) {
+                        voidingRemote = true
+                        scope.launch {
+                            remoteViewModel.voidSale(id, reason.trim())
+                                .onSuccess { remoteToVoid = null }
+                                .onFailure { UiErrorBus.show(it.message ?: "No se pudo anular la venta.") }
+                            voidingRemote = false
+                        }
+                    }
+                }) {
+                    Text(if (voidingRemote) "Anulando..." else "Confirmar", color = BSPOSTheme.colors.error, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(enabled = !voidingRemote, onClick = { remoteToVoid = null }) { Text("Cancelar") }
+            }
+        )
     }
     var saleToCancel by remember { mutableStateOf<Sale?>(null) }
     saleToCancel?.let { target ->

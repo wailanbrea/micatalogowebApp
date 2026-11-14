@@ -341,6 +341,7 @@ data class FeatureRowDto(
     val filterable: Boolean = false,
     @SerialName("can_convert") val canConvert: Boolean = false,
     @SerialName("can_confirm") val canConfirm: Boolean = false,
+    @SerialName("can_void") val canVoid: Boolean = false,
     @SerialName("product_id") val productId: String? = null,
     @SerialName("margin_percent") val marginPercent: String? = null,
     @SerialName("round_step") val roundStep: String? = null,
