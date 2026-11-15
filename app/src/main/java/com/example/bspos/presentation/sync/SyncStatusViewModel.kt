@@ -1,5 +1,8 @@
 package com.example.bspos.presentation.sync
 
+import android.content.Context
+import android.net.ConnectivityManager
+import android.net.Network
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.bspos.core.database.ShopScope
@@ -7,6 +10,7 @@ import com.example.bspos.data.local.dao.*
 import com.example.bspos.data.micatalogo.PosSaleSyncScheduler
 import com.example.bspos.domain.model.PosSaleOutboxState
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -40,9 +44,12 @@ class SyncStatusViewModel @Inject constructor(
     private val sales: PosSaleOutboxDao,
     private val payments: PaymentSyncDao,
     private val scheduler: PosSaleSyncScheduler,
-    private val json: Json
+    private val json: Json,
+    @param:ApplicationContext private val appContext: Context
 ) : ViewModel() {
     private val attemptedRecoveries = mutableSetOf<String>()
+    private var connectivityManager: ConnectivityManager? = null
+    private var networkCallback: ConnectivityManager.NetworkCallback? = null
 
     init {
         // A previous production build could leave a valid decant operation in
@@ -73,10 +80,39 @@ class SyncStatusViewModel @Inject constructor(
                     if (operations.retryBlocked(row.id) == 1) retried = true
                 }
                 if (retried) {
-                    scheduler.enqueue()
+                    scheduler.enqueue(immediate = true)
                 }
             }
         }
+        registerConnectivityAutoSync()
+    }
+
+    private fun registerConnectivityAutoSync() {
+        val manager = appContext.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                val current = status.value
+                if (current.phase == SyncPhase.PENDING || current.phase == SyncPhase.RETRY) {
+                    scheduler.enqueue(immediate = true)
+                }
+            }
+        }
+        runCatching {
+            manager.registerDefaultNetworkCallback(callback)
+            connectivityManager = manager
+            networkCallback = callback
+        }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        val manager = connectivityManager
+        val callback = networkCallback
+        if (manager != null && callback != null) {
+            runCatching { manager.unregisterNetworkCallback(callback) }
+        }
+        connectivityManager = null
+        networkCallback = null
     }
 
     val status = shops.changes.flatMapLatest { shop ->
@@ -127,7 +163,7 @@ class SyncStatusViewModel @Inject constructor(
             operations.activeForShop(shop).filter { it.state == "BLOCKED" }.forEach { operations.retryBlocked(it.id) }
             sales.observeOutstanding().first().filter { it.remoteShopId == shop && it.state == PosSaleOutboxState.BLOCKED }.forEach { sales.retryBlocked(it.saleId, Instant.now()) }
             payments.observeOutstanding().first().filter { it.shopId == shop && it.state == "BLOCKED" }.forEach { payments.retryBlocked(it.id) }
-            scheduler.enqueue()
+            scheduler.enqueue(immediate = true)
         } }
     }
 

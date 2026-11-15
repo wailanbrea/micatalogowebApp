@@ -7,6 +7,7 @@ import androidx.work.CoroutineWorker
 import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.OutOfQuotaPolicy
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.example.bspos.domain.model.MiCatalogoResult
@@ -25,14 +26,17 @@ import javax.inject.Singleton
 class PosSaleSyncScheduler @Inject constructor(
     @param:ApplicationContext private val context: Context
 ) {
-    fun enqueue() {
+    fun enqueue(immediate: Boolean = false) {
         val request = OneTimeWorkRequestBuilder<PosSaleSyncWorker>()
             .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 10, TimeUnit.SECONDS)
+            .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
             .build()
         // KEEP loses a wake-up if a new mutation commits after the running
-        // worker checked its queues. Append a successor without cancelling an ACK in flight.
-        WorkManager.getInstance(context).enqueueUniqueWork(WORK_NAME, ExistingWorkPolicy.APPEND_OR_REPLACE, request)
+        // worker checked its queues. Append a successor without cancelling an ACK in flight;
+        // explicit retries replace any sleeping backoff work immediately.
+        val policy = if (immediate) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.APPEND_OR_REPLACE
+        WorkManager.getInstance(context).enqueueUniqueWork(WORK_NAME, policy, request)
     }
 
     private companion object {
@@ -52,7 +56,8 @@ class PosSaleSyncWorker(
         if (dependencies.connectionRepository().accessToken() == null) return Result.success()
         // Publish current tenant/menu metadata before replaying any queued intent.
         // Observers close revoked destinations; the server still authorizes each mutation.
-        dependencies.connectionRepository().shops()
+        // Never let a transient metadata refresh failure block queued outbox uploads.
+        runCatching { dependencies.connectionRepository().shops() }
 
         return when (val result = dependencies.posSaleRepository().syncDueSales()) {
             is MiCatalogoResult.Success -> {

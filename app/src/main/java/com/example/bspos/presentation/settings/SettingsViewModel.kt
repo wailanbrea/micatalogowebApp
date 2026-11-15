@@ -77,9 +77,9 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    fun retryOperation(id:String) = viewModelScope.launch { operationQueue.retryBlocked(id); scheduler.enqueue() }
-    fun retrySale(id:java.util.UUID) = viewModelScope.launch { saleQueue.retryBlocked(id,java.time.Instant.now()); scheduler.enqueue() }
-    fun retryPayment(id:String) = viewModelScope.launch { paymentQueue.retryBlocked(id); scheduler.enqueue() }
+    fun retryOperation(id:String) = viewModelScope.launch { operationQueue.retryBlocked(id); scheduler.enqueue(immediate = true) }
+    fun retrySale(id:java.util.UUID) = viewModelScope.launch { saleQueue.retryBlocked(id,java.time.Instant.now()); scheduler.enqueue(immediate = true) }
+    fun retryPayment(id:String) = viewModelScope.launch { paymentQueue.retryBlocked(id); scheduler.enqueue(immediate = true) }
 
     fun setAllowNegativeStock(enabled: Boolean) = viewModelScope.launch { repository.setAllowNegativeStock(enabled) }
     fun setAutomaticBackups(enabled: Boolean) = viewModelScope.launch { repository.setAutomaticBackupsEnabled(enabled) }
