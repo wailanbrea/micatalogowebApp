@@ -13,9 +13,13 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -88,6 +92,7 @@ import coil.compose.AsyncImage
 import java.util.Locale
 import java.util.UUID
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun InventoryScreen(
     onOpenProducts: (() -> Unit)? = null,
@@ -160,10 +165,10 @@ fun InventoryScreen(
     val unavailable = activeProducts.count { (quantityByProductId[it.id] ?: 0L) <= 0L }
     val productsWithStock = activeProducts.count { (quantityByProductId[it.id] ?: 0L) > 0L }
     val lowStock = activeProducts.count { product -> val qty = quantityByProductId[product.id] ?: 0L; product.minimumStock > 0L && qty > 0L && qty <= product.minimumStock }
-    val totalUnits = stock.filter { productById[it.productId]?.remoteSaleUnit != "decant" }.sumOf { it.quantity }
+    val activeIds = activeProducts.mapTo(hashSetOf()) { it.id }
+    val totalUnits = stock.filter { it.productId in activeIds }.sumOf { it.quantity }
     val capitalAtCost = if (showCosts) remoteValuation ?: stock.sumOf { row ->
-        val product = productById[row.productId]
-        if (product?.remoteSaleUnit == "decant") 0L else row.quantity * (product?.averageCost ?: 0L)
+        if (row.productId !in activeIds) 0L else row.quantity * (productById[row.productId]?.averageCost ?: 0L)
     } else 0L
     val productsWithoutPhoto = products.count { it.isActive && it.deletedAt == null && it.imagePath.isNullOrBlank() }
     val stockEditableProducts = products.filter { !it.remoteIsCombo && it.remoteSaleUnit != "decant" && it.remoteSaleUnit != "service" && (it.remoteShopId == null || it.remoteShopId in editableShopIds) }
@@ -291,16 +296,17 @@ fun InventoryScreen(
         }
         inventorySection {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                com.example.bspos.presentation.common.BSPOSSearchField(query, { query = it }, "Buscar por nombre o SKU…", Modifier.weight(1f))
+                com.example.bspos.presentation.common.BSPOSSearchField(query, { query = it }, "Buscar producto o SKU…", Modifier.weight(1f))
                 OutlinedButton(onClick = { showFilters = !showFilters }, shape = RoundedCornerShape(14.dp)) {
                     Icon(Icons.Default.FilterList, null)
                     Spacer(Modifier.width(4.dp))
-                    Text(if (activeFilterCount > 0) "Filtros ($activeFilterCount)" else "Filtros")
+                    Text(if (activeFilterCount > 0) "Filtros ($activeFilterCount)" else "Filtros", maxLines = 1, softWrap = false)
                 }
             }
-            Row(
-                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            FlowRow(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 FilterChip(
                     selected = filter == 0 && !lowStockFilter,
@@ -826,13 +832,13 @@ private fun InventorySummaryRow(capitalAtCost: Long, productCount: Int, products
         if (maxWidth < 540.dp) {
             Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
                 metrics.chunked(2).forEach { row ->
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(0.dp)) {
-                        row.forEach { metric -> InventoryMetricCard(metric, Modifier.weight(1f)) }
+                    Row(Modifier.fillMaxWidth().height(IntrinsicSize.Max), horizontalArrangement = Arrangement.spacedBy(0.dp)) {
+                        row.forEach { metric -> InventoryMetricCard(metric, Modifier.weight(1f).fillMaxHeight()) }
                     }
                 }
             }
         } else {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) { metrics.forEach { metric -> InventoryMetricCard(metric, Modifier.weight(1f)) } }
+            Row(Modifier.fillMaxWidth().height(IntrinsicSize.Max), horizontalArrangement = Arrangement.spacedBy(10.dp)) { metrics.forEach { metric -> InventoryMetricCard(metric, Modifier.weight(1f).fillMaxHeight()) } }
         }
     }
     }
@@ -842,11 +848,16 @@ private data class InventoryMetric(val label: String, val value: String, val sub
 
 @Composable
 private fun InventoryMetricCard(metric: InventoryMetric, modifier: Modifier = Modifier) {
+    val valueFontSize = when {
+        metric.value.length >= 14 -> 14.sp
+        metric.value.length >= 11 -> 15.sp
+        else -> 18.sp
+    }
     Surface(modifier.fillMaxWidth(), color = BSPOSTheme.colors.surfaceVariant.copy(alpha = .25f), border = androidx.compose.foundation.BorderStroke(.5.dp, BSPOSTheme.colors.outline)) {
-        Column(Modifier.heightIn(min = 90.dp).padding(14.dp)) {
+        Column(Modifier.heightIn(min = 90.dp).padding(horizontal = 12.dp, vertical = 12.dp)) {
             Text(metric.label, color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelMedium)
             Spacer(Modifier.height(4.dp))
-            Text(metric.value, color = BSPOSTheme.colors.textPrimary, fontSize = 18.sp, fontFamily = com.example.bspos.core.ui.theme.BSPOSFonts.Monospace, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(metric.value, color = BSPOSTheme.colors.textPrimary, fontSize = valueFontSize, fontFamily = com.example.bspos.core.ui.theme.BSPOSFonts.Monospace, fontWeight = FontWeight.Medium, maxLines = 1, softWrap = false)
             Text(metric.subtitle, color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelSmall, fontFamily = com.example.bspos.core.ui.theme.BSPOSFonts.Monospace, maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
     }
