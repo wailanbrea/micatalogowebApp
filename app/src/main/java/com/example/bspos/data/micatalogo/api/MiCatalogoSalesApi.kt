@@ -14,7 +14,8 @@ import retrofit2.http.Query
 data class SaleVoidRequestDto(
     @SerialName("invoice_id") val invoiceId: Long? = null,
     @SerialName("client_sale_uuid") val clientSaleUuid: String? = null,
-    val reason: String
+    val reason: String,
+    val restock: Boolean = true
 )
 
 @Serializable

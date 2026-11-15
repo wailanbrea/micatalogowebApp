@@ -504,18 +504,20 @@ fun PosScreen(
         )
     }
     checkoutResult?.takeIf { it.success && it.sale != null }?.let { result ->
+        val saleCustomer = result.sale?.customerId?.let { id -> customers.find { it.id == id } } ?: customer
         SaleCompleteDialog(
             result = result,
+            customerName = saleCustomer?.fullName,
             hasConfiguredPrinter = printers.isNotEmpty(),
             onShare = {
-                val pdfUri = InvoicePdfGenerator.create(context, result.sale!!, result.lines, settings.currency, settings.invoice)
+                val pdfUri = InvoicePdfGenerator.create(context, result.sale!!, result.lines, settings.currency, settings.invoice, customer = saleCustomer)
                 shareInvoicePdf(context, pdfUri, result.sale.invoiceNumber)
             },
             onPrint = {
                 if (printers.isNotEmpty()) {
                     viewModel.printToConfiguredPrinter(result)
                 } else {
-                    val pdfUri = InvoicePdfGenerator.create(context, result.sale!!, result.lines, settings.currency, settings.invoice)
+                    val pdfUri = InvoicePdfGenerator.create(context, result.sale!!, result.lines, settings.currency, settings.invoice, customer = saleCustomer)
                     val printManager = context.getSystemService(Context.PRINT_SERVICE) as PrintManager
                     printManager.print(
                         "Factura ${result.sale.invoiceNumber}",
@@ -993,6 +995,7 @@ private fun TerminalOptionsSheet(onDismiss: () -> Unit, onDayClose: () -> Unit, 
 @Composable
 private fun SaleCompleteDialog(
     result: CheckoutResult,
+    customerName: String? = null,
     hasConfiguredPrinter: Boolean,
     onShare: () -> Unit,
     onPrint: () -> Unit,
@@ -1076,6 +1079,9 @@ private fun SaleCompleteDialog(
                         Text("Total de la venta", style = MaterialTheme.typography.labelMedium, color = BSPOSTheme.colors.textSecondary)
                         Text(money(sale.total), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold, color = BSPOSTheme.colors.primaryDark)
                         Text(paymentLabel(sale.paymentType), style = MaterialTheme.typography.bodySmall, color = BSPOSTheme.colors.textSecondary)
+                        if (!customerName.isNullOrBlank()) {
+                            Text("Cliente: $customerName", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold, color = BSPOSTheme.colors.textPrimary)
+                        }
                     }
                 }
 

@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import com.example.bspos.presentation.common.BSPOSButton as Button
 import androidx.compose.material3.FilterChip
@@ -440,6 +441,7 @@ fun SalesHistoryScreen(
     remoteToVoid?.let { target ->
         var reason by remember(target.id) { mutableStateOf("") }
         var reasonError by remember(target.id) { mutableStateOf(false) }
+        var restock by remember(target.id) { mutableStateOf(true) }
         AlertDialog(
             onDismissRequest = { if (!voidingRemote) remoteToVoid = null },
             title = { Text("Anular ${target.primary}") },
@@ -456,6 +458,15 @@ fun SalesHistoryScreen(
                         supportingText = { if (reasonError) Text("Indica un motivo para anular") },
                         modifier = Modifier.fillMaxWidth()
                     )
+                    Spacer(Modifier.height(4.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth().clickable(enabled = !voidingRemote) { restock = !restock },
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Checkbox(checked = restock, onCheckedChange = { restock = it }, enabled = !voidingRemote)
+                        Spacer(Modifier.width(4.dp))
+                        Text("Devolver artículos al inventario", style = MaterialTheme.typography.bodyMedium)
+                    }
                 }
             },
             confirmButton = {
@@ -466,7 +477,7 @@ fun SalesHistoryScreen(
                     } else if (!id.isNullOrBlank()) {
                         voidingRemote = true
                         scope.launch {
-                            remoteViewModel.voidSale(id, reason.trim())
+                            remoteViewModel.voidSale(id, reason.trim(), restock)
                                 .onSuccess { remoteToVoid = null }
                                 .onFailure { UiErrorBus.show(it.message ?: "No se pudo anular la venta.") }
                             voidingRemote = false
@@ -482,13 +493,27 @@ fun SalesHistoryScreen(
         )
     }
     saleToCancel?.let { target ->
+        var restock by remember(target.id) { mutableStateOf(true) }
         AlertDialog(
             onDismissRequest = { saleToCancel = null },
             title = { Text("Anular venta") },
-            text = { Text("Factura ${target.invoiceNumber}") },
+            text = {
+                com.example.bspos.presentation.common.DialogScrollableColumn {
+                    Text("Factura ${target.invoiceNumber}", fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth().clickable { restock = !restock },
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Checkbox(checked = restock, onCheckedChange = { restock = it })
+                        Spacer(Modifier.width(4.dp))
+                        Text("Devolver artículos al inventario", style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+            },
             confirmButton = {
                 TextButton(onClick = {
-                    viewModel.cancelSale(target) { success, error ->
+                    viewModel.cancelSale(target, restock = restock) { success, error ->
                         if (!success && error != null) {
                             UiErrorBus.show(error)
                         }
@@ -517,7 +542,13 @@ fun SalesHistoryScreen(
                     }
                 }
                 if (lines.isNotEmpty()) {
-                    val pdfUri = InvoicePdfGenerator.create(context, sale, lines)
+                    val pdfUri = InvoicePdfGenerator.create(
+                        context,
+                        sale,
+                        lines,
+                        customer = customers.find { it.id == sale.customerId },
+                        customerName = customerNames[sale.customerId]
+                    )
                     shareInvoicePdf(context, pdfUri, sale.invoiceNumber)
                 }
             },

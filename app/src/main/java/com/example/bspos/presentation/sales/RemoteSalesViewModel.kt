@@ -62,12 +62,12 @@ class RemoteSalesViewModel @Inject constructor(private val api: MiCatalogoSalesA
         return checkNotNull(response.body()).string()
     }
 
-    suspend fun voidSale(invoiceId: String, reason: String): Result<Unit> = runCatching {
+    suspend fun voidSale(invoiceId: String, reason: String, restock: Boolean = true): Result<Unit> = runCatching {
         val shop = checkNotNull(connection.activeShopId()) { "Selecciona una tienda activa." }
         val numericId = checkNotNull(invoiceId.toLongOrNull()) { "Factura inválida." }
         val cleanReason = reason.trim()
         require(cleanReason.isNotEmpty()) { "Indica un motivo para anular." }
-        val response = api.voidSale(shop, SaleVoidRequestDto(invoiceId = numericId, reason = cleanReason))
+        val response = api.voidSale(shop, SaleVoidRequestDto(invoiceId = numericId, reason = cleanReason, restock = restock))
         check(response.isSuccessful) { response.apiErrorMessage("No se pudo anular la venta.") }
         load(filters)
     }

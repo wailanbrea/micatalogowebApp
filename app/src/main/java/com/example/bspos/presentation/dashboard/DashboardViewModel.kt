@@ -182,9 +182,9 @@ class DashboardViewModel @Inject constructor(
         sale?.let { saleRepository.observeItems(it.id) } ?: flowOf(emptyList())
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    fun cancelSale(sale: Sale, reason: String? = null, onResult: (Boolean, String?) -> Unit) = viewModelScope.launch {
+    fun cancelSale(sale: Sale, reason: String? = null, restock: Boolean = true, onResult: (Boolean, String?) -> Unit) = viewModelScope.launch {
         try {
-            cancelSaleUseCase(sale.id, reason)
+            cancelSaleUseCase(sale.id, reason, restock)
             _selectedSale.value = null
             onResult(true, null)
         } catch (e: Exception) {

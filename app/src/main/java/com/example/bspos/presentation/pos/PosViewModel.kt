@@ -310,7 +310,8 @@ class PosViewModel @Inject constructor(
                         lines,
                         settings.value.currency,
                         settings.value.invoice,
-                        printer.paperWidth.columns
+                        printer.paperWidth.columns,
+                        customer = sale.customerId?.let { id -> customers.value.firstOrNull { it.id == id } }
                     )
                 )
             }

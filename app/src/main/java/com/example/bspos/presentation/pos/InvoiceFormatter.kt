@@ -2,6 +2,7 @@ package com.example.bspos.presentation.pos
 
 import com.example.bspos.core.money.MoneyUtils
 import com.example.bspos.domain.model.CurrencyUnit
+import com.example.bspos.domain.model.Customer
 import com.example.bspos.domain.model.InvoiceConfig
 import com.example.bspos.domain.model.Sale
 import java.text.SimpleDateFormat
@@ -13,7 +14,9 @@ fun formatInvoice(
     lines: List<PosCartLine>,
     currency: CurrencyUnit = CurrencyUnit.DOP,
     config: InvoiceConfig = InvoiceConfig(),
-    maxLineWidth: Int = 32
+    maxLineWidth: Int = 32,
+    customer: Customer? = null,
+    customerName: String? = null
 ): String = buildString {
     val width = maxLineWidth.coerceIn(24, 48)
     appendLine(center(config.businessName, width))
@@ -21,6 +24,12 @@ fun formatInvoice(
     config.phone.takeIf { it.isNotBlank() }?.let { appendLine(center("Tel: $it", width)) }
     config.address.takeIf { it.isNotBlank() }?.let { wrap(it, width).forEach(::appendLine) }
     appendLine("Factura ${sale.invoiceNumber}".take(width))
+    val resolvedCustomer = customer?.fullName?.takeIf { it.isNotBlank() }
+        ?: customerName?.takeIf { it.isNotBlank() }
+        ?: "Consumidor final"
+    appendLine("Cliente: $resolvedCustomer".take(width))
+    customer?.taxId?.takeIf { it.isNotBlank() }?.let { appendLine("RNC/ID: $it".take(width)) }
+    customer?.phone?.takeIf { it.isNotBlank() }?.let { appendLine("Tel: $it".take(width)) }
     appendLine(SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).format(Date.from(sale.date)).take(width))
     appendLine("Pago: ${sale.paymentType.invoiceLabel()}".take(width))
     appendLine("-".repeat(width))

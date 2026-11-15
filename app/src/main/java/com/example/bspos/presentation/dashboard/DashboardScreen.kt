@@ -244,13 +244,27 @@ fun DashboardScreen(
     }
     var saleToCancel by remember { mutableStateOf<Sale?>(null) }
     saleToCancel?.let { target ->
+        var restock by remember(target.id) { mutableStateOf(true) }
         AlertDialog(
             onDismissRequest = { saleToCancel = null },
             title = { Text("Anular venta") },
-            text = { Text("Factura ${target.invoiceNumber}") },
+            text = {
+                DialogScrollableColumn {
+                    Text("Factura ${target.invoiceNumber}", fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth().clickable { restock = !restock },
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Checkbox(checked = restock, onCheckedChange = { restock = it })
+                        Spacer(Modifier.width(4.dp))
+                        Text("Devolver artículos al inventario", style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+            },
             confirmButton = {
                 TextButton(onClick = {
-                    viewModel.cancelSale(target) { success, error ->
+                    viewModel.cancelSale(target, restock = restock) { success, error ->
                         if (!success && error != null) {
                             com.example.bspos.presentation.common.UiErrorBus.show(error)
                         }
@@ -279,7 +293,13 @@ fun DashboardScreen(
                     }
                 }
                 if (lines.isNotEmpty()) {
-                    val pdfUri = InvoicePdfGenerator.create(context, sale, lines)
+                    val pdfUri = InvoicePdfGenerator.create(
+                        context,
+                        sale,
+                        lines,
+                        customer = customers.find { it.id == sale.customerId },
+                        customerName = customerNames[sale.customerId]
+                    )
                     shareInvoicePdf(context, pdfUri, sale.invoiceNumber)
                 }
             },

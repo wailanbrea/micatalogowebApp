@@ -38,7 +38,7 @@ class CancelSaleUseCase @Inject constructor(
     private val settings: SettingsRepository,
     private val shops: ShopScope
 ) {
-    suspend operator fun invoke(saleId: UUID, reason: String? = null, at: Instant = Instant.now()): Sale {
+    suspend operator fun invoke(saleId: UUID, reason: String? = null, restock: Boolean = true, at: Instant = Instant.now()): Sale {
         var queued = false
         val cancelledSale = transactor.runInTransaction {
             val activeShop = shops.current()
@@ -46,11 +46,15 @@ class CancelSaleUseCase @Inject constructor(
             require(sale.status == SaleStatus.COMPLETED) { "Solo se pueden anular ventas activas." }
 
             val sold = sales.itemsInInvoiceOrder(sale.id, activeShop)
-            val restocked = sold.map { item ->
-                val alreadyReturned = returns.returnedQuantity(item.id, activeShop)
-                val remaining = maxOf(0L, item.quantity - alreadyReturned)
-                item.copy(quantity = remaining)
-            }.filter { it.quantity > 0 }
+            val restocked = if (restock) {
+                sold.map { item ->
+                    val alreadyReturned = returns.returnedQuantity(item.id, activeShop)
+                    val remaining = maxOf(0L, item.quantity - alreadyReturned)
+                    item.copy(quantity = remaining)
+                }.filter { it.quantity > 0 }
+            } else {
+                emptyList()
+            }
 
             val targetLocation = sale.routeId?.let(InventoryLocation::route) ?: InventoryLocation.MAIN
             if (restocked.isNotEmpty()) {
@@ -100,6 +104,7 @@ class CancelSaleUseCase @Inject constructor(
                 remote.enqueue(shop, restocked.mapNotNull { it.productId.toString() }, buildJsonObject {
                     put("type", "sale_cancel")
                     put("client_sale_uuid", sale.id.toString())
+                    put("restock", restock)
                     reason?.takeIf { it.isNotBlank() }?.let { put("notes", it) }
                 }, at, operationUuid.toString())
                 queued = true

@@ -10,6 +10,7 @@ import androidx.core.content.FileProvider
 import com.example.bspos.R
 import com.example.bspos.core.money.MoneyUtils
 import com.example.bspos.domain.model.CurrencyUnit
+import com.example.bspos.domain.model.Customer
 import com.example.bspos.domain.model.InvoiceConfig
 import com.example.bspos.domain.model.Sale
 import java.io.File
@@ -33,7 +34,15 @@ object InvoicePdfGenerator {
     private const val WARNING = 0xffa56a00.toInt()
     private const val WARNING_LIGHT = 0xfffff3d8.toInt()
 
-    fun create(context: Context, sale: Sale, lines: List<PosCartLine>, currency: CurrencyUnit = CurrencyUnit.DOP, config: InvoiceConfig = InvoiceConfig()) = run {
+    fun create(
+        context: Context,
+        sale: Sale,
+        lines: List<PosCartLine>,
+        currency: CurrencyUnit = CurrencyUnit.DOP,
+        config: InvoiceConfig = InvoiceConfig(),
+        customer: Customer? = null,
+        customerName: String? = null
+    ) = run {
         val safeInvoice = sale.invoiceNumber.replace(Regex("[^A-Za-z0-9_-]"), "_")
         val file = File(context.cacheDir, "factura-$safeInvoice-${System.currentTimeMillis()}.pdf")
         val document = PdfDocument()
@@ -43,7 +52,7 @@ object InvoicePdfGenerator {
         var pageNumber = 1
         var page = document.startPage(pageInfo(pageNumber))
         var canvas = page.canvas
-        drawPageHeader(context, canvas, sale, pageNumber, regular, medium, bold, config)
+        drawPageHeader(context, canvas, sale, pageNumber, regular, medium, bold, config, customer, customerName)
         drawTableHeader(canvas, regular, bold)
         var y = 282f
 
@@ -55,7 +64,7 @@ object InvoicePdfGenerator {
                 pageNumber += 1
                 page = document.startPage(pageInfo(pageNumber))
                 canvas = page.canvas
-                drawPageHeader(context, canvas, sale, pageNumber, regular, medium, bold, config)
+                drawPageHeader(context, canvas, sale, pageNumber, regular, medium, bold, config, customer, customerName)
                 drawTableHeader(canvas, regular, bold)
                 y = 282f
             }
@@ -79,7 +88,7 @@ object InvoicePdfGenerator {
             pageNumber += 1
             page = document.startPage(pageInfo(pageNumber))
             canvas = page.canvas
-            drawPageHeader(context, canvas, sale, pageNumber, regular, medium, bold, config)
+            drawPageHeader(context, canvas, sale, pageNumber, regular, medium, bold, config, customer, customerName)
             y = 282f
         }
         drawSummary(canvas, sale, y + 20f, regular, medium, bold, currency)
@@ -92,7 +101,18 @@ object InvoicePdfGenerator {
 
     private fun pageInfo(number: Int) = PdfDocument.PageInfo.Builder(PAGE_WIDTH, PAGE_HEIGHT, number).create()
 
-    private fun drawPageHeader(context: Context, canvas: Canvas, sale: Sale, pageNumber: Int, regular: Typeface, medium: Typeface, bold: Typeface, config: InvoiceConfig) {
+    private fun drawPageHeader(
+        context: Context,
+        canvas: Canvas,
+        sale: Sale,
+        pageNumber: Int,
+        regular: Typeface,
+        medium: Typeface,
+        bold: Typeface,
+        config: InvoiceConfig,
+        customer: Customer? = null,
+        customerName: String? = null
+    ) {
         val white = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = android.graphics.Color.WHITE }
         canvas.drawColor(android.graphics.Color.WHITE)
         val accent = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = PRIMARY }
@@ -121,8 +141,20 @@ object InvoicePdfGenerator {
         val statusPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = if (statusPaid) SUCCESS_LIGHT else WARNING_LIGHT }
         canvas.drawRoundRect(487f, 144f, 553f, 177f, 8f, 8f, statusPaint)
         textCentered(canvas, if (statusPaid) "PAGADA" else "PENDIENTE", 520f, 165f, 8.5f, if (statusPaid) SUCCESS else WARNING, medium)
-        text(canvas, "CLIENTE", MARGIN, 208f, 8.5f, MUTED, medium)
-        text(canvas, "Consumidor final", MARGIN, 226f, 11f, INK, regular)
+        val resolvedCustomerName = customer?.fullName?.takeIf { it.isNotBlank() }
+            ?: customerName?.takeIf { it.isNotBlank() }
+            ?: "Consumidor final"
+        val customerDetails = listOfNotNull(
+            customer?.businessName?.takeIf { it.isNotBlank() && !it.equals(resolvedCustomerName, ignoreCase = true) },
+            customer?.taxId?.takeIf { it.isNotBlank() }?.let { "RNC / ID: $it" },
+            customer?.phone?.takeIf { it.isNotBlank() }?.let { "Tel: $it" },
+            customer?.address?.takeIf { it.isNotBlank() }
+        ).joinToString(" · ")
+        text(canvas, "CLIENTE", MARGIN, 204f, 8.5f, MUTED, medium)
+        text(canvas, resolvedCustomerName.take(64), MARGIN, 221f, 11f, INK, medium)
+        if (customerDetails.isNotBlank()) {
+            text(canvas, customerDetails.take(86), MARGIN, 235f, 8.5f, MUTED, regular)
+        }
     }
 
     private fun drawInfoBox(canvas: Canvas, left: Float, top: Float, width: Float, label: String, value: String, regular: Typeface, medium: Typeface) {
@@ -144,7 +176,7 @@ object InvoicePdfGenerator {
     private fun drawSummary(canvas: Canvas, sale: Sale, top: Float, regular: Typeface, medium: Typeface, bold: Typeface, currency: CurrencyUnit) {
         val left = 330f
         val right = PAGE_WIDTH - MARGIN
-        val bottom = top + 142f
+        val bottom = if (sale.pendingAmount > 0) top + 178f else top + 142f
         val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = LIGHT_BLUE }
         canvas.drawRoundRect(left, top, right, bottom, 10f, 10f, fill)
         text(canvas, "RESUMEN", left + 14f, top + 24f, 10f, NAVY, bold)
@@ -154,6 +186,10 @@ object InvoicePdfGenerator {
         val divider = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xffc8dce9.toInt(); strokeWidth = 1f }
         canvas.drawLine(left + 14f, top + 98f, right - 14f, top + 98f, divider)
         summaryLine(canvas, "TOTAL", money(sale.total, currency), left + 14f, top + 122f, right - 14f, medium, bold, 13f, NAVY)
+        if (sale.pendingAmount > 0) {
+            summaryLine(canvas, "Pagado", money(sale.paidAmount, currency), left + 14f, top + 144f, right - 14f, regular, medium)
+            summaryLine(canvas, "Pendiente", money(sale.pendingAmount, currency), left + 14f, top + 162f, right - 14f, medium, bold, 10f, WARNING)
+        }
     }
 
     private fun summaryLine(canvas: Canvas, label: String, value: String, left: Float, y: Float, right: Float, labelTypeface: Typeface, valueTypeface: Typeface, size: Float = 9.5f, valueColor: Int = INK) {
