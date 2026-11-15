@@ -385,7 +385,7 @@ fun InventoryScreen(
         title = "Filtros", onDismiss = { showFilters = false }, footer = {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton({ filter = 0; lowStockFilter = false; photoFilter = false }) { Text("Limpiar") }
-                Button({ showFilters = false }, Modifier.weight(1f)) { Text("Ver productos ${filteredProducts.size}") }
+                Button({ showFilters = false }, Modifier.weight(1f)) { Text("Ver productos (${filteredProducts.size})", maxLines = 1, softWrap = false) }
             }
         }
     ) {
@@ -743,7 +743,7 @@ private fun InventoryMetricCell(label: String, value: String, modifier: Modifier
 private fun InventoryDetailPrice(label: String, cents: Long, modifier: Modifier) {
     Column(modifier) {
         Text(label, color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelSmall)
-        Text(MoneyUtils.formatCents(cents, LocalCurrency.current), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold)
+        Text(MoneyUtils.formatCents(cents, LocalCurrency.current), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold, maxLines = 1, softWrap = false)
     }
 }
 

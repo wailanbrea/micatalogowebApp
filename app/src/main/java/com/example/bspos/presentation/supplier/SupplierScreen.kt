@@ -60,6 +60,7 @@ fun SupplierScreen(viewModel: SupplierViewModel = hiltViewModel()) {
     var query by remember { mutableStateOf("") }
     var creating by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<Supplier?>(null) }
+    var deleting by remember { mutableStateOf<Supplier?>(null) }
     val filtered = suppliers.filter { it.name.contains(query, true) || it.contactName.orEmpty().contains(query, true) || it.phone.orEmpty().contains(query) }
 
     Column(Modifier.fillMaxSize().background(BSPOSTheme.colors.background).padding(20.dp)) {
@@ -67,7 +68,7 @@ fun SupplierScreen(viewModel: SupplierViewModel = hiltViewModel()) {
             Column(Modifier.weight(1f)) {
                 Text("Contactos y abastecimiento", color = BSPOSTheme.colors.textSecondary)
             }
-            Button({ creating = true }, shape = RoundedCornerShape(14.dp)) { Icon(Icons.Default.Add, null); Spacer(Modifier.width(4.dp)); Text("Nuevo") }
+            Button({ creating = true }, shape = RoundedCornerShape(14.dp)) { Icon(Icons.Default.Add, null); Spacer(Modifier.width(4.dp)); Text("Nuevo", maxLines = 1, softWrap = false) }
         }
         Spacer(Modifier.size(14.dp))
         Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), color = BSPOSTheme.colors.surface, border = androidx.compose.foundation.BorderStroke(1.dp, BSPOSTheme.colors.outline)) {
@@ -81,13 +82,26 @@ fun SupplierScreen(viewModel: SupplierViewModel = hiltViewModel()) {
             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) { Text(if (query.isBlank()) "Aún no hay proveedores" else "Sin coincidencias", color = BSPOSTheme.colors.textSecondary) }
         } else {
             LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                items(filtered, key = { it.id }) { supplier -> SupplierCard(supplier, { editing = supplier }, { viewModel.delete(supplier) }) }
+                items(filtered, key = { it.id }) { supplier -> SupplierCard(supplier, { editing = supplier }, { deleting = supplier }) }
             }
         }
     }
 
     if (creating) SupplierForm(null, { viewModel.add(it); creating = false }, { creating = false })
     editing?.let { current -> SupplierForm(current, { viewModel.update(current, it); editing = null }, { editing = null }) }
+    deleting?.let { current ->
+        AlertDialog(
+            onDismissRequest = { deleting = null },
+            title = { Text("Eliminar proveedor") },
+            text = { Text("¿Eliminar a ${current.name}?") },
+            confirmButton = {
+                TextButton(onClick = { viewModel.delete(current); deleting = null }) {
+                    Text("Eliminar", color = BSPOSTheme.colors.error)
+                }
+            },
+            dismissButton = { TextButton(onClick = { deleting = null }) { Text("Cancelar") } }
+        )
+    }
     message?.let { text -> AlertDialog(onDismissRequest = viewModel::consumeMessage, title = { Text("No se pudo completar") }, text = { Text(text) }, confirmButton = { TextButton(viewModel::consumeMessage) { Text("Cerrar") } }) }
 }
 

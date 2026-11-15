@@ -65,13 +65,13 @@ internal fun CustomerAccountScreen(state:CustomerDetailState,onBack:()->Unit,onR
                                     onClick = { DebtReminderHelper.sendWhatsApp(context, state.customer.phone, message) },
                                     modifier = Modifier.weight(1f)
                                 ) {
-                                    Text("WhatsApp", maxLines = 1)
+                                    Text("WhatsApp", maxLines = 1, softWrap = false)
                                 }
                                 OutlinedButton(
                                     onClick = { DebtReminderHelper.copyToClipboard(context, message) },
                                     modifier = Modifier.weight(1f)
                                 ) {
-                                    Text("Copiar", maxLines = 1)
+                                    Text("Copiar", maxLines = 1, softWrap = false)
                                 }
                             }
                         }
@@ -151,7 +151,7 @@ private fun AccountMovementCard(entry:CustomerAccountEntryDto) {
             Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
                 Text(if(entry.type=="charge" && entry.invoiceNumber==null) "Cargo de saldo" else movementLabel(entry.type),fontWeight=FontWeight.SemiBold)
                 Text((if(signed>0) "+" else "")+accountMoney(signed),fontFamily=BSPOSFonts.Monospace,
-                    color=if(signed<0) BSPOSTheme.colors.success else BSPOSTheme.colors.warning)
+                    color=if(signed<0) BSPOSTheme.colors.success else BSPOSTheme.colors.warning,maxLines=1,softWrap=false)
             }
             Text(accountDate(entry.createdAt),color=BSPOSTheme.colors.textSecondary,style=MaterialTheme.typography.labelSmall)
             entry.invoiceNumber?.let { Text("Factura $it",color=BSPOSTheme.colors.primary,style=MaterialTheme.typography.bodySmall) }
@@ -167,7 +167,7 @@ private fun AccountMovementCard(entry:CustomerAccountEntryDto) {
 @Composable private fun AccountValueRow(label:String,value:String) {
     Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
         Text(label,color=BSPOSTheme.colors.textSecondary,style=MaterialTheme.typography.bodySmall)
-        Text(value,fontFamily=BSPOSFonts.Monospace,style=MaterialTheme.typography.bodySmall)
+        Text(value,fontFamily=BSPOSFonts.Monospace,style=MaterialTheme.typography.bodySmall,maxLines=1,softWrap=false)
     }
 }
 internal fun movementLabel(type:String)=when(type) {

@@ -318,8 +318,8 @@ fun FinanceSummaryTab(
                     selectedKpi = FinanceKpiDetail(
                         title = "Ventas netas",
                         amount = netSalesAmount,
-                        subtitle = "${period.salesCount} ventas (${period.unitsSold} u.)",
-                        description = "Total de las ventas del período después de descuentos y devoluciones, antes de restar el costo de la mercancía y los gastos operativos. Incluye ${period.salesCount} ventas y ${period.unitsSold} unidades.",
+                        subtitle = "${period.salesCount} ${if (period.salesCount == 1) "venta" else "ventas"} (${period.unitsSold} u.)",
+                        description = "Total de las ventas del período después de descuentos y devoluciones, antes de restar el costo de la mercancía y los gastos operativos. Incluye ${period.salesCount} ${if (period.salesCount == 1) "venta" else "ventas"} y ${period.unitsSold} ${if (period.unitsSold == 1) "unidad" else "unidades"}.",
                         icon = shoppingCartIcon,
                         accentColor = primaryColor
                     )
@@ -536,7 +536,7 @@ fun FinanceSummaryTab(
                     Column {
                         Text("Valor de inventario (FIFO)", fontWeight = FontWeight.Bold)
                         Text(
-                            "${current.activeProductsCount} productos activos",
+                            if (current.activeProductsCount == 1) "1 producto activo" else "${current.activeProductsCount} productos activos",
                             style = MaterialTheme.typography.bodySmall,
                             color = BSPOSTheme.colors.textSecondary
                         )
@@ -623,7 +623,7 @@ fun FinanceSummaryTab(
                                     overflow = TextOverflow.Ellipsis
                                 )
                                 Text(
-                                    text = "${item.units} vendidas · Ingresos: ${formatPesos(item.revenue)}",
+                                    text = "${item.units} ${if (item.units == 1) "vendida" else "vendidas"} · Ingresos: ${formatPesos(item.revenue)}",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = BSPOSTheme.colors.textSecondary
                                 )
@@ -1048,7 +1048,7 @@ private fun FinanceKpiCard(
 private fun FinanceValueRow(label: String, value: String, color: Color = BSPOSTheme.colors.textPrimary) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
         Text(label, style = MaterialTheme.typography.bodySmall, color = BSPOSTheme.colors.textSecondary)
-        Text(value, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold, color = color)
+        Text(value, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold, color = color, maxLines = 1, softWrap = false)
     }
 }
 

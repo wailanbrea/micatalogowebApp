@@ -604,7 +604,7 @@ private fun OrdersListCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    "${rows.size} de ${rows.size} pedidos",
+                    if (rows.size == 1) "1 de 1 pedido" else "${rows.size} de ${rows.size} pedidos",
                     color = BSPOSTheme.colors.textSecondary,
                     style = MaterialTheme.typography.labelSmall,
                     fontFamily = com.example.bspos.core.ui.theme.BSPOSFonts.Monospace,
@@ -691,7 +691,7 @@ private fun OrderRowContent(
         ) {
             Icon(Icons.Outlined.ChatBubbleOutline, contentDescription = null, modifier = Modifier.width(18.dp).height(18.dp))
             Spacer(Modifier.width(8.dp))
-            Text("Escribir")
+            Text("Escribir", maxLines = 1, softWrap = false)
         }
 
         if (row.canConfirm) {
@@ -705,7 +705,7 @@ private fun OrderRowContent(
                 else {
                     Icon(Icons.Filled.CheckCircle, contentDescription = null, modifier = Modifier.width(18.dp).height(18.dp))
                     Spacer(Modifier.width(8.dp))
-                    Text("Confirmar pedido")
+                    Text("Confirmar pedido", maxLines = 1, softWrap = false)
                 }
             }
         }
@@ -988,13 +988,12 @@ internal fun NewCreditCustomerDialog(
         title = "Nuevo cliente a crédito", onDismiss = { if (!busy) onDismiss() }, dismissEnabled = !busy,
         footer = {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onDismiss, enabled = !busy) { Text("Cancelar") }
+                OutlinedButton(onDismiss, enabled = !busy) { Text("Cancelar", maxLines = 1, softWrap = false) }
                 CheckoutStylePrimaryButton("Crear y seleccionar", { onCreate(NewCreditCustomerInput(name, phone, creditLimit)) },
                     enabled = valid && !busy, busy = busy, modifier = Modifier.weight(1f))
             }
         }
     ) {
-                Text("Créalo y selecciónalo sin salir de este pedido.", color = BSPOSTheme.colors.textSecondary)
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },

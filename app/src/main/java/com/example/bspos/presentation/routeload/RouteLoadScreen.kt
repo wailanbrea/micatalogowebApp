@@ -46,12 +46,14 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.example.bspos.core.ui.theme.BSPOSTheme
 import com.example.bspos.domain.usecase.RouteLoadLineInput
+import com.example.bspos.presentation.common.BSPOSAlertDialog
 import java.util.UUID
 
 @Composable
 fun RouteLoadScreen(viewModel: RouteLoadViewModel = hiltViewModel()) {
     val routes by viewModel.routes.collectAsState()
     val products by viewModel.products.collectAsState()
+    val message by viewModel.message.collectAsState()
     val activeRoutes = routes.filter { it.isActive }
     val activeProducts = products.filter { it.isActive && it.deletedAt == null }
     var route by remember(activeRoutes) { mutableStateOf(activeRoutes.firstOrNull()) }
@@ -136,6 +138,15 @@ fun RouteLoadScreen(viewModel: RouteLoadViewModel = hiltViewModel()) {
                 Text("Crear carga de ruta")
             }
         }
+    }
+
+    message?.let { text ->
+        BSPOSAlertDialog(
+            onDismissRequest = viewModel::consumeMessage,
+            title = { Text("Carga de ruta") },
+            text = { Text(text) },
+            confirmButton = { TextButton(viewModel::consumeMessage) { Text("Cerrar") } }
+        )
     }
 }
 

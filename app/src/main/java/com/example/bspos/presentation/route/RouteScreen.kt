@@ -74,7 +74,7 @@ fun RouteScreen(viewModel: RouteViewModel = hiltViewModel()) {
                 Column(Modifier.weight(1f)) {
                     Text("Distribución y orden de visita", color = BSPOSTheme.colors.textSecondary)
                 }
-                Button({ creating = true }, shape = RoundedCornerShape(14.dp)) { Text("Nueva ruta") }
+                Button({ creating = true }, shape = RoundedCornerShape(14.dp)) { Text("Nueva ruta", maxLines = 1, softWrap = false) }
             }
         }
         item {
@@ -82,7 +82,7 @@ fun RouteScreen(viewModel: RouteViewModel = hiltViewModel()) {
                 Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                     BoxBadge()
                     Spacer(Modifier.width(12.dp))
-                    Column { Text("Rutas activas", color = BSPOSTheme.colors.textSecondary); Text("$active de ${routes.size}", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold) }
+                    Column { Text("Rutas activas", color = BSPOSTheme.colors.textSecondary); Text("$active de ${routes.size}", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold, maxLines = 1, softWrap = false) }
                 }
             }
         }

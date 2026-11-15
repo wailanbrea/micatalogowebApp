@@ -115,7 +115,7 @@ private fun AdminShopCard(shop: MiCatalogoManagedShop, onEdit: () -> Unit) {
                 Text(if (shop.status == "active") "Activa" else "Suspendida", color = if (shop.status == "active") BSPOSTheme.colors.success else BSPOSTheme.colors.error)
             }
             Text("${shop.ownerName} · ${shop.ownerEmail}", color = BSPOSTheme.colors.textSecondary)
-            Text("${shop.productCount} productos · ${shop.slug}", color = BSPOSTheme.colors.textSecondary)
+            Text("${shop.productCount} ${if (shop.productCount == 1) "producto" else "productos"} · ${shop.slug}", color = BSPOSTheme.colors.textSecondary)
         }
     }
 }
@@ -130,14 +130,14 @@ private fun EditAdminShopDialog(shop: MiCatalogoManagedShop, saving: Boolean, on
         onDismissRequest = onDismiss,
         title = { Text("Editar tienda") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            com.example.bspos.presentation.common.DialogScrollableColumn {
                 Text(shop.ownerEmail, color = BSPOSTheme.colors.textSecondary)
                 OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth(), label = { Text("Nombre") }, singleLine = true)
                 OutlinedTextField(countryCode, { countryCode = it }, Modifier.fillMaxWidth(), label = { Text("Código WhatsApp") }, singleLine = true)
                 OutlinedTextField(number, { number = it }, Modifier.fillMaxWidth(), label = { Text("WhatsApp") }, singleLine = true)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(status == "active", { status = "active" }, label = { Text("Activa") })
-                    FilterChip(status == "suspended", { status = "suspended" }, label = { Text("Suspender") })
+                    FilterChip(status == "active", { status = "active" }, label = { Text("Activa", maxLines = 1, softWrap = false) })
+                    FilterChip(status == "suspended", { status = "suspended" }, label = { Text("Suspender", maxLines = 1, softWrap = false) })
                 }
             }
         },

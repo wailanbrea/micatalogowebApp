@@ -153,7 +153,7 @@ fun CollectionScreen(viewModel: CollectionViewModel = hiltViewModel()) {
             item {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text("Seleccionar cliente", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold, modifier = Modifier.weight(1f))
-                    Text("${visibleDebtors.size} pendientes", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelMedium)
+                    Text(if (visibleDebtors.size == 1) "1 pendiente" else "${visibleDebtors.size} pendientes", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelMedium)
                 }
             }
             if (visibleDebtors.isEmpty()) {
@@ -209,7 +209,7 @@ fun CollectionScreen(viewModel: CollectionViewModel = hiltViewModel()) {
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                             Text(day.format(DateTimeFormatter.ofPattern("EEEE · d 'de' MMMM", Locale.forLanguageTag("es"))).replaceFirstChar { it.uppercase() },
                                 modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                            Text("${rows.size} cobros", color = BSPOSTheme.colors.textSecondary)
+                            Text(if (rows.size == 1) "1 cobro" else "${rows.size} cobros", color = BSPOSTheme.colors.textSecondary)
                         }
                     }
                     items(rows, key = { "payment-${it.id}" }) { payment ->
@@ -274,7 +274,7 @@ private fun CollectionDueSummary(customers: Int, total: Long) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("SALDOS POR COBRAR", color = androidx.compose.ui.graphics.Color.White.copy(alpha = .78f),
                     style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                Text("$customers clientes", color = BSPOSTheme.colors.success, fontWeight = FontWeight.Bold)
+                Text(if (customers == 1) "1 cliente" else "$customers clientes", color = BSPOSTheme.colors.success, fontWeight = FontWeight.Bold)
             }
             Text(money(total), color = androidx.compose.ui.graphics.Color.White,
                 style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold)
@@ -302,7 +302,7 @@ private fun DebtorSelectorCard(customer: Customer, balance: Long, selected: Bool
             Column(horizontalAlignment = Alignment.End) {
                 Text("SALDO", style = MaterialTheme.typography.labelSmall, color = BSPOSTheme.colors.textSecondary)
                 Text(money(balance), color = if (balance > 0) BSPOSTheme.colors.error else BSPOSTheme.colors.textPrimary,
-                    fontWeight = FontWeight.ExtraBold, maxLines = 1)
+                    fontWeight = FontWeight.ExtraBold, maxLines = 1, softWrap = false)
             }
             if (selected) Icon(Icons.Default.CheckCircle, null, tint = BSPOSTheme.colors.primary, modifier = Modifier.size(19.dp))
         }
@@ -321,7 +321,7 @@ private fun CollectionHistorySummary(rows: List<CollectionPaymentHistoryItem>) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("COBROS DEL PERÍODO", color = androidx.compose.ui.graphics.Color.White.copy(alpha = .78f),
                     style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                Text("${applied.size} aplicados", color = BSPOSTheme.colors.success, fontWeight = FontWeight.Bold)
+                Text(if (applied.size == 1) "1 aplicado" else "${applied.size} aplicados", color = BSPOSTheme.colors.success, fontWeight = FontWeight.Bold)
             }
             Text(money(total), color = androidx.compose.ui.graphics.Color.White,
                 style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold)
@@ -330,7 +330,7 @@ private fun CollectionHistorySummary(rows: List<CollectionPaymentHistoryItem>) {
                 listOf("Efectivo" to cash, "Transferencia" to transfer, "Tarjeta" to card).forEach { (label, amount) ->
                     Column(Modifier.weight(1f)) {
                         Text(label, style = MaterialTheme.typography.labelSmall, color = androidx.compose.ui.graphics.Color.White.copy(alpha = .65f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text(money(amount), style = MaterialTheme.typography.labelLarge, color = androidx.compose.ui.graphics.Color.White, fontWeight = FontWeight.Bold, maxLines = 1)
+                        Text(money(amount), style = MaterialTheme.typography.labelLarge, color = androidx.compose.ui.graphics.Color.White, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
                     }
                 }
             }
@@ -419,13 +419,13 @@ internal fun RemoteCustomerDebtCard(
                         onClick = { DebtReminderHelper.sendWhatsApp(context, customer.phone, message) },
                         modifier = Modifier.weight(1f)
                     ) {
-                        Text("WhatsApp", maxLines = 1)
+                        Text("WhatsApp", maxLines = 1, softWrap = false)
                     }
                     OutlinedButton(
                         onClick = { DebtReminderHelper.copyToClipboard(context, message) },
                         modifier = Modifier.weight(1f)
                     ) {
-                        Text("Copiar", maxLines = 1)
+                        Text("Copiar", maxLines = 1, softWrap = false)
                     }
                 }
             }

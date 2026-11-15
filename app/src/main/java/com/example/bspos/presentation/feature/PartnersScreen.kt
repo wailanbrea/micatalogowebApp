@@ -106,7 +106,7 @@ fun PartnersScreen(
                                             Text(row.primary, fontWeight = FontWeight.Bold, color = BSPOSTheme.colors.textPrimary)
                                             Text(row.secondary, color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodySmall)
                                         }
-                                        Text(row.value, fontWeight = FontWeight.ExtraBold, color = BSPOSTheme.colors.primary, style = MaterialTheme.typography.bodySmall)
+                                        Text(row.value, fontWeight = FontWeight.ExtraBold, color = BSPOSTheme.colors.primary, style = MaterialTheme.typography.bodySmall, maxLines = 1, softWrap = false)
                                     }
                                     OutlinedButton(onClick = { transactionPartner = row }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(11.dp)) {
                                         Text("Registrar movimiento")
@@ -151,7 +151,7 @@ private fun AddPartnerDialog(onDismiss: () -> Unit, onSave: (String, String, Str
         onDismissRequest = onDismiss,
         title = { Text("Agregar socio") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+            com.example.bspos.presentation.common.DialogScrollableColumn {
                 OutlinedTextField(name, { name = it }, label = { Text("Nombre") }, singleLine = true)
                 OutlinedTextField(email, { email = it }, label = { Text("Correo (opcional)") }, singleLine = true)
                 OutlinedTextField(phone, { phone = it }, label = { Text("Teléfono (opcional)") }, singleLine = true)
@@ -172,11 +172,11 @@ private fun PartnerTransactionDialog(partner: FeatureRowDto, onDismiss: () -> Un
         onDismissRequest = onDismiss,
         title = { Text("Movimiento · ${partner.primary}") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+            com.example.bspos.presentation.common.DialogScrollableColumn {
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    FilterChip(type == "contribution", { type = "contribution" }, label = { Text("Aporte") })
-                    FilterChip(type == "withdrawal", { type = "withdrawal" }, label = { Text("Retiro") })
-                    FilterChip(type == "distribution", { type = "distribution" }, label = { Text("Reparto") })
+                    FilterChip(type == "contribution", { type = "contribution" }, label = { Text("Aporte", maxLines = 1, softWrap = false) })
+                    FilterChip(type == "withdrawal", { type = "withdrawal" }, label = { Text("Retiro", maxLines = 1, softWrap = false) })
+                    FilterChip(type == "distribution", { type = "distribution" }, label = { Text("Reparto", maxLines = 1, softWrap = false) })
                 }
                 OutlinedTextField(amount, { amount = it.filter { char -> char.isDigit() || char == '.' || char == ',' } }, label = { Text("Monto") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
                 OutlinedTextField(notes, { notes = it }, label = { Text("Nota (opcional)") }, minLines = 2)
@@ -194,7 +194,7 @@ private fun PartnerKpi(kpi: FeatureKpiDto, modifier: Modifier = Modifier) {
         Column(Modifier.padding(12.dp)) {
             Text(kpi.label, style = MaterialTheme.typography.labelSmall, color = BSPOSTheme.colors.textSecondary)
             Spacer(Modifier.height(5.dp))
-            Text(kpi.value, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold, color = BSPOSTheme.colors.primary)
+            Text(kpi.value, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold, color = BSPOSTheme.colors.primary, maxLines = 1, softWrap = false)
         }
     }
 }

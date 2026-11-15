@@ -376,7 +376,7 @@ internal fun ConfigureBottleDialog(product: Product, stock: Long, enabled: Boole
                 Surface(shape = BSPOSDesign.cardRadius, color = BSPOSTheme.colors.primaryLight) {
                     Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text("Existencia actual", fontWeight = FontWeight.SemiBold, color = BSPOSTheme.colors.textPrimary)
-                        Text("$stock botella(s) · costo ${money(product.lastPurchaseCost)}", style = MaterialTheme.typography.bodySmall, color = BSPOSTheme.colors.textSecondary)
+                        Text("$stock ${if (stock == 1L) "botella" else "botellas"} · costo ${money(product.lastPurchaseCost)}", style = MaterialTheme.typography.bodySmall, color = BSPOSTheme.colors.textSecondary)
                     }
                 }
                 if (product.lastPurchaseCost <= 0L) {
@@ -433,7 +433,7 @@ internal fun DecantsContent(workspace: DecantWorkspaceDto, error: String?, messa
                         Text("Necesitas una botella fuente", fontWeight = FontWeight.Bold, color = BSPOSTheme.colors.textPrimary)
                         Text(
                             if (mlSources.isNotEmpty()) {
-                                "Encontramos ${mlSources.size} producto(s) configurado(s) por mililitro. Ese inventario no representa botellas selladas y no se puede abrir como fuente de decants."
+                                "Encontramos ${mlSources.size} ${if (mlSources.size == 1) "producto configurado" else "productos configurados"} por mililitro. Ese inventario no representa botellas selladas y no se puede abrir como fuente de decants."
                             } else if (bottleSources.isNotEmpty()) {
                                 "Tus botellas completas están registradas, pero no tienen existencia sellada disponible. Recibe inventario antes de abrir una botella para decants."
                             } else {
@@ -767,7 +767,7 @@ private fun DecantQuickSetupSheet(
         subtitle = if (!selected) "Elige la botella de origen." else "${group?.name.orEmpty()} · ${if (sealedSelected) "botella nueva" else "botella abierta"}", footer = {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             BSPOSOutlinedButton({ if (selected) { selection = selection.copy(openingId = null, sealedSelected = false, sizeKey = null) } else onDismiss() }) { Text(if (selected) "Atrás" else "Cancelar") }
-            CheckoutStylePrimaryButton("${if (sealedSelected) "Abrir y preparar" else "Preparar"} $quantity frasco(s)", {
+            CheckoutStylePrimaryButton("${if (sealedSelected) "Abrir y preparar" else "Preparar"} $quantity ${if (quantity == 1) "frasco" else "frascos"}", {
                 if (group != null && size != null && valid) onPrepare(group, opening, size, quantity, decimal(priceCents!!))
             }, enabled = valid, modifier = Modifier.weight(1f))
         }
@@ -854,7 +854,7 @@ private fun DecantQuickSetupSheet(
             val mlSources = groups.count { it.sourceSaleUnit == "ml" }
             Text(
                 if (mlSources > 0) {
-                    "No hay botellas completas selladas disponibles. Hay $mlSources producto(s) por mililitro; edítalos solo si representan ml sueltos o crea una botella completa nueva."
+                    "No hay botellas completas selladas disponibles. Hay $mlSources ${if (mlSources == 1) "producto" else "productos"} por mililitro; edítalos solo si representan ml sueltos o crea una botella completa nueva."
                 } else {
                     "No hay botellas completas selladas disponibles. Crea primero un perfume completo con volumen, costo y existencia."
                 },
@@ -979,7 +979,7 @@ internal fun DecantUnconfiguredSourcesSheet(
         Text("Configura los mililitros de un perfume registrado como Unidad para usarlo como botella fuente.",
             style = MaterialTheme.typography.bodySmall, color = BSPOSTheme.colors.textSecondary)
         BSPOSSearchField(query, { query = it }, "Buscar producto", Modifier.fillMaxWidth())
-        Text("${products.size} producto(s) sin volumen configurado", style = MaterialTheme.typography.labelLarge)
+        Text(if (products.size == 1) "1 producto sin volumen configurado" else "${products.size} productos sin volumen configurado", style = MaterialTheme.typography.labelLarge)
         if (visible.isEmpty()) {
             Text(if (products.isEmpty()) "No hay productos pendientes de configurar." else "No hay productos que coincidan con la búsqueda.",
                 color = BSPOSTheme.colors.textSecondary)

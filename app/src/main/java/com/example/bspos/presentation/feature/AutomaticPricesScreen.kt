@@ -193,7 +193,7 @@ private fun PricingRuleCard(
                     onValueChange = { roundStep = decimalInput(it); error = null },
                     modifier = Modifier.weight(1f),
                     singleLine = true,
-                    label = { Text("Redondeo RD$") },
+                    label = { Text("Redondeo (${com.example.bspos.core.money.LocalCurrency.current.symbol})") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
                 )
             }
@@ -218,7 +218,7 @@ private fun PricingRuleCard(
             ) { Text("Guardar regla") }
             row.pendingPrice?.takeIf { it.isNotBlank() }?.let { pending ->
                 OutlinedButton(onClick = { if (!productId.isNullOrBlank()) onApprove(productId, pending) }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)) {
-                    Text("Aprobar precio propuesto · RD$ $pending")
+                    Text("Aprobar precio propuesto · ${com.example.bspos.core.money.LocalCurrency.current.symbol} $pending", maxLines = 1, softWrap = false)
                 }
             }
         }
@@ -233,7 +233,7 @@ private fun PricingKpi(kpi: FeatureKpiDto, modifier: Modifier = Modifier) {
         Column(Modifier.padding(12.dp)) {
             Text(kpi.label, style = MaterialTheme.typography.labelSmall, color = BSPOSTheme.colors.textSecondary)
             Spacer(Modifier.height(5.dp))
-            Text(kpi.value, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold, color = BSPOSTheme.colors.primary)
+            Text(kpi.value, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold, color = BSPOSTheme.colors.primary, maxLines = 1, softWrap = false)
         }
     }
 }

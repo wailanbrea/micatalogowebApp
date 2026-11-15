@@ -288,7 +288,7 @@ private fun AttributeEditDialog(
         onDismissRequest = onDismiss,
         title = { Text("Cambiar nombre") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            com.example.bspos.presentation.common.DialogScrollableColumn {
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
@@ -319,7 +319,7 @@ private fun KpiCard(kpi: FeatureKpiDto, modifier: Modifier = Modifier) {
         Column(Modifier.padding(12.dp)) {
             Text(kpi.label, style = MaterialTheme.typography.labelSmall, color = BSPOSTheme.colors.textSecondary)
             Spacer(Modifier.height(5.dp))
-            Text(kpi.value, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold, color = Color(0xFF1D4ED8))
+            Text(kpi.value, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold, color = BSPOSTheme.colors.primary, maxLines = 1, softWrap = false)
         }
     }
 }

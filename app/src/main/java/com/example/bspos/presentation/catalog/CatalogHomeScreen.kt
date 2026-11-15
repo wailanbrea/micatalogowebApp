@@ -508,8 +508,9 @@ private fun DecantBottleDialog(
                     }
                     DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
                         sourceProducts.forEachIndexed { index, source ->
+                            val qty = quantities[source.id] ?: 0L
                             DropdownMenuItem(
-                                text = { Text("${source.name} · ${quantities[source.id] ?: 0} sellada(s)", maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                                text = { Text("${source.name} · $qty ${if (qty == 1L) "sellada" else "selladas"}", maxLines = 1, overflow = TextOverflow.Ellipsis) },
                                 onClick = { selectedIndex = index; expanded = false; quantityText = "1" }
                             )
                         }
@@ -1229,7 +1230,7 @@ internal fun ProductForm(current: Product?, currentQuantity: Long, categories: L
                         onClick = onDismiss,
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(14.dp)
-                    ) { Text("Cancelar") }
+                    ) { Text("Cancelar", maxLines = 1, softWrap = false) }
                     Button(
                         onClick = {
             val sale = if (!priceChanged && current != null) current.salePrice else price.toPesosCents()
@@ -1267,7 +1268,7 @@ internal fun ProductForm(current: Product?, currentQuantity: Long, categories: L
                         },
                         modifier = Modifier.weight(1f).testTag("product-save-button"),
                         shape = RoundedCornerShape(14.dp)
-                    ) { Text(if (current == null) "Crear producto" else "Guardar cambios") }
+                    ) { Text(if (current == null) "Crear producto" else "Guardar cambios", maxLines = 1, softWrap = false) }
                 }
             }
         }

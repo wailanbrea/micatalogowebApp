@@ -136,7 +136,8 @@ fun SettingsScreen(
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
                             Text("Equipo de la tienda", fontWeight = FontWeight.ExtraBold)
-                            Text("${shop.sellers.count { it.isActive }} vendedor(es) activo(s)", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodySmall)
+                            val activeSellers = shop.sellers.count { it.isActive }
+                            Text("$activeSellers ${if (activeSellers == 1) "vendedor activo" else "vendedores activos"}", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodySmall)
                         }
                         TextButton(onClick = { creating = !creating }) { Text(if (creating) "Cerrar" else "Nuevo vendedor") }
                     }
@@ -354,7 +355,7 @@ private fun SellerMenuSelector(selected: Set<String>, enabled: Boolean, onChange
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f).padding(end = 8.dp)) {
             Text("Menús permitidos", fontWeight = FontWeight.Bold)
-            Text("${selected.size} seleccionado(s)", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodySmall)
+            Text("${selected.size} ${if (selected.size == 1) "seleccionado" else "seleccionados"}", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodySmall)
         }
         TextButton(onClick = { expanded = !expanded }, enabled = enabled) {
             Text(if (expanded) "Cerrar" else "Editar")

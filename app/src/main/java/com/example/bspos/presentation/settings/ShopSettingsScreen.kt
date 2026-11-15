@@ -372,7 +372,7 @@ private fun ShopSettingsContent(
             "Google" -> item {
                 SettingsCard("Qué tan fácil te encuentra Google", "Completa la información pública de tu negocio y verifica tu dominio cuando estés listo.") {
                     val google = initial.google
-                    Text("${google.score} / 100 · ${google.pendingCount} pendiente(s)", fontWeight = FontWeight.ExtraBold, color = BSPOSTheme.colors.primary)
+                    Text("${google.score} / 100 · ${google.pendingCount} ${if (google.pendingCount == 1) "pendiente" else "pendientes"}", fontWeight = FontWeight.ExtraBold, color = BSPOSTheme.colors.primary)
                     LinearProgressIndicator(
                         progress = { (google.score / 100f).coerceIn(0f, 1f) },
                         modifier = Modifier.fillMaxWidth(),

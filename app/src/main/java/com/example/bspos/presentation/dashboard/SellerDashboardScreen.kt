@@ -58,7 +58,7 @@ internal fun SellerDashboardScreen(
                 if (showSales) {
                     Spacer(Modifier.height(4.dp))
                     Button(onNewSale, shape = RoundedCornerShape(8.dp), modifier = Modifier.fillMaxWidth()) {
-                        Text("Nueva venta")
+                        Text("Nueva venta", maxLines = 1, softWrap = false)
                     }
                 }
             }
@@ -147,7 +147,7 @@ internal fun SellerDashboardScreen(
                                             color = ResumenAccent,
                                             trackColor = ResumenAccent.copy(alpha = .12f)
                                         )
-                                        Text(money(day.total), color = ResumenInk, fontFamily = FontFamily.Monospace, fontSize = 11.sp)
+                                        Text(money(day.total), color = ResumenInk, fontFamily = FontFamily.Monospace, fontSize = 11.sp, maxLines = 1, softWrap = false)
                                     }
                                 }
                             }
@@ -171,18 +171,19 @@ internal fun SellerDashboardScreen(
                     ) {
                         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text(sale.invoiceNumber, color = ResumenInk, fontWeight = FontWeight.Bold)
-                                Text(sellerStatusLabel(sale.status), color = sellerStatusColor(sale.status), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Text(sale.invoiceNumber, color = ResumenInk, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                                Spacer(Modifier.width(8.dp))
+                                Text(sellerStatusLabel(sale.status), color = sellerStatusColor(sale.status), fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
                             }
                             Text("${sale.customer} · ${sale.date}", color = ResumenMuted, fontSize = 12.sp)
                             HorizontalDivider(color = SellerLine)
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                 Text("Total", color = ResumenMuted, fontSize = 13.sp)
-                                Text(money(sale.total), color = ResumenInk, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                                Text(money(sale.total), color = ResumenInk, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
                             }
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                 Text("Tu comisión", color = ResumenMuted, fontSize = 13.sp)
-                                Text(money(sale.commission), color = ResumenAccent, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                                Text(money(sale.commission), color = ResumenAccent, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
                             }
                         }
                     }

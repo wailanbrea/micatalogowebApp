@@ -746,12 +746,12 @@ private fun AuthorizationRequestCard(request: AuthorizationRequestDto, onDecisio
                     onClick = { onDecision(false) },
                     modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(12.dp)
-                ) { Text("Rechazar", maxLines = 1) }
+                ) { Text("Rechazar", maxLines = 1, softWrap = false) }
                 Button(
                     onClick = { onDecision(true) },
                     modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(12.dp)
-                ) { Text("Aprobar", maxLines = 1) }
+                ) { Text("Aprobar", maxLines = 1, softWrap = false) }
             }
         }
     }
@@ -921,7 +921,7 @@ private fun FeatureRow(row: FeatureRowDto, onConfirm: () -> Unit = {}) {
                         onClick = onConfirm,
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 2.dp),
                         shape = RoundedCornerShape(10.dp)
-                    ) { Text("Confirmar", style = MaterialTheme.typography.labelMedium) }
+                    ) { Text("Confirmar", style = MaterialTheme.typography.labelMedium, maxLines = 1, softWrap = false) }
                 }
             }
         }

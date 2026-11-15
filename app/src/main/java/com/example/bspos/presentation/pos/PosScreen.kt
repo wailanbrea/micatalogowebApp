@@ -604,7 +604,7 @@ private fun PunttoTerminalHeader(
                 }
             }
         }
-        OutlinedButton(onQuote, enabled = !isProcessing, contentPadding = PaddingValues(horizontal = 8.dp), shape = RoundedCornerShape(50)) { Text("Cotizar", fontSize = 12.sp) }
+        OutlinedButton(onQuote, enabled = !isProcessing, contentPadding = PaddingValues(horizontal = 8.dp), shape = RoundedCornerShape(50)) { Text("Cotizar", fontSize = 12.sp, maxLines = 1, softWrap = false) }
         IconButton(onClick = onGuide, enabled = !isProcessing, modifier = Modifier.size(40.dp)) {
             Icon(Icons.Default.HelpOutline, contentDescription = "Ayuda", tint = Color(0xFF3F3F46))
         }

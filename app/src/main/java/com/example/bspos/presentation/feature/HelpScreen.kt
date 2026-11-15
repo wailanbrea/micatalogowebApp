@@ -123,7 +123,7 @@ fun HelpScreen(
                     }
                     Button(onClick = { tutorialVisible = true }, contentPadding = PaddingValues(horizontal = 12.dp)) {
                         Icon(Icons.Default.PlayArrow, contentDescription = null)
-                        Text("Iniciar")
+                        Text("Iniciar", maxLines = 1, softWrap = false)
                     }
                 }
             }
@@ -151,16 +151,16 @@ fun HelpScreen(
                         Modifier.horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        OutlinedButton(onClick = { selectedGuide = guide }) { Text("Ver pasos") }
+                        OutlinedButton(onClick = { selectedGuide = guide }) { Text("Ver pasos", maxLines = 1, softWrap = false) }
                         if (guide.guided) {
                             Button(onClick = onStartDecantsTutorial) {
                                 Icon(Icons.Default.PlayArrow, contentDescription = null)
-                                Text("Tutorial")
+                                Text("Tutorial", maxLines = 1, softWrap = false)
                             }
                         }
                         guide.destination?.let { destination ->
                             Button(onClick = { onOpen(destination) }) {
-                                Text("Abrir")
+                                Text("Abrir", maxLines = 1, softWrap = false)
                                 Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null)
                             }
                         }

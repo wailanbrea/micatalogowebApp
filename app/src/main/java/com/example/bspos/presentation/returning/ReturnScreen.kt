@@ -119,7 +119,7 @@ fun ReturnScreen(viewModel: ReturnViewModel = hiltViewModel()) {
             }
         } else if (selected != null) {
             Spacer(Modifier.size(8.dp))
-            if (items.isEmpty()) Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) { Text("La factura no contiene productos", color = BSPOSTheme.colors.textSecondary) }
+            if (selectedItems.isEmpty()) Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) { Text("La factura no contiene productos", color = BSPOSTheme.colors.textSecondary) }
             else LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) { items(selectedItems, key = { it.id }) { item -> ReturnItemCard(names[item.productId] ?: "Producto", item) { if (item.quantity > (returnedByItem[item.id] ?: 0L)) line = item } } }
         } else {
             val invoice = selectedRemote
@@ -181,7 +181,7 @@ private fun ReturnItemCard(name: String, item: SaleItem, onClick: () -> Unit) {
             Box(Modifier.size(40.dp).clip(RoundedCornerShape(11.dp)).background(BSPOSTheme.colors.primaryLight), contentAlignment = Alignment.Center) { Icon(Icons.Default.ShoppingBag, null, tint = BSPOSTheme.colors.primary) }
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) { Text(name, fontWeight = FontWeight.ExtraBold, maxLines = 1, overflow = TextOverflow.Ellipsis); Text("${item.quantity} ${if (item.quantity == 1L) "unidad" else "unidades"} · ${money(item.unitPrice)} c/u", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelMedium) }
-            Text("Devolver", color = BSPOSTheme.colors.error, fontWeight = FontWeight.Bold)
+            Text("Devolver", color = BSPOSTheme.colors.error, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
         }
     }
 }
@@ -196,7 +196,7 @@ private fun RemoteReturnItemCard(item: ReturnEligibleItemDto, onClick: () -> Uni
                 Text(item.productName, fontWeight = FontWeight.ExtraBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text("Disponibles: ${item.remainingQuantity} · ${money(MoneyUtils.parsePesosStringToCents(item.unitPrice))} c/u", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelMedium)
             }
-            Text("Devolver", color = BSPOSTheme.colors.error, fontWeight = FontWeight.Bold)
+            Text("Devolver", color = BSPOSTheme.colors.error, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
         }
     }
 }

@@ -137,7 +137,7 @@ internal fun CustomerCard(customer: Customer, showCredit: Boolean, onOpen:()->Un
             if(showCredit) Column(horizontalAlignment=Alignment.End) {
                 Text(money(customer.balance),fontFamily=BSPOSFonts.Monospace,fontWeight=FontWeight.SemiBold,
                     color=if(customer.balance>0) BSPOSTheme.colors.warning else BSPOSTheme.colors.textPrimary,
-                    style=MaterialTheme.typography.labelLarge)
+                    style=MaterialTheme.typography.labelLarge,maxLines=1,softWrap=false)
                 Text(if(customer.balance>0) "Pendiente" else "Sin deuda",color=BSPOSTheme.colors.textSecondary,style=MaterialTheme.typography.labelSmall)
             }
             Box {

@@ -551,8 +551,8 @@ private fun InventorySummaryCard(
                 Text(money(capitalAtCost), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
                 Text("Capital al costo", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelMedium)
             }
-            InventoryMetric(inStock.toString(), "productos", Modifier.weight(1f))
-            InventoryMetric(units.toString(), "unidades", Modifier.weight(1f))
+            InventoryMetric(inStock.toString(), if (inStock == 1) "producto" else "productos", Modifier.weight(1f))
+            InventoryMetric(units.toString(), if (units == 1L) "unidad" else "unidades", Modifier.weight(1f))
         }
         Spacer(Modifier.height(14.dp))
         BoxWithConstraints(Modifier.fillMaxWidth()) {
@@ -563,14 +563,14 @@ private fun InventorySummaryCard(
                         InventoryStatusChip("$lowWithoutOut bajo mínimo", BSPOSTheme.colors.warningLight, BSPOSTheme.colors.warning, Modifier.weight(1f))
                     }
                     Row(Modifier.fillMaxWidth()) {
-                        InventoryStatusChip("$outOfStock agotados", BSPOSTheme.colors.errorLight, BSPOSTheme.colors.error, Modifier.fillMaxWidth(.5f))
+                        InventoryStatusChip(if (outOfStock == 1) "1 agotado" else "$outOfStock agotados", BSPOSTheme.colors.errorLight, BSPOSTheme.colors.error, Modifier.fillMaxWidth(.5f))
                     }
                 }
             } else {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     InventoryStatusChip("$inStock con existencia", BSPOSTheme.colors.successLight, BSPOSTheme.colors.success, Modifier.weight(1f))
                     InventoryStatusChip("$lowWithoutOut bajo mínimo", BSPOSTheme.colors.warningLight, BSPOSTheme.colors.warning, Modifier.weight(1f))
-                    InventoryStatusChip("$outOfStock agotados", BSPOSTheme.colors.errorLight, BSPOSTheme.colors.error, Modifier.weight(1f))
+                    InventoryStatusChip(if (outOfStock == 1) "1 agotado" else "$outOfStock agotados", BSPOSTheme.colors.errorLight, BSPOSTheme.colors.error, Modifier.weight(1f))
                 }
             }
         }
@@ -779,7 +779,7 @@ private fun RecentSalesCard(sales: List<Sale>, customers: Map<java.util.UUID, St
                     Box(Modifier.size(38.dp).clip(CircleShape).background(BSPOSTheme.colors.secondaryNavy), contentAlignment = Alignment.Center) { Text("V", color = Color.White, fontWeight = FontWeight.Bold) }
                     Spacer(Modifier.width(10.dp))
                     Column(Modifier.weight(1f)) { Text(customers[sale.customerId] ?: "Consumidor final", fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis); Text(sale.invoiceNumber, color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelMedium) }
-                    Text(money(sale.total), fontWeight = FontWeight.ExtraBold)
+                    Text(money(sale.total), fontWeight = FontWeight.ExtraBold, maxLines = 1, softWrap = false)
                 }
             }
         }
@@ -807,7 +807,7 @@ private fun RecentSalesDialog(
                                     Text(customers[sale.customerId] ?: "Consumidor final", fontWeight = FontWeight.Bold)
                                     Text(sale.invoiceNumber, color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelMedium)
                                 }
-                                Text(money(sale.total), fontWeight = FontWeight.ExtraBold)
+                                Text(money(sale.total), fontWeight = FontWeight.ExtraBold, maxLines = 1, softWrap = false)
                             }
                         }
                     }
@@ -870,16 +870,20 @@ internal fun SaleDetailDialog(
                         }
                     }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = onShare, modifier = Modifier.weight(1f), shape = RoundedCornerShape(14.dp), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)) { Text("Recibo", maxLines = 1, softWrap = false) }
                         Button(onClick = onShare, modifier = Modifier.weight(1f), shape = RoundedCornerShape(14.dp), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)) { Text("Compartir", maxLines = 1, softWrap = false) }
-                    }
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         onPrint?.let { print ->
                             OutlinedButton(onClick = print, modifier = Modifier.weight(1f), shape = RoundedCornerShape(14.dp), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)) { Text("Térmico", maxLines = 1, softWrap = false) }
                         }
-                        if (sale.status == SaleStatus.COMPLETED && onCancelSale != null) {
-                            OutlinedButton(onClick = onCancelSale, modifier = Modifier.weight(1f), shape = RoundedCornerShape(14.dp), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)) {
-                                Text("Anular", color = BSPOSTheme.colors.error, maxLines = 1, softWrap = false)
+                    }
+                    if (sale.status == SaleStatus.COMPLETED) {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(onClick = onReturn, modifier = Modifier.weight(1f), shape = RoundedCornerShape(14.dp), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)) {
+                                Text("Devolución", maxLines = 1, softWrap = false)
+                            }
+                            if (onCancelSale != null) {
+                                OutlinedButton(onClick = onCancelSale, modifier = Modifier.weight(1f), shape = RoundedCornerShape(14.dp), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)) {
+                                    Text("Anular", color = BSPOSTheme.colors.error, maxLines = 1, softWrap = false)
+                                }
                             }
                         }
                     }

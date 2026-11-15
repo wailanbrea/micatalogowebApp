@@ -138,7 +138,7 @@ internal fun QuoteTerminalContent(
                             Icon(if (count > 0) Icons.Default.Description else Icons.Default.Add, null,
                                 tint = if (count > 0) Color.White else BSPOSTheme.colors.textSecondary)
                             Spacer(Modifier.width(10.dp))
-                            Text(if (count > 0) "Cotizar · $count artículos" else "Toca un producto para empezar",
+                            Text(if (count > 0) "Cotizar · $count ${if (count == 1L) "artículo" else "artículos"}" else "Toca un producto para empezar",
                                 Modifier.weight(1f), fontSize = 13.sp, fontWeight = FontWeight.Bold,
                                 color = if (count > 0) Color.White else BSPOSTheme.colors.textSecondary)
                             if (count > 0) Text("RD$ ${money(total)}", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.White)
@@ -149,20 +149,22 @@ internal fun QuoteTerminalContent(
         }
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
-            if (!savedTab) Row(Modifier.fillMaxWidth().height(58.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.fillMaxWidth().height(58.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onNavigateBack, modifier = Modifier.size(40.dp)) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Volver") }
                 Surface(Modifier.weight(1f).widthIn(max = 250.dp).height(42.dp), shape = RoundedCornerShape(12.dp), color = BSPOSTheme.colors.surfaceVariant) {
                     Row(Modifier.fillMaxSize()) {
                         listOf("Nueva" to false, "Guardadas" to true).forEach { (label, tab) ->
                             Surface(Modifier.weight(1f).padding(3.dp).fillMaxHeight().clip(RoundedCornerShape(10.dp)).clickable { savedTab = tab },
                                 shape = RoundedCornerShape(10.dp), color = if (savedTab == tab) BSPOSTheme.colors.surface else Color.Transparent) {
-                                Box(contentAlignment = Alignment.Center) { Text(label, fontSize = 13.sp, fontWeight = if (savedTab == tab) FontWeight.Bold else FontWeight.Normal) }
+                                Box(contentAlignment = Alignment.Center) { Text(label, fontSize = 13.sp, fontWeight = if (savedTab == tab) FontWeight.Bold else FontWeight.Normal, maxLines = 1, softWrap = false) }
                             }
                         }
                     }
                 }
                 IconButton(onClick = { showGuide = true }, modifier = Modifier.size(40.dp)) { Icon(Icons.Default.HelpOutline, "Ayuda de cotizaciones") }
-                IconButton(onClick = { showClear = true }, enabled = state.cart.isNotEmpty() && !state.saving, modifier = Modifier.size(40.dp)) { Icon(Icons.Default.DeleteOutline, "Vaciar cotización") }
+                if (!savedTab) {
+                    IconButton(onClick = { showClear = true }, enabled = state.cart.isNotEmpty() && !state.saving, modifier = Modifier.size(40.dp)) { Icon(Icons.Default.DeleteOutline, "Vaciar cotización") }
+                }
             }
             state.convertedInvoiceNumber?.let { invoice ->
                 Surface(
@@ -355,7 +357,10 @@ private fun QuoteCartSheet(
             HorizontalDivider(color = BSPOSTheme.colors.outline)
             LazyColumn(Modifier.weight(1f).fillMaxWidth().testTag("quote-cart-body"),
                 contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                item { Text("${cart.values.sumOf(Int::toLong)} artículos · No se cobra ni descuenta inventario", fontSize = 11.sp, color = BSPOSTheme.colors.textSecondary) }
+                item {
+                    val cartCount = cart.values.sumOf(Int::toLong)
+                    Text("$cartCount ${if (cartCount == 1L) "artículo" else "artículos"} · No se cobra ni descuenta inventario", fontSize = 11.sp, color = BSPOSTheme.colors.textSecondary)
+                }
                 items(cart.entries.toList(), key = { it.key.id }) { (product, qty) ->
                     Surface(shape = RoundedCornerShape(12.dp), border = BorderStroke(1.dp, BSPOSTheme.colors.outline), color = BSPOSTheme.colors.surface) {
                         QuoteCompactProductRow(product, qty, !saving, { onPlus(product) }, { onMinus(product) })
@@ -467,10 +472,10 @@ private fun quoteDate(value: String?): String = value?.let {
             BSPOSSectionLabel("Cotización")
             Text(row.primary, style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.ExtraBold)
             Spacer(Modifier.height(12.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onDownload, enabled = row.pdfAvailable && row.id != null, contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)) { Text("Descargar PDF", maxLines = 1, softWrap = false) }
-                row.invoiceUrl?.let { url -> Button({ onOpenInvoice(url) }, contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)) { Text("Ver venta", maxLines = 1, softWrap = false) } }
-                if (row.canConvert) Button(onConvert, contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)) { Text("Convertir venta", maxLines = 1, softWrap = false) }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onDownload, enabled = row.pdfAvailable && row.id != null, modifier = Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)) { Text("Descargar PDF", maxLines = 1, softWrap = false) }
+                row.invoiceUrl?.let { url -> Button({ onOpenInvoice(url) }, modifier = Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)) { Text("Ver venta", maxLines = 1, softWrap = false) } }
+                if (row.canConvert) Button(onConvert, modifier = Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)) { Text("Convertir venta", maxLines = 1, softWrap = false) }
             }
             TextButton(onBack) { Text("← Volver a cotizaciones") }
         }

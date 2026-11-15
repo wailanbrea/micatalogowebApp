@@ -135,13 +135,13 @@ internal fun DayCloseContent(state: FinanceUiState, onDate: (String) -> Unit,
                     closure?.notes?.takeIf { it.isNotBlank() }?.let { Text(it, fontSize = 12.sp) }
                     if (closure == null) Button(onClick = { dialog = true }, enabled = !state.isDailyCloseBusy,
                         modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("day-close-save"), shape = RoundedCornerShape(12.dp)) {
-                        Text("Guardar cierre diario")
+                        Text("Guardar cierre diario", maxLines = 1, softWrap = false)
                     }
                     else {
                         Text("Conciliación registrada: las ventas y los cobros posteriores siguen permitidos. El registro original no se recalcula.", fontSize = 11.sp, color = BSPOSTheme.colors.textSecondary)
                         Text("Los ajustes de arqueo necesitan un registro auditado; no se aplican reenviando el cierre.", fontSize = 11.sp, color = BSPOSTheme.colors.textSecondary)
                         if (mayAdjust) OutlinedButton(onClick = { adjustmentDialog = true }, enabled = !state.isDailyCloseBusy,
-                            modifier = Modifier.fillMaxWidth().testTag("day-close-adjust")) { Text("Registrar ajuste auditado") }
+                            modifier = Modifier.fillMaxWidth().testTag("day-close-adjust")) { Text("Registrar ajuste auditado", maxLines = 1, softWrap = false) }
                     }
                 }
             }
@@ -222,7 +222,7 @@ private fun MoneyText(value: Double, size: Int) {
 private fun DecimalAmount(label: String, value: String?) {
     Text(label, fontSize = 12.sp, color = BSPOSTheme.colors.textSecondary)
     val cents = value?.let { runCatching { BigDecimal(it).movePointRight(2).longValueExact() }.getOrNull() }
-    Text(if (value == null) "Sin nuevo arqueo" else if (cents == null) "Importe no disponible" else MoneyUtils.formatCents(cents, LocalCurrency.current), fontSize = 15.sp)
+    Text(if (value == null) "Sin nuevo arqueo" else if (cents == null) "Importe no disponible" else MoneyUtils.formatCents(cents, LocalCurrency.current), fontSize = 15.sp, maxLines = 1, softWrap = false)
 }
 
 @Composable

@@ -276,8 +276,9 @@ fun SalesHistoryScreen(
                     Icon(Icons.Default.ReceiptLong, contentDescription = null, tint = BSPOSTheme.colors.primary)
                     Spacer(Modifier.width(8.dp))
                     Text("Ventas", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold, modifier = Modifier.weight(1f))
+                    val remoteCount = remote.module?.rows?.size ?: 0
                     Text(
-                        "${remote.module?.rows?.size ?: 0} registradas",
+                        if (remoteCount == 1) "1 registrada" else "$remoteCount registradas",
                         color = BSPOSTheme.colors.textSecondary,
                         style = MaterialTheme.typography.labelMedium,
                         maxLines = 1,
@@ -404,9 +405,6 @@ fun SalesHistoryScreen(
                         onCancelClick = if (sale.status == SaleStatus.COMPLETED) ({ saleToCancel = sale }) else null
                     )
                 }
-            }
-            item {
-
             }
         }
     }

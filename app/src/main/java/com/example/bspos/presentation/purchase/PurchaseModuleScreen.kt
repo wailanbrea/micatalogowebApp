@@ -565,10 +565,10 @@ private fun PurchaseDocumentCard(document: PurchaseDocumentDto, saving: Boolean,
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
                 Column(Modifier.weight(1f)) {
                     Text("Total", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelSmall)
-                    Text("${document.currency} ${document.total}", color = BSPOSTheme.colors.textPrimary, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge)
+                    Text("${document.currency} ${document.total}", color = BSPOSTheme.colors.textPrimary, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge, maxLines = 1, softWrap = false)
                 }
                 Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text("${document.items.size} producto(s)", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodySmall)
+                    Text("${document.items.size} ${if (document.items.size == 1) "producto" else "productos"}", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodySmall)
                     if (document.status == "debt") Text("Factura ${document.invoiceDate ?: "sin fecha"}", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelSmall)
                 }
             }
@@ -592,11 +592,12 @@ private fun PurchaseDocumentCard(document: PurchaseDocumentDto, saving: Boolean,
                             Spacer(Modifier.width(10.dp))
                             Text(item.productName.ifBlank { "Producto sin nombre" }, color = BSPOSTheme.colors.textPrimary, modifier = Modifier.weight(1f), maxLines = 1)
                             Spacer(Modifier.width(8.dp))
-                            Text("${document.currency} ${item.lineTotal}", color = BSPOSTheme.colors.textPrimary, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodySmall, maxLines = 1)
+                            Text("${document.currency} ${item.lineTotal}", color = BSPOSTheme.colors.textPrimary, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodySmall, maxLines = 1, softWrap = false)
                         }
                     }
                     if (document.items.size > 3) {
-                        Text("+ ${document.items.size - 3} producto(s) más", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelSmall)
+                        val remaining = document.items.size - 3
+                        Text("+ $remaining ${if (remaining == 1) "producto" else "productos"} más", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.labelSmall)
                     }
                 }
             }

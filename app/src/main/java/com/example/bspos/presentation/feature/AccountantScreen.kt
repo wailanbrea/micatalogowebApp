@@ -75,7 +75,7 @@ fun AccountantScreen(
                             Text("El contador no puede vender, editar productos ni modificar la caja. Este acceso no consume un usuario regular.", color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodySmall)
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                                 OutlinedTextField(value = email, onValueChange = { email = it }, modifier = Modifier.weight(1f), singleLine = true, label = { Text("Correo del contable") })
-                                Button(onClick = { viewModel.grantAccountantAccess(email); email = "" }, enabled = email.trim().contains("@")) { Text("Dar acceso") }
+                                Button(onClick = { viewModel.grantAccountantAccess(email); email = "" }, enabled = email.trim().contains("@")) { Text("Dar acceso", maxLines = 1, softWrap = false) }
                             }
                         }
                     }
@@ -96,7 +96,7 @@ private fun AccountantRow(row: FeatureRowDto) {
                 if (row.secondary.isNotBlank()) Text(row.secondary, color = BSPOSTheme.colors.textSecondary, style = MaterialTheme.typography.bodySmall)
             }
             Column(horizontalAlignment = Alignment.End) {
-                if (row.value.isNotBlank()) Text(row.value, fontWeight = FontWeight.ExtraBold, color = BSPOSTheme.colors.textPrimary)
+                if (row.value.isNotBlank()) Text(row.value, fontWeight = FontWeight.ExtraBold, color = BSPOSTheme.colors.textPrimary, maxLines = 1, softWrap = false)
                 if (row.status.isNotBlank()) Text(row.status, color = BSPOSTheme.colors.primary, style = MaterialTheme.typography.labelSmall)
             }
         }

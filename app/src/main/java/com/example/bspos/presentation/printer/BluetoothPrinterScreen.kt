@@ -67,6 +67,7 @@ fun BluetoothPrinterScreen(viewModel: BluetoothPrinterViewModel = hiltViewModel(
     val context = LocalContext.current
     var showPairedDevices by remember { mutableStateOf(false) }
     var pendingBluetoothAction by remember { mutableStateOf<BluetoothConnectAction?>(null) }
+    var printerToDelete by remember { mutableStateOf<com.example.bspos.domain.model.BluetoothPrinter?>(null) }
 
     fun performBluetoothAction(action: BluetoothConnectAction) {
         when (action) {
@@ -156,13 +157,27 @@ fun BluetoothPrinterScreen(viewModel: BluetoothPrinterViewModel = hiltViewModel(
                     PrinterCard(
                         printer,
                         onDefault = { viewModel.setDefault(printer) },
-                        onDelete = { viewModel.remove(printer) },
+                        onDelete = { printerToDelete = printer },
                         onTest = { requireBluetoothPermissions(BluetoothConnectAction.TestPrinter(printer)) },
                         onPaperWidth = { viewModel.setPaperWidth(printer, it) }
                     )
                 }
             }
         }
+    }
+
+    printerToDelete?.let { printer ->
+        AlertDialog(
+            onDismissRequest = { printerToDelete = null },
+            title = { Text("Eliminar impresora") },
+            text = { Text("¿Eliminar ${printer.name}?") },
+            confirmButton = {
+                TextButton(onClick = { viewModel.remove(printer); printerToDelete = null }) {
+                    Text("Eliminar", color = BSPOSTheme.colors.error)
+                }
+            },
+            dismissButton = { TextButton(onClick = { printerToDelete = null }) { Text("Cancelar") } }
+        )
     }
 
     if (showPairedDevices) {
@@ -263,7 +278,7 @@ private fun PrinterCard(
                     Icon(
                         Icons.Default.CheckCircle,
                         "Usar como predeterminada",
-                        tint = if (printer.isDefault) BSPOSTheme.colors.success else Color.Gray
+                        tint = if (printer.isDefault) BSPOSTheme.colors.success else BSPOSTheme.colors.textSecondary
                     )
                 }
                 IconButton(onClick = onDelete) { Icon(Icons.Default.Delete, "Eliminar", tint = BSPOSTheme.colors.error) }

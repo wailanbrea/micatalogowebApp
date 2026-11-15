@@ -32,6 +32,7 @@ class RouteLoadViewModel @Inject constructor(
     fun create(routeId: UUID, lines: List<RouteLoadLineInput>, notes: String) {
         viewModelScope.launch {
             runCatching { createLoad(CreateRouteLoadRequest(routeId, lines = lines, notes = notes.ifBlank { null })) }
+                .onSuccess { _message.value = "Carga de ruta creada correctamente." }
                 .onFailure {
                     val message = it.toUiMessage("No se pudo crear la carga de ruta")
                     _message.value = message
