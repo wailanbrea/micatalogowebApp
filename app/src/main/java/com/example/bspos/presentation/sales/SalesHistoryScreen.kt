@@ -75,6 +75,7 @@ import com.example.bspos.presentation.common.BSPOSModalBottomSheet
 import com.example.bspos.presentation.pos.InvoicePdfGenerator
 import com.example.bspos.presentation.pos.PosCartLine
 import com.example.bspos.presentation.pos.PosViewModel
+import com.example.bspos.presentation.pos.openOrSharePdf
 import com.example.bspos.presentation.pos.shareInvoicePdf
 import com.example.bspos.presentation.common.UiErrorBus
 import java.time.Instant
@@ -411,6 +412,10 @@ fun SalesHistoryScreen(
     }
 
     selectedRemote?.let { invoice ->
+        val matchedCustomer = customers.firstOrNull { customer ->
+            !invoice.customerName.isNullOrBlank() && customer.fullName.equals(invoice.customerName, ignoreCase = true)
+        }
+        val customerPhone = invoice.customerPhone?.takeIf { it.isNotBlank() } ?: matchedCustomer?.phone
         AlertDialog(onDismissRequest = { selectedRemote = null }, title = { Text(invoice.primary) }, text = {
             com.example.bspos.presentation.common.DialogScrollableColumn {
                 Text(invoice.secondary, style = MaterialTheme.typography.bodySmall, color = BSPOSTheme.colors.textSecondary)
@@ -427,6 +432,27 @@ fun SalesHistoryScreen(
                     Text(invoice.value, fontWeight = FontWeight.ExtraBold, color = BSPOSTheme.colors.primary, maxLines = 1, softWrap = false)
                 }
                 Text("Estado: ${invoice.status}", style = MaterialTheme.typography.labelMedium, color = BSPOSTheme.colors.textSecondary)
+                Spacer(Modifier.height(12.dp))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(
+                        onClick = {
+                            val pdfUri = InvoicePdfGenerator.createFromRemote(context, invoice, customer = matchedCustomer)
+                            shareInvoicePdf(context, pdfUri, invoice.primary, customerPhone)
+                        },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp)
+                    ) { Text("WhatsApp", maxLines = 1, softWrap = false) }
+                    OutlinedButton(
+                        onClick = {
+                            val pdfUri = InvoicePdfGenerator.createFromRemote(context, invoice, customer = matchedCustomer)
+                            openOrSharePdf(context, pdfUri, "Factura ${invoice.primary}")
+                        },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp)
+                    ) { Text("PDF", maxLines = 1, softWrap = false) }
+                }
             }
         }, confirmButton = { TextButton({ selectedRemote = null }) { Text("Cerrar") } },
             dismissButton = {
@@ -542,14 +568,33 @@ fun SalesHistoryScreen(
                     }
                 }
                 if (lines.isNotEmpty()) {
+                    val matchedCustomer = customers.find { it.id == sale.customerId }
                     val pdfUri = InvoicePdfGenerator.create(
                         context,
                         sale,
                         lines,
-                        customer = customers.find { it.id == sale.customerId },
+                        customer = matchedCustomer,
                         customerName = customerNames[sale.customerId]
                     )
-                    shareInvoicePdf(context, pdfUri, sale.invoiceNumber)
+                    shareInvoicePdf(context, pdfUri, sale.invoiceNumber, matchedCustomer?.phone)
+                }
+            },
+            onOpenPdf = {
+                val lines = selectedItems.mapNotNull { item ->
+                    products.find { it.id == item.productId }?.let { product ->
+                        PosCartLine(product = product, quantity = item.quantity, unitPrice = item.unitPrice)
+                    }
+                }
+                if (lines.isNotEmpty()) {
+                    val matchedCustomer = customers.find { it.id == sale.customerId }
+                    val pdfUri = InvoicePdfGenerator.create(
+                        context,
+                        sale,
+                        lines,
+                        customer = matchedCustomer,
+                        customerName = customerNames[sale.customerId]
+                    )
+                    openOrSharePdf(context, pdfUri, "Factura ${sale.invoiceNumber}")
                 }
             },
             onPrint = {

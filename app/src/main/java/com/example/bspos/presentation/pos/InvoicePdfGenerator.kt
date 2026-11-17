@@ -9,6 +9,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import com.example.bspos.R
 import com.example.bspos.core.money.MoneyUtils
+import com.example.bspos.data.micatalogo.dto.FeatureRowDto
 import com.example.bspos.domain.model.CurrencyUnit
 import com.example.bspos.domain.model.Customer
 import com.example.bspos.domain.model.InvoiceConfig
@@ -229,4 +230,129 @@ object InvoicePdfGenerator {
     }
 
     private fun money(cents: Long, currency: CurrencyUnit): String = MoneyUtils.formatCents(cents, currency)
+
+    fun createFromRemote(
+        context: Context,
+        invoice: FeatureRowDto,
+        config: InvoiceConfig = InvoiceConfig(),
+        customer: Customer? = null
+    ) = run {
+        val safeInvoice = invoice.primary.replace(Regex("[^A-Za-z0-9_-]"), "_").ifBlank { "venta" }
+        val file = File(context.cacheDir, "factura-$safeInvoice-${System.currentTimeMillis()}.pdf")
+        val document = PdfDocument()
+        val regular = Typeface.create("sans-serif", Typeface.NORMAL)
+        val medium = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+        val bold = Typeface.create("sans-serif", Typeface.BOLD)
+        val page = document.startPage(pageInfo(1))
+        val canvas = page.canvas
+        canvas.drawColor(android.graphics.Color.WHITE)
+        canvas.drawRect(0f, 0f, PAGE_WIDTH.toFloat(), 8f, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = PRIMARY })
+        ContextCompat.getDrawable(context, R.drawable.ic_bs_logo)?.let { logo ->
+            logo.setBounds(MARGIN.toInt(), 28, (MARGIN + 68).toInt(), 96)
+            logo.draw(canvas)
+        }
+        text(canvas, config.businessName.ifBlank { "MiCatalogo" }, 122f, 55f, 22f, NAVY, bold)
+        text(canvas, "Tu negocio, más lejos", 122f, 76f, 10f, MUTED, regular)
+        textRight(canvas, "FACTURA", PAGE_WIDTH - MARGIN, 48f, 22f, PRIMARY, bold)
+        textRight(canvas, invoice.primary, PAGE_WIDTH - MARGIN, 71f, 11f, INK, medium)
+        val divider = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xffdce6ed.toInt(); strokeWidth = 1f }
+        canvas.drawLine(MARGIN, 122f, PAGE_WIDTH - MARGIN, 122f, divider)
+        val dateText = invoice.createdAt?.take(16)?.replace('T', ' ') ?: invoice.secondary.take(28)
+        drawInfoBox(canvas, MARGIN, 144f, 225f, "FECHA", dateText, regular, medium)
+        drawInfoBox(canvas, 252f, 144f, 225f, "ESTADO", invoice.status.ifBlank { "Registrada" }, regular, medium)
+        val resolvedCustomer = invoice.customerName?.takeIf { it.isNotBlank() }
+            ?: customer?.fullName?.takeIf { it.isNotBlank() }
+            ?: "Consumidor final"
+        val details = listOfNotNull(
+            (invoice.customerPhone ?: customer?.phone)?.takeIf { it.isNotBlank() }?.let { "Tel: $it" },
+            customer?.taxId?.takeIf { it.isNotBlank() }?.let { "RNC / ID: $it" }
+        ).joinToString(" · ")
+        text(canvas, "CLIENTE", MARGIN, 204f, 8.5f, MUTED, medium)
+        text(canvas, resolvedCustomer.take(64), MARGIN, 221f, 11f, INK, medium)
+        if (details.isNotBlank()) text(canvas, details.take(86), MARGIN, 235f, 8.5f, MUTED, regular)
+        drawTableHeader(canvas, regular, bold)
+        var y = 282f
+        if (invoice.items.isEmpty()) {
+            text(canvas, invoice.secondary.ifBlank { "Detalle sincronizado" }.take(60), MARGIN + 10f, y, 10f, MUTED, regular)
+            y += 30f
+        } else {
+            invoice.items.take(15).forEach { item ->
+                text(canvas, item.name.take(36), MARGIN + 10f, y, 10.5f, INK, regular)
+                textRight(canvas, item.quantity.toString(), 384f, y, 10.5f, INK, medium)
+                textRight(canvas, item.unitPrice, 470f, y, 10.5f, INK, regular)
+                textRight(canvas, item.lineTotal, PAGE_WIDTH - MARGIN - 10f, y, 10.5f, INK, medium)
+                canvas.drawLine(MARGIN, y + 18f, PAGE_WIDTH - MARGIN, y + 18f, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xffe5ebf0.toInt(); strokeWidth = 1f })
+                y += 28f
+            }
+        }
+        val boxTop = (y + 18f).coerceAtMost(660f)
+        canvas.drawRoundRect(330f, boxTop, PAGE_WIDTH - MARGIN, boxTop + 68f, 10f, 10f, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = LIGHT_BLUE })
+        text(canvas, "TOTAL", 344f, boxTop + 28f, 11f, NAVY, bold)
+        textRight(canvas, invoice.value, PAGE_WIDTH - MARGIN - 14f, boxTop + 48f, 14f, NAVY, bold)
+        drawFooter(canvas, regular, config)
+        document.finishPage(page)
+        FileOutputStream(file).use { document.writeTo(it) }
+        document.close()
+        FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+    }
+
+    fun createPaymentReceipt(
+        context: Context,
+        receiptNumber: String,
+        customerName: String,
+        customerPhone: String?,
+        amountText: String,
+        method: String,
+        dateText: String,
+        reference: String?,
+        notes: String?,
+        reversed: Boolean,
+        config: InvoiceConfig = InvoiceConfig()
+    ) = run {
+        val safeId = receiptNumber.replace(Regex("[^A-Za-z0-9_-]"), "_").ifBlank { "recibo" }
+        val file = File(context.cacheDir, "recibo-$safeId-${System.currentTimeMillis()}.pdf")
+        val document = PdfDocument()
+        val regular = Typeface.create("sans-serif", Typeface.NORMAL)
+        val medium = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+        val bold = Typeface.create("sans-serif", Typeface.BOLD)
+        val page = document.startPage(pageInfo(1))
+        val canvas = page.canvas
+        canvas.drawColor(android.graphics.Color.WHITE)
+        canvas.drawRect(0f, 0f, PAGE_WIDTH.toFloat(), 8f, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = PRIMARY })
+        ContextCompat.getDrawable(context, R.drawable.ic_bs_logo)?.let { logo ->
+            logo.setBounds(MARGIN.toInt(), 28, (MARGIN + 68).toInt(), 96)
+            logo.draw(canvas)
+        }
+        text(canvas, config.businessName.ifBlank { "MiCatalogo" }, 122f, 55f, 22f, NAVY, bold)
+        text(canvas, "Recibo de abono", 122f, 76f, 10f, MUTED, regular)
+        textRight(canvas, "RECIBO", PAGE_WIDTH - MARGIN, 48f, 22f, PRIMARY, bold)
+        textRight(canvas, receiptNumber.take(28), PAGE_WIDTH - MARGIN, 71f, 10f, INK, medium)
+        canvas.drawLine(MARGIN, 122f, PAGE_WIDTH - MARGIN, 122f, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xffdce6ed.toInt(); strokeWidth = 1f })
+        drawInfoBox(canvas, MARGIN, 144f, 225f, "FECHA", dateText, regular, medium)
+        drawInfoBox(canvas, 252f, 144f, 225f, "MÉTODO", method, regular, medium)
+        val statusColor = if (reversed) WARNING else SUCCESS
+        val statusBg = if (reversed) WARNING_LIGHT else SUCCESS_LIGHT
+        canvas.drawRoundRect(487f, 144f, 553f, 177f, 8f, 8f, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = statusBg })
+        textCentered(canvas, if (reversed) "ANULADO" else "COBRADO", 520f, 165f, 8.5f, statusColor, medium)
+        text(canvas, "CLIENTE", MARGIN, 204f, 8.5f, MUTED, medium)
+        text(canvas, customerName.take(64), MARGIN, 221f, 12f, INK, bold)
+        if (!customerPhone.isNullOrBlank()) text(canvas, "Tel: $customerPhone", MARGIN, 237f, 9f, MUTED, regular)
+        var y = 276f
+        canvas.drawRoundRect(MARGIN, y, PAGE_WIDTH - MARGIN, y + 96f, 12f, 12f, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = LIGHT_BLUE })
+        text(canvas, "MONTO RECIBIDO", MARGIN + 18f, y + 32f, 10f, MUTED, medium)
+        text(canvas, amountText, MARGIN + 18f, y + 68f, 24f, NAVY, bold)
+        y += 120f
+        if (!reference.isNullOrBlank()) {
+            text(canvas, "Referencia: $reference", MARGIN, y, 10f, INK, regular)
+            y += 20f
+        }
+        if (!notes.isNullOrBlank()) {
+            text(canvas, "Notas: ${notes.take(80)}", MARGIN, y, 10f, MUTED, regular)
+        }
+        drawFooter(canvas, regular, config)
+        document.finishPage(page)
+        FileOutputStream(file).use { document.writeTo(it) }
+        document.close()
+        FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+    }
 }

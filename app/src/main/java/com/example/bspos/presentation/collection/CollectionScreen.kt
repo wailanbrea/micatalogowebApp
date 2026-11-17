@@ -27,6 +27,9 @@ import androidx.compose.material.icons.filled.CheckCircle
 import com.example.bspos.presentation.common.BSPOSButton as Button
 import com.example.bspos.presentation.common.BSPOSOutlinedButton as OutlinedButton
 import com.example.bspos.presentation.customer.DebtReminderHelper
+import com.example.bspos.presentation.pos.InvoicePdfGenerator
+import com.example.bspos.presentation.pos.openOrSharePdf
+import com.example.bspos.presentation.pos.shareInvoicePdf
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -38,6 +41,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -221,6 +225,14 @@ fun CollectionScreen(viewModel: CollectionViewModel = hiltViewModel()) {
     }
 
     selectedReceipt?.let { receipt ->
+        val context = LocalContext.current
+        val matchedCustomer = customers.firstOrNull { c ->
+            c.id.toString() == receipt.customerId ||
+                c.remoteCustomerId == receipt.remoteCustomerId ||
+                c.fullName.equals(receipt.customerName, ignoreCase = true)
+        }
+        val dateText = receipt.at.atZone(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("d MMM yyyy · h:mm a", Locale.forLanguageTag("es")))
+        val amountText = money(receipt.amount)
         AlertDialog(onDismissRequest = { selectedReceipt = null }, title = { Text("Recibo ${receipt.receipt}") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -237,6 +249,32 @@ fun CollectionScreen(viewModel: CollectionViewModel = hiltViewModel()) {
                         receipt.reversedAt?.let { Text(it.let { at -> runCatching { Instant.parse(at).atZone(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("d MMM yyyy · h:mm a", Locale.forLanguageTag("es"))) }.getOrDefault(at) }, color = BSPOSTheme.colors.textSecondary) }
                     }
                     if (!receipt.reversed && receipt.remotePaymentId == null) Text("Sincroniza y actualiza el historial para consultar las acciones de este abono.", style = MaterialTheme.typography.bodySmall)
+                    Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(
+                            onClick = {
+                                val pdfUri = InvoicePdfGenerator.createPaymentReceipt(
+                                    context, receipt.receipt, receipt.customerName, matchedCustomer?.phone,
+                                    amountText, receipt.method, dateText, receipt.reference, receipt.notes, receipt.reversed
+                                )
+                                shareInvoicePdf(context, pdfUri, receipt.receipt, matchedCustomer?.phone)
+                            },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp)
+                        ) { Text("WhatsApp", maxLines = 1, softWrap = false) }
+                        OutlinedButton(
+                            onClick = {
+                                val pdfUri = InvoicePdfGenerator.createPaymentReceipt(
+                                    context, receipt.receipt, receipt.customerName, matchedCustomer?.phone,
+                                    amountText, receipt.method, dateText, receipt.reference, receipt.notes, receipt.reversed
+                                )
+                                openOrSharePdf(context, pdfUri, "Recibo ${receipt.receipt}")
+                            },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp)
+                        ) { Text("PDF", maxLines = 1, softWrap = false) }
+                    }
                 }
             }, confirmButton = { TextButton(onClick = { selectedReceipt = null }) { Text("Cerrar") } },
             dismissButton = {
@@ -438,6 +476,8 @@ internal fun RemoteCustomerDebtCard(
 @Composable
 private fun CollectionAmountForm(identity: String, balance: Long, busy: Boolean, allowed: Boolean, onCollect: (Long) -> Unit) {
     var amount by remember(identity, balance) { mutableStateOf(String.format(Locale.US, "%.2f", balance / 100.0)) }
+    var localSubmitting by remember(identity, balance) { mutableStateOf(false) }
+    LaunchedEffect(busy) { if (!busy) localSubmitting = false }
     val value = MoneyUtils.parsePesosStringToCents(amount)
     val valid = value > 0L && value <= balance
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -448,15 +488,15 @@ private fun CollectionAmountForm(identity: String, balance: Long, busy: Boolean,
             label = { Text("Monto a cobrar") },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
             singleLine = true,
-            enabled = !busy,
+            enabled = !busy && !localSubmitting,
             isError = value > balance,
             supportingText = if (value > balance) ({ Text("El monto no puede superar el saldo pendiente.") }) else null
         )
         Button(
-            onClick = { if (!busy && allowed && valid) onCollect(value) },
+            onClick = { if (!busy && !localSubmitting && allowed && valid) { localSubmitting = true; onCollect(value) } },
             modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
-            enabled = !busy && allowed && valid
-        ) { Text(if (busy) "Procesando…" else "Cobrar") }
+            enabled = !busy && !localSubmitting && allowed && valid
+        ) { Text(if (busy || localSubmitting) "Procesando…" else "Cobrar") }
     }
 }
 

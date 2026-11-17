@@ -239,16 +239,20 @@ internal fun CheckoutReviewSheet(
                 }
             }
             HorizontalDivider(color = BSPOSTheme.colors.outline)
+            var localSubmitting by remember(method, total) { mutableStateOf(false) }
+            LaunchedEffect(isProcessing) { if (!isProcessing) localSubmitting = false }
             Surface(color = BSPOSTheme.colors.surface) {
                 Button(onClick = {
+                    if (!valid || localSubmitting) return@Button
+                    localSubmitting = true
                     if (method == CheckoutReviewMethod.CREDIT && onCreditConfirm != null) {
                         onCreditConfirm(creditValidation.sum - creditValidation.credit, downPaymentMethod,
                             notes.trim().ifBlank { null }, reference.trim().ifBlank { null }, creditValidation.dueDate)
                     } else onConfirm(notes.trim().ifBlank { null }, reference.trim().ifBlank { null }, dueDate.trim().ifBlank { null })
                 },
-                    enabled = valid, modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 20.dp, vertical = 12.dp).height(48.dp).testTag("checkout-confirm"),
+                    enabled = valid && !localSubmitting, modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 20.dp, vertical = 12.dp).height(48.dp).testTag("checkout-confirm"),
                     shape = RoundedCornerShape(10.dp)) {
-                    if (isProcessing) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp) else Text("Confirmar · ${money(total)}", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    if (isProcessing || localSubmitting) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp) else Text("Confirmar · ${money(total)}", fontSize = 13.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }

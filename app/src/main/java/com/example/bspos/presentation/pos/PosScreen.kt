@@ -511,7 +511,7 @@ fun PosScreen(
             hasConfiguredPrinter = printers.isNotEmpty(),
             onShare = {
                 val pdfUri = InvoicePdfGenerator.create(context, result.sale!!, result.lines, settings.currency, settings.invoice, customer = saleCustomer)
-                shareInvoicePdf(context, pdfUri, result.sale.invoiceNumber)
+                shareInvoicePdf(context, pdfUri, result.sale.invoiceNumber, saleCustomer?.phone)
             },
             onPrint = {
                 if (printers.isNotEmpty()) {

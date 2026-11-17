@@ -120,7 +120,7 @@ class CollectionViewModel @Inject constructor(
     val message = _message.asStateFlow()
     private val _collecting = MutableStateFlow(false)
     val collecting = _collecting.asStateFlow()
-    private val paymentGate = PaymentAttemptGate()
+    private val paymentGate = PaymentAttemptGate(cooldownMs = 4_000L)
     private val _canCollect = MutableStateFlow(false)
     val canCollect = _canCollect.asStateFlow()
 
@@ -347,13 +347,21 @@ private fun PaymentMethod.toApiValue(): String = when (this) {
 }
 
 /** Prevents double taps while preserving the idempotency key for a retry. */
-internal class PaymentAttemptGate {
+internal class PaymentAttemptGate(
+    private val clockMs: () -> Long = { System.currentTimeMillis() },
+    private val cooldownMs: Long = 0L
+) {
     private val inFlight = mutableSetOf<String>()
     private val identities = mutableMapOf<String, String>()
+    private val recentSuccesses = mutableMapOf<String, Long>()
 
     @Synchronized
     fun start(key: String): String? {
         if (inFlight.isNotEmpty()) return null
+        val now = clockMs()
+        recentSuccesses.entries.removeAll { now - it.value > cooldownMs }
+        val lastSuccess = recentSuccesses[key]
+        if (lastSuccess != null && now - lastSuccess < cooldownMs) return null
         if (!inFlight.add(key)) return null
         return identities.getOrPut(key) { UUID.randomUUID().toString() }
     }
@@ -361,6 +369,7 @@ internal class PaymentAttemptGate {
     @Synchronized
     fun finish(key: String, success: Boolean, keepIdentityOnFailure: Boolean) {
         inFlight.remove(key)
+        if (success) recentSuccesses[key] = clockMs()
         if (success || !keepIdentityOnFailure) identities.remove(key)
     }
 

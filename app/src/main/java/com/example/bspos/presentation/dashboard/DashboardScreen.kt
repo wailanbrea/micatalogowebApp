@@ -63,6 +63,7 @@ import com.example.bspos.presentation.common.DialogScrollableColumn
 import com.example.bspos.presentation.pos.InvoicePdfGenerator
 import com.example.bspos.presentation.pos.PosCartLine
 import com.example.bspos.presentation.pos.PosViewModel
+import com.example.bspos.presentation.pos.openOrSharePdf
 import com.example.bspos.presentation.pos.shareInvoicePdf
 import com.example.bspos.presentation.startup.StartupSnapshot
 import com.example.bspos.presentation.startup.resolveFirstSaleStatus
@@ -293,14 +294,33 @@ fun DashboardScreen(
                     }
                 }
                 if (lines.isNotEmpty()) {
+                    val matchedCustomer = customers.find { it.id == sale.customerId }
                     val pdfUri = InvoicePdfGenerator.create(
                         context,
                         sale,
                         lines,
-                        customer = customers.find { it.id == sale.customerId },
+                        customer = matchedCustomer,
                         customerName = customerNames[sale.customerId]
                     )
-                    shareInvoicePdf(context, pdfUri, sale.invoiceNumber)
+                    shareInvoicePdf(context, pdfUri, sale.invoiceNumber, matchedCustomer?.phone)
+                }
+            },
+            onOpenPdf = {
+                val lines = selectedItems.mapNotNull { item ->
+                    products.find { it.id == item.productId }?.let { product ->
+                        PosCartLine(product = product, quantity = item.quantity, unitPrice = item.unitPrice)
+                    }
+                }
+                if (lines.isNotEmpty()) {
+                    val matchedCustomer = customers.find { it.id == sale.customerId }
+                    val pdfUri = InvoicePdfGenerator.create(
+                        context,
+                        sale,
+                        lines,
+                        customer = matchedCustomer,
+                        customerName = customerNames[sale.customerId]
+                    )
+                    openOrSharePdf(context, pdfUri, "Factura ${sale.invoiceNumber}")
                 }
             },
             onPrint = {
@@ -861,6 +881,7 @@ internal fun SaleDetailDialog(
     products: List<Product>,
     productNames: Map<java.util.UUID, String>,
     onShare: () -> Unit,
+    onOpenPdf: (() -> Unit)? = null,
     onPrint: (() -> Unit)? = null,
     onReturn: () -> Unit,
     onCancelSale: (() -> Unit)? = null,
@@ -890,9 +911,10 @@ internal fun SaleDetailDialog(
                         }
                     }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(onClick = onShare, modifier = Modifier.weight(1f), shape = RoundedCornerShape(14.dp), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)) { Text("Compartir", maxLines = 1, softWrap = false) }
+                        Button(onClick = onShare, modifier = Modifier.weight(1f), shape = RoundedCornerShape(14.dp), contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp)) { Text("WhatsApp", maxLines = 1, softWrap = false) }
+                        OutlinedButton(onClick = onOpenPdf ?: onShare, modifier = Modifier.weight(1f), shape = RoundedCornerShape(14.dp), contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp)) { Text("PDF", maxLines = 1, softWrap = false) }
                         onPrint?.let { print ->
-                            OutlinedButton(onClick = print, modifier = Modifier.weight(1f), shape = RoundedCornerShape(14.dp), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)) { Text("Térmico", maxLines = 1, softWrap = false) }
+                            OutlinedButton(onClick = print, modifier = Modifier.weight(1f), shape = RoundedCornerShape(14.dp), contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp)) { Text("Térmico", maxLines = 1, softWrap = false) }
                         }
                     }
                     if (sale.status == SaleStatus.COMPLETED) {

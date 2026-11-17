@@ -110,6 +110,7 @@ class PosViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0L)
     private val _isProcessing = MutableStateFlow(false)
     val isProcessing = _isProcessing.asStateFlow()
+    private val submittingSale = java.util.concurrent.atomic.AtomicBoolean(false)
     private val _checkoutResult = MutableStateFlow<CheckoutResult?>(null)
     val checkoutResult = _checkoutResult.asStateFlow()
     val printers = printerRepository.observe().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
@@ -208,12 +209,13 @@ class PosViewModel @Inject constructor(
 
     fun completeSplit(payments: List<com.example.bspos.domain.usecase.PosPaymentSplitInput>, dueDate: String? = null) {
         val lines = _cart.value
-        if (lines.isEmpty() || _isProcessing.value) return
+        if (lines.isEmpty() || !submittingSale.compareAndSet(false, true)) return
         val total = try {
             val subtotal = lines.sumOf { Math.multiplyExact(it.quantity, it.unitPrice) }
             subtotal - _discount.value.coerceIn(0L, subtotal)
         } catch (_: ArithmeticException) {
             _checkoutResult.value = CheckoutResult(false, "El total de la venta excede el límite permitido")
+            submittingSale.set(false)
             return
         }
 
@@ -222,23 +224,27 @@ class PosViewModel @Inject constructor(
         try {
             if (payments.any { it.amountCents <= 0L || it.method !in setOf("cash", "card", "bank_transfer", "credit") }) {
                 _checkoutResult.value = CheckoutResult(false, "Revisa los métodos e importes de pago")
+                submittingSale.set(false)
                 return
             }
             paidAmount = payments.filter { it.method != "credit" }.fold(0L) { sum, payment -> Math.addExact(sum, payment.amountCents) }
             pendingAmount = payments.filter { it.method == "credit" }.fold(0L) { sum, payment -> Math.addExact(sum, payment.amountCents) }
         } catch (_: ArithmeticException) {
             _checkoutResult.value = CheckoutResult(false, "Los importes de pago exceden el límite permitido")
+            submittingSale.set(false)
             return
         }
 
         if (try { Math.addExact(paidAmount, pendingAmount) } catch (_: ArithmeticException) { -1L } != total) {
             _checkoutResult.value = CheckoutResult(false, "La suma de los pagos no coincide con el total de la venta")
+            submittingSale.set(false)
             return
         }
 
         val customer = _customer.value
         if (pendingAmount > 0L && customer == null) {
             _checkoutResult.value = CheckoutResult(false, "Debes seleccionar un cliente para la porción a crédito")
+            submittingSale.set(false)
             return
         }
 
@@ -282,6 +288,7 @@ class PosViewModel @Inject constructor(
                 _checkoutResult.value = CheckoutResult(false, "No se pudo cobrar: ${friendlyMessage(error)}")
             } finally {
                 _isProcessing.value = false
+                submittingSale.set(false)
             }
         }
     }
@@ -332,12 +339,13 @@ class PosViewModel @Inject constructor(
         notes: String? = null
     ) {
         val lines = _cart.value
-        if (lines.isEmpty() || _isProcessing.value) return
+        if (lines.isEmpty() || !submittingSale.compareAndSet(false, true)) return
         val total = try {
             val subtotal = lines.sumOf { Math.multiplyExact(it.quantity, it.unitPrice) }
             subtotal - _discount.value.coerceIn(0L, subtotal)
         } catch (_: ArithmeticException) {
             _checkoutResult.value = CheckoutResult(false, "El total de la venta excede el límite permitido")
+            submittingSale.set(false)
             return
         }
         _isProcessing.value = true
@@ -376,6 +384,7 @@ class PosViewModel @Inject constructor(
                 _checkoutResult.value = CheckoutResult(false, "No se pudo cobrar: ${friendlyMessage(error)}")
             } finally {
                 _isProcessing.value = false
+                submittingSale.set(false)
             }
         }
     }
