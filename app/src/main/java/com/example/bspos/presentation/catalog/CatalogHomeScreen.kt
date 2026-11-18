@@ -3,6 +3,7 @@ package com.example.bspos.presentation.catalog
 import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -77,6 +78,7 @@ fun CatalogHomeScreen(
 ) {
     val context = LocalContext.current
     var showForm by remember { mutableStateOf(startWithForm || ((initialDecantMode || initialServiceMode) && startWithForm)) }
+    var showBatchForm by remember { mutableStateOf(false) }
     var editingProduct by remember { mutableStateOf<Product?>(null) }
     var deleteTarget by remember { mutableStateOf<Product?>(null) }
     var decantOverlay by remember { mutableStateOf<String?>(null) }
@@ -196,7 +198,21 @@ fun CatalogHomeScreen(
                 style = MaterialTheme.typography.labelLarge
             )
             if (!photosOnly && !initialDecantMode && mayCreate) {
-                Button({ showForm = true }, enabled = categories.any { it.isActive } && units.any { it.isActive }, shape = RoundedCornerShape(14.dp)) { Icon(Icons.Default.Add, null); Spacer(Modifier.width(5.dp)); Text(if (initialServiceMode) "Nuevo servicio" else "Nuevo producto", maxLines = 1, softWrap = false) }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    if (!initialServiceMode) {
+                        OutlinedButton(
+                            onClick = { showBatchForm = true },
+                            enabled = categories.any { it.isActive } && units.any { it.isActive },
+                            shape = RoundedCornerShape(14.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)
+                        ) {
+                            Icon(Icons.Default.PhotoCamera, null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(5.dp))
+                            Text("10 fotos", maxLines = 1, softWrap = false)
+                        }
+                    }
+                    Button({ showForm = true }, enabled = categories.any { it.isActive } && units.any { it.isActive }, shape = RoundedCornerShape(14.dp)) { Icon(Icons.Default.Add, null); Spacer(Modifier.width(5.dp)); Text(if (initialServiceMode) "Nuevo servicio" else "Nuevo producto", maxLines = 1, softWrap = false) }
+                }
             }
         }
         if (photosOnly) {
@@ -309,6 +325,20 @@ fun CatalogHomeScreen(
         comboComponentProducts = comboComponentProducts,
         enableDecantPrompt = onOpenDecants != null
     )
+    if (showBatchForm) {
+        BatchPhotoProductsModal(
+            categories = categories.filter { it.isActive && it.deletedAt == null },
+            units = units.filter { it.isActive && it.deletedAt == null },
+            shops = shops,
+            activeShopId = activeShopId,
+            showCost = showCost,
+            presentation = presentation,
+            onSaveBatch = { batchItems ->
+                viewModel.addBatch(batchItems) { showBatchForm = false }
+            },
+            onDismiss = { showBatchForm = false }
+        )
+    }
     deleteTarget?.let { product ->
         AlertDialog(onDismissRequest = { deleteTarget = null }, title = { Text("Eliminar producto") }, text = { Text("¿Eliminar ${product.name}? El producto dejará de aparecer en el catálogo.") }, confirmButton = { Button({ viewModel.delete(product); deleteTarget = null }, colors = ButtonDefaults.buttonColors(containerColor = BSPOSTheme.colors.error, contentColor = BSPOSTheme.colors.textOnPrimary)) { Text("Eliminar") } }, dismissButton = { TextButton({ deleteTarget = null }) { Text("Cancelar") } })
     }
@@ -597,6 +627,8 @@ internal fun ProductForm(current: Product?, currentQuantity: Long, categories: L
     val keyboardController = LocalSoftwareKeyboardController.current
     var name by remember(current?.id) { mutableStateOf(current?.name.orEmpty()) }
     var description by remember(current?.id) { mutableStateOf(current?.description.orEmpty()) }
+    var color by remember(current?.id) { mutableStateOf(current?.color.orEmpty()) }
+    var size by remember(current?.id) { mutableStateOf(current?.size.orEmpty()) }
     var code by remember(current?.id) { mutableStateOf(current?.internalCode.orEmpty()) }
     val generatedCode = remember(current?.id) {
         "AUTO-" + UUID.randomUUID().toString().replace("-", "").take(12).uppercase(Locale.ROOT)
@@ -899,15 +931,35 @@ internal fun ProductForm(current: Product?, currentQuantity: Long, categories: L
                 OutlinedTextField(volumeMl, { volumeMl = it.filter(Char::isDigit) }, label = { Text("Tamaño del decant (ml)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), supportingText = { Text("Máximo: ${sourceProduct?.remoteVolumeMl ?: "—"} ml") })
             }
             OutlinedTextField(name, { name = it }, modifier = Modifier.fillMaxWidth().testTag("product-name-field"), label = { Text("Nombre") }, singleLine = true)
+            if (!effectiveDecantMode && !serviceMode && current?.remoteSaleUnit != "service") {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = color,
+                        onValueChange = { color = it },
+                        modifier = Modifier.weight(1f),
+                        label = { Text("Color") },
+                        singleLine = true
+                    )
+                    OutlinedTextField(
+                        value = size,
+                        onValueChange = { size = it },
+                        modifier = Modifier.weight(1f),
+                        label = { Text("Size") },
+                        singleLine = true
+                    )
+                }
+            }
+            OutlinedTextField(
+                value = description,
+                onValueChange = { description = it },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Descripción (opcional)") },
+                supportingText = if (serviceMode || current?.remoteSaleUnit == "service") {
+                    { Text("Se muestra en la tienda y ayuda al cliente a entender el servicio.") }
+                } else null,
+                minLines = if (serviceMode || current?.remoteSaleUnit == "service") 3 else 2
+            )
             if (serviceMode || current?.remoteSaleUnit == "service") {
-                OutlinedTextField(
-                    value = description,
-                    onValueChange = { description = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Descripción (opcional)") },
-                    supportingText = { Text("Se muestra en la tienda y ayuda al cliente a entender el servicio.") },
-                    minLines = 3
-                )
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(14.dp),
@@ -1256,7 +1308,7 @@ internal fun ProductForm(current: Product?, currentQuantity: Long, categories: L
                 priceError = true
                 comboError = comboMode && !validCombo
             } else {
-                val input = ProductInput(name, effectiveCode, requireNotNull(category).id, effectiveInventoryUnitId, sale, purchasePrice = effectivePurchase, wholesalePrice = wholesale, description = description.trim().ifBlank { null }, imagePath = imagePath, thumbnailPath = imagePath, minimumStock = minimum, tracksExpiration = current?.tracksExpiration ?: false, remoteShopId = shopId, remoteSaleUnit = if (effectiveDecantMode) "decant" else if (comboMode) "unit" else saleUnit, remoteVolumeMl = if (effectiveDecantMode || saleUnit == "bottle" || saleUnit == "ml") selectedVolume else null, remoteSourceProductId = if (effectiveDecantMode) sourceProduct?.remoteProductId else null, isCombo = comboMode, comboItems = if (comboMode) selectedComboItems else emptyList(), isActive = if (serviceMode || current?.remoteSaleUnit == "service") published else (current?.isActive ?: true), inventoryUnitName = effectiveInventoryUnitName, inventoryUnitAbbreviation = effectiveInventoryUnitAbbreviation)
+                val input = ProductInput(name, effectiveCode, requireNotNull(category).id, effectiveInventoryUnitId, sale, purchasePrice = effectivePurchase, wholesalePrice = wholesale, description = description.trim().ifBlank { null }, imagePath = imagePath, thumbnailPath = imagePath, minimumStock = minimum, tracksExpiration = current?.tracksExpiration ?: false, remoteShopId = shopId, remoteSaleUnit = if (effectiveDecantMode) "decant" else if (comboMode) "unit" else saleUnit, remoteVolumeMl = if (effectiveDecantMode || saleUnit == "bottle" || saleUnit == "ml") selectedVolume else null, remoteSourceProductId = if (effectiveDecantMode) sourceProduct?.remoteProductId else null, isCombo = comboMode, comboItems = if (comboMode) selectedComboItems else emptyList(), isActive = if (serviceMode || current?.remoteSaleUnit == "service") published else (current?.isActive ?: true), inventoryUnitName = effectiveInventoryUnitName, inventoryUnitAbbreviation = effectiveInventoryUnitAbbreviation, color = color.trim().ifBlank { null }, size = size.trim().ifBlank { null })
                 val quantityToSave = if (current == null && !comboMode) effectiveQuantity ?: 0L else 0L
                 if (prepareDecantsAfterSave && quantityToSave <= 0L) {
                     decantPreparationStockError = true
@@ -1277,6 +1329,270 @@ internal fun ProductForm(current: Product?, currentQuantity: Long, categories: L
 
 @Composable
 private fun money(cents: Long): String = MoneyUtils.formatCents(cents, LocalCurrency.current)
+
+private data class BatchPhotoDraft(
+    val id: String = UUID.randomUUID().toString(),
+    val uriString: String,
+    val name: String = "",
+    val quantity: String = "1",
+    val price: String = "",
+    val color: String = "",
+    val size: String = "",
+    val description: String = ""
+)
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun BatchPhotoProductsModal(
+    categories: List<Category>,
+    units: List<UnitOfMeasure>,
+    shops: List<com.example.bspos.domain.model.MiCatalogoShop>,
+    activeShopId: String?,
+    showCost: Boolean,
+    presentation: MiCatalogoBusinessPresentation,
+    onSaveBatch: (List<Pair<ProductInput, Long>>) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    var drafts by remember { mutableStateOf<List<BatchPhotoDraft>>(emptyList()) }
+    var category by remember(categories) { mutableStateOf(categories.firstOrNull()) }
+    var categoryOpen by remember { mutableStateOf(false) }
+    var validationError by remember { mutableStateOf<String?>(null) }
+
+    val defaultUnit = units.firstOrNull { unitDisplayName(it) == "Unidad" }
+        ?: units.firstOrNull()
+        ?: UnitOfMeasure(UUID(0L, 1L), "Unidad", "UND", createdAt = java.time.Instant.EPOCH, updatedAt = java.time.Instant.EPOCH)
+    val shopId = activeShopId ?: shops.singleOrNull()?.id
+
+    val multiPhotoLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickMultipleVisualMedia(10)
+    ) { uris ->
+        if (uris.isEmpty()) return@rememberLauncherForActivityResult
+        val remaining = (10 - drafts.size).coerceAtLeast(0)
+        val picked = uris.take(remaining).map { uri ->
+            runCatching { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+            BatchPhotoDraft(uriString = uri.toString())
+        }
+        drafts = drafts + picked
+        validationError = null
+    }
+
+    BSPOSModalBottomSheet(
+        onDismissRequest = onDismiss,
+        properties = ModalBottomSheetProperties(
+            shouldDismissOnClickOutside = false,
+            shouldDismissOnBackPress = true
+        )
+    ) {
+        Surface(
+            modifier = Modifier.fillMaxWidth().fillMaxHeight(0.94f),
+            shape = RoundedCornerShape(0.dp),
+            color = BSPOSTheme.colors.surface
+        ) {
+            Column(Modifier.fillMaxSize().imePadding().navigationBarsPadding()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(start = 22.dp, top = 18.dp, end = 12.dp, bottom = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Agregar hasta 10 fotos", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
+                        Text(
+                            "Selecciona hasta 10 fotos y completa Nombre, cantidad, color y size debajo de cada una.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = BSPOSTheme.colors.textSecondary
+                        )
+                    }
+                    IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, "Cerrar") }
+                }
+                HorizontalDivider(color = BSPOSTheme.colors.outline.copy(alpha = .65f))
+                Column(
+                    modifier = Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 18.dp, vertical = 14.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Button(
+                            onClick = {
+                                multiPhotoLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                            },
+                            enabled = drafts.size < 10,
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Icon(Icons.Default.PhotoCamera, null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text(if (drafts.isEmpty()) "Elegir hasta 10 fotos" else "Agregar fotos (${drafts.size}/10)", maxLines = 1, softWrap = false)
+                        }
+                    }
+
+                    if (categories.isNotEmpty()) {
+                        Box(Modifier.fillMaxWidth()) {
+                            OutlinedButton(onClick = { categoryOpen = true }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)) {
+                                Text("Categoría: ${category?.name ?: "Seleccionar"}", modifier = Modifier.weight(1f))
+                                Text("⌄", color = BSPOSTheme.colors.primary)
+                            }
+                            DropdownMenu(categoryOpen, { categoryOpen = false }) {
+                                categories.forEach { item ->
+                                    DropdownMenuItem(text = { Text(item.name) }, onClick = { category = item; categoryOpen = false })
+                                }
+                            }
+                        }
+                    }
+
+                    validationError?.let { err ->
+                        Text(err, color = BSPOSTheme.colors.error, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+                    }
+
+                    if (drafts.isEmpty()) {
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(16.dp),
+                            color = BSPOSTheme.colors.surfaceVariant.copy(alpha = 0.4f),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, BSPOSTheme.colors.outline)
+                        ) {
+                            Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Icon(Icons.Default.PhotoCamera, null, tint = BSPOSTheme.colors.primary, modifier = Modifier.size(36.dp))
+                                Text("Aún no has seleccionado fotos", fontWeight = FontWeight.Bold)
+                                Text("Toca \"Elegir hasta 10 fotos\" para cargar productos en lote.", style = MaterialTheme.typography.bodySmall, color = BSPOSTheme.colors.textSecondary)
+                            }
+                        }
+                    }
+
+                    drafts.forEachIndexed { index, draft ->
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = CardDefaults.cardColors(containerColor = BSPOSTheme.colors.surface),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, BSPOSTheme.colors.outline)
+                        ) {
+                            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                    Text("Producto ${index + 1}", fontWeight = FontWeight.ExtraBold, color = BSPOSTheme.colors.primary)
+                                    IconButton(onClick = { drafts = drafts.filterNot { it.id == draft.id } }, modifier = Modifier.size(28.dp)) {
+                                        Icon(Icons.Default.Close, "Quitar foto", tint = BSPOSTheme.colors.error, modifier = Modifier.size(18.dp))
+                                    }
+                                }
+                                AsyncImage(
+                                    model = draft.uriString,
+                                    contentDescription = "Foto ${index + 1}",
+                                    modifier = Modifier.fillMaxWidth().height(150.dp).clip(RoundedCornerShape(12.dp)),
+                                    contentScale = ContentScale.Crop
+                                )
+                                OutlinedTextField(
+                                    value = draft.name,
+                                    onValueChange = { v -> drafts = drafts.map { if (it.id == draft.id) it.copy(name = v) else it }; validationError = null },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    label = { Text("Nombre *") },
+                                    singleLine = true
+                                )
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    OutlinedTextField(
+                                        value = draft.quantity,
+                                        onValueChange = { v -> drafts = drafts.map { if (it.id == draft.id) it.copy(quantity = v.filter(Char::isDigit)) else it } },
+                                        modifier = Modifier.weight(1f),
+                                        label = { Text("Cantidad") },
+                                        singleLine = true,
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                                    )
+                                    OutlinedTextField(
+                                        value = draft.price,
+                                        onValueChange = { v -> drafts = drafts.map { if (it.id == draft.id) it.copy(price = v) else it } },
+                                        modifier = Modifier.weight(1f),
+                                        label = { Text("Precio (${LocalCurrency.current.symbol})") },
+                                        placeholder = { Text("0.00") },
+                                        singleLine = true,
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+                                    )
+                                }
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    OutlinedTextField(
+                                        value = draft.color,
+                                        onValueChange = { v -> drafts = drafts.map { if (it.id == draft.id) it.copy(color = v) else it } },
+                                        modifier = Modifier.weight(1f),
+                                        label = { Text("Color") },
+                                        singleLine = true
+                                    )
+                                    OutlinedTextField(
+                                        value = draft.size,
+                                        onValueChange = { v -> drafts = drafts.map { if (it.id == draft.id) it.copy(size = v) else it } },
+                                        modifier = Modifier.weight(1f),
+                                        label = { Text("Size") },
+                                        singleLine = true
+                                    )
+                                }
+                                OutlinedTextField(
+                                    value = draft.description,
+                                    onValueChange = { v -> drafts = drafts.map { if (it.id == draft.id) it.copy(description = v) else it } },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    label = { Text("Descripción (opcional)") },
+                                    minLines = 2
+                                )
+                            }
+                        }
+                    }
+                }
+                HorizontalDivider(color = BSPOSTheme.colors.outline.copy(alpha = .65f))
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f), shape = RoundedCornerShape(14.dp)) {
+                        Text("Cancelar", maxLines = 1, softWrap = false)
+                    }
+                    Button(
+                        onClick = {
+                            val selectedCat = category
+                            when {
+                                drafts.isEmpty() -> validationError = "Selecciona al menos 1 foto."
+                                selectedCat == null -> validationError = "Selecciona una categoría."
+                                drafts.any { it.name.isBlank() } -> validationError = "Todos los productos deben tener nombre."
+                                else -> {
+                                    val built = drafts.mapNotNull { draft ->
+                                        val saleCents = if (draft.price.isBlank()) 0L else draft.price.toPesosCents() ?: return@mapNotNull null
+                                        val qty = draft.quantity.toLongOrNull() ?: 0L
+                                        val code = "AUTO-" + UUID.randomUUID().toString().replace("-", "").take(12).uppercase(Locale.ROOT)
+                                        val input = ProductInput(
+                                            name = draft.name.trim(),
+                                            internalCode = code,
+                                            categoryId = selectedCat.id,
+                                            unitId = defaultUnit.id,
+                                            salePrice = saleCents,
+                                            purchasePrice = 0L,
+                                            description = draft.description.trim().ifBlank { null },
+                                            imagePath = draft.uriString,
+                                            thumbnailPath = draft.uriString,
+                                            remoteShopId = shopId,
+                                            remoteSaleUnit = "unit",
+                                            isActive = true,
+                                            inventoryUnitName = "Unidad",
+                                            inventoryUnitAbbreviation = "UND",
+                                            color = draft.color.trim().ifBlank { null },
+                                            size = draft.size.trim().ifBlank { null }
+                                        )
+                                        input to qty
+                                    }
+                                    if (built.size != drafts.size) {
+                                        validationError = "Revisa que los precios sean válidos."
+                                    } else {
+                                        onSaveBatch(built)
+                                    }
+                                }
+                            }
+                        },
+                        enabled = drafts.isNotEmpty(),
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(14.dp)
+                    ) {
+                        Text(
+                            if (drafts.size == 1) "Guardar 1 producto" else "Guardar ${drafts.size} productos",
+                            maxLines = 1,
+                            softWrap = false
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
 
 private fun unitDisplayName(unit: UnitOfMeasure): String {
     val normalized = unit.name.trim().lowercase(Locale.ROOT)

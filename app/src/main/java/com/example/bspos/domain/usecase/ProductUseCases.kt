@@ -31,7 +31,9 @@ data class ProductInput(
     val comboItems: List<ProductComboComponent> = emptyList(),
     val isActive: Boolean = true,
     val inventoryUnitName: String? = null,
-    val inventoryUnitAbbreviation: String? = null
+    val inventoryUnitAbbreviation: String? = null,
+    val color: String? = null,
+    val size: String? = null
 )
 
 class ProductUseCases @Inject constructor(
@@ -68,7 +70,9 @@ class ProductUseCases @Inject constructor(
             imagePath = input.imagePath ?: current.imagePath,
             thumbnailPath = input.thumbnailPath ?: current.thumbnailPath,
             isActive = input.isActive,
-            deletedAt = current.deletedAt
+            deletedAt = current.deletedAt,
+            color = input.color.cleanOptional(),
+            size = input.size.cleanOptional()
         )
     )
 
@@ -103,7 +107,9 @@ class ProductUseCases @Inject constructor(
             remoteSourceProductId = input.remoteSourceProductId,
             remoteIsCombo = input.isCombo,
             remoteComboItems = input.comboItems,
-            isActive = input.isActive
+            isActive = input.isActive,
+            color = input.color.cleanOptional(),
+            size = input.size.cleanOptional()
         )
     }
 }

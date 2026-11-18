@@ -71,6 +71,8 @@ class RemoteMutationRecorder @Inject constructor(private val transactor: AppData
             val code = product.miCatalogoInternalCode ?: product.internalCode
             if (previous == null || code != (previous.miCatalogoInternalCode ?: previous.internalCode)) put("internal_code", code)
             if (previous == null || previous.description != product.description) put("description", product.description?.let(::JsonPrimitive) ?: JsonNull)
+            if (previous == null || previous.color != product.color) put("color", product.color?.let(::JsonPrimitive) ?: JsonNull)
+            if (previous == null || previous.size != product.size) put("size", product.size?.let(::JsonPrimitive) ?: JsonNull)
             if (previous == null || previous.barcode != product.barcode) put("barcode", product.barcode?.let(::JsonPrimitive) ?: JsonNull)
             photo?.let { put("image_base64", it.base64); put("image_sha256", it.sha256) }
             if (previous == null || previous.categoryId != product.categoryId) {

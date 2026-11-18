@@ -41,5 +41,7 @@ data class Product(
     val remoteOpenedBottles: Int? = null,
     val remoteSourceProductId: String? = null,
     val remoteProductSlug: String? = null,
-    val remoteComboItems: List<ProductComboComponent> = emptyList()
+    val remoteComboItems: List<ProductComboComponent> = emptyList(),
+    val color: String? = null,
+    val size: String? = null
 )

@@ -64,5 +64,7 @@ data class ProductEntity(
     @ColumnInfo(name = "updated_at") val updatedAt: Instant,
     @ColumnInfo(name = "deleted_at") val deletedAt: Instant? = null,
     @ColumnInfo(name = "micatalogo_product_slug") val miCatalogoProductSlug: String? = null,
+    @ColumnInfo(name = "color") val color: String? = null,
+    @ColumnInfo(name = "size") val size: String? = null,
     @androidx.room.Embedded val tenant: TenantMetadata = TenantMetadata(miCatalogoShopId)
 )

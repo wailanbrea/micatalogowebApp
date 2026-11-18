@@ -154,6 +154,43 @@ class ProductCatalogViewModel @Inject constructor(
         }
     }
 
+    fun addBatch(items: List<Pair<ProductInput, Long>>, onSaved: (Int) -> Unit = {}) {
+        if (items.isEmpty()) return
+        val first = items.first().first
+        if (!canCreate(first.remoteSaleUnit, first.remoteShopId)) { reportReadOnly(); return }
+        val remoteShopId = first.remoteShopId
+        if (remoteShopId != null) {
+            val quota = _shops.value.firstOrNull { it.id == remoteShopId }?.quota
+            if (quota != null && quota.productsRemaining < items.size) {
+                val message = "El plan ${quota.planLabel} solo tiene ${quota.productsRemaining} cupos disponibles de ${quota.productLimit} productos."
+                _message.value = message
+                UiErrorBus.show(message)
+                return
+            }
+        }
+        viewModelScope.launch {
+            runCatching {
+                if (remoteShopId != null && first.inventoryUnitName != null && first.inventoryUnitAbbreviation != null) {
+                    unitUseCases.ensure(first.unitId, first.inventoryUnitName, first.inventoryUnitAbbreviation)
+                }
+                transactor.runInTransaction {
+                    items.forEach { (input, initialQty) ->
+                        val product = productUseCases.create(input)
+                        if (initialQty > 0L) initialInventory(product.id, initialQty, input.purchasePrice)
+                    }
+                }
+                items.size
+            }.onSuccess { count ->
+                _message.value = if (count == 1) "1 producto agregado." else "$count productos agregados."
+                onSaved(count)
+            }.onFailure {
+                val message = it.toUiMessage("No se pudieron guardar los productos")
+                _message.value = message
+                UiErrorBus.show(message)
+            }
+        }
+    }
+
     fun update(current: com.example.bspos.domain.model.Product, input: ProductInput, onSaved: () -> Unit = {}) {
         if (!canEdit(current)) { reportReadOnly(); return }
         viewModelScope.launch {

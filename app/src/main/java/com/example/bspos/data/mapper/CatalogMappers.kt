@@ -49,7 +49,8 @@ fun ProductEntity.toDomain() = Product(
     remoteIsCombo = miCatalogoIsCombo,
     remoteVolumeMl = miCatalogoVolumeMl, remoteAvailableMl = miCatalogoAvailableMl, remoteReservedDecantMl = miCatalogoReservedDecantMl, remoteOpenedBottles = miCatalogoOpenedBottles,
     remoteSourceProductId = miCatalogoSourceProductId, remoteProductSlug = miCatalogoProductSlug,
-    remoteComboItems = decodeComboItems(miCatalogoComboItemsJson)
+    remoteComboItems = decodeComboItems(miCatalogoComboItemsJson),
+    color = color, size = size
 )
 
 fun Product.toEntity() = ProductEntity(
@@ -69,7 +70,8 @@ fun Product.toEntity() = ProductEntity(
     miCatalogoOpenedBottles = remoteOpenedBottles,
     miCatalogoSaleUnit = remoteSaleUnit, miCatalogoProductSlug = remoteProductSlug,
     miCatalogoIsCombo = remoteIsCombo,
-    miCatalogoComboItemsJson = encodeComboItems(remoteComboItems)
+    miCatalogoComboItemsJson = encodeComboItems(remoteComboItems),
+    color = color, size = size
 )
 
 fun SupplierEntity.toDomain() = Supplier(
